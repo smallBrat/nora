@@ -1,7 +1,6 @@
 import Head from "next/head";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { signIn } from "next-auth/react";
 import { ArrowUpRight, CheckCircle2, Loader2, Lock, Mail, Shield, Zap } from "lucide-react";
 
 const OAUTH_LOGIN_ENABLED = process.env.NEXT_PUBLIC_OAUTH_LOGIN_ENABLED === "true";
@@ -110,7 +109,7 @@ export default function Login() {
 
   function handleOAuth(provider) {
     setOauthLoading(provider);
-    signIn(provider, { callbackUrl: "/auth/callback" });
+    window.location.assign(`/auth/oauth/${provider}`);
   }
 
   return (
@@ -130,7 +129,9 @@ export default function Login() {
               N
             </div>
             <div>
-              <div className="text-sm font-black uppercase tracking-[0.28em] text-slate-300">Nora</div>
+              <div className="text-sm font-black uppercase tracking-[0.28em] text-slate-300">
+                Nora
+              </div>
               <div className="text-xs text-slate-500">Deploy intelligence anywhere.</div>
             </div>
           </Link>
@@ -163,16 +164,21 @@ export default function Login() {
               Log back into the Nora workspace you control.
             </h1>
             <p className="mt-5 max-w-xl text-base leading-8 text-slate-300">
-              Nora is built for operator teams that want the product code, the self-host path, and the runtime control surface
-              for OpenClaw and Hermes visible in the open. The login flow should stay simple while the trust model stays
-              explicit.
+              Nora is built for operator teams that want the product code, the self-host path, and
+              the runtime control surface for OpenClaw and Hermes visible in the open. The login
+              flow should stay simple while the trust model stays explicit.
             </p>
 
             <div className="mt-8 rounded-[28px] border border-white/10 bg-white/[0.03] p-5">
-              <div className="text-xs font-black uppercase tracking-[0.28em] text-[#f2d7a1]">Why this page exists</div>
+              <div className="text-xs font-black uppercase tracking-[0.28em] text-[#f2d7a1]">
+                Why this page exists
+              </div>
               <div className="mt-4 space-y-4">
                 {LOGIN_NOTES.map((item) => (
-                  <div key={item} className="flex items-start gap-3 text-sm leading-7 text-slate-300">
+                  <div
+                    key={item}
+                    className="flex items-start gap-3 text-sm leading-7 text-slate-300"
+                  >
                     <CheckCircle2 size={18} className="mt-1 shrink-0 text-[#8ae6ff]" />
                     <span>{item}</span>
                   </div>
@@ -187,7 +193,9 @@ export default function Login() {
                 rel="noopener noreferrer"
                 className="rounded-[24px] border border-white/10 bg-white/[0.03] px-4 py-4 transition-colors hover:bg-white/[0.06]"
               >
-                <div className="text-xs font-black uppercase tracking-[0.28em] text-slate-500">Open source repo</div>
+                <div className="text-xs font-black uppercase tracking-[0.28em] text-slate-500">
+                  Open source repo
+                </div>
                 <div className="mt-2 text-lg font-black text-white">Browse Nora on GitHub</div>
                 <div className="mt-2 text-sm leading-7 text-slate-400">
                   Review the public product code and architecture directly.
@@ -199,7 +207,9 @@ export default function Login() {
                 rel="noopener noreferrer"
                 className="rounded-[24px] border border-white/10 bg-white/[0.03] px-4 py-4 transition-colors hover:bg-white/[0.06]"
               >
-                <div className="text-xs font-black uppercase tracking-[0.28em] text-slate-500">Self-host guide</div>
+                <div className="text-xs font-black uppercase tracking-[0.28em] text-slate-500">
+                  Self-host guide
+                </div>
                 <div className="mt-2 text-lg font-black text-white">Open the quick start</div>
                 <div className="mt-2 text-sm leading-7 text-slate-400">
                   Clone the repo, run the installer, and bring up your own Nora instance.
@@ -208,7 +218,9 @@ export default function Login() {
             </div>
 
             <div className="mt-6 rounded-[28px] border border-[#8ae6ff]/18 bg-[#8ae6ff]/7 px-5 py-5">
-              <div className="text-xs font-black uppercase tracking-[0.28em] text-[#dff9ff]">Instance note</div>
+              <div className="text-xs font-black uppercase tracking-[0.28em] text-[#dff9ff]">
+                Instance note
+              </div>
               <p className="mt-3 text-sm leading-7 text-slate-300">
                 {IS_SELF_HOSTED
                   ? "If this is a fresh self-hosted instance, use the operator account created during setup or create the first account before continuing into Settings and Deploy."
@@ -222,9 +234,12 @@ export default function Login() {
               <Zap size={14} />
               Easy access
             </div>
-            <h2 className="text-3xl font-black leading-tight text-slate-950">Log in to your operator account</h2>
+            <h2 className="text-3xl font-black leading-tight text-slate-950">
+              Log in to your operator account
+            </h2>
             <p className="mt-3 text-sm leading-7 text-slate-700">
-              Use email and password for this Nora instance. If OAuth is enabled here, you can use that too.
+              Use email and password for this Nora instance. If OAuth is enabled here, you can use
+              that too.
             </p>
 
             {OAUTH_LOGIN_ENABLED && (
@@ -239,10 +254,22 @@ export default function Login() {
                     <Loader2 size={18} className="animate-spin" />
                   ) : (
                     <svg width="18" height="18" viewBox="0 0 24 24">
-                      <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4" />
-                      <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
-                      <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
-                      <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
+                      <path
+                        d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"
+                        fill="#4285F4"
+                      />
+                      <path
+                        d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                        fill="#34A853"
+                      />
+                      <path
+                        d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+                        fill="#FBBC05"
+                      />
+                      <path
+                        d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+                        fill="#EA4335"
+                      />
                     </svg>
                   )}
                   Continue with Google
@@ -276,9 +303,14 @@ export default function Login() {
 
             <form onSubmit={handleLogin} className="flex flex-col gap-4">
               <label className="flex flex-col gap-2">
-                <span className="text-[0.68rem] font-black uppercase tracking-[0.28em] text-slate-500">Email address</span>
+                <span className="text-[0.68rem] font-black uppercase tracking-[0.28em] text-slate-500">
+                  Email address
+                </span>
                 <div className="relative">
-                  <Mail size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
+                  <Mail
+                    size={18}
+                    className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500"
+                  />
                   <input
                     type="email"
                     value={email}
@@ -292,9 +324,14 @@ export default function Login() {
               </label>
 
               <label className="flex flex-col gap-2">
-                <span className="text-[0.68rem] font-black uppercase tracking-[0.28em] text-slate-500">Password</span>
+                <span className="text-[0.68rem] font-black uppercase tracking-[0.28em] text-slate-500">
+                  Password
+                </span>
                 <div className="relative">
-                  <Lock size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
+                  <Lock
+                    size={18}
+                    className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500"
+                  />
                   <input
                     type="password"
                     value={password}
@@ -326,7 +363,10 @@ export default function Login() {
             <div className="mt-6 flex flex-col gap-3 text-sm text-slate-700">
               <p>
                 Need an account?{" "}
-                <Link href="/signup" className="font-black text-slate-950 underline underline-offset-4">
+                <Link
+                  href="/signup"
+                  className="font-black text-slate-950 underline underline-offset-4"
+                >
                   Create one here.
                 </Link>
               </p>

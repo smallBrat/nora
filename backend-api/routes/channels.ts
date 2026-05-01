@@ -4,7 +4,6 @@ const channels = require("../channels");
 const { getAdapter, listAdapterTypes } = require("../channels/adapters");
 const {
   connectOpenClawChannel,
-  deleteOpenClawChannel,
   getOpenClawChannelType,
   listOpenClawChannels,
   logoutOpenClawChannel,
@@ -40,9 +39,7 @@ function buildLegacyTypeMeta(entry = {}) {
           ...field,
           options: Array.isArray(field?.options)
             ? field.options.map((option) =>
-                typeof option === "object"
-                  ? option
-                  : { label: String(option), value: option },
+                typeof option === "object" ? option : { label: String(option), value: option },
               )
             : [],
         }))
@@ -181,7 +178,9 @@ router.post("/:id/channels", async (req, res) => {
 router.patch("/:id/channels/:cid", async (req, res) => {
   try {
     if (isOpenClawAgent(req.agent)) {
-      res.json(await saveOpenClawChannel(req.agent, normalizeChannelType(req.params.cid), req.body));
+      res.json(
+        await saveOpenClawChannel(req.agent, normalizeChannelType(req.params.cid), req.body),
+      );
       return;
     }
 
@@ -195,8 +194,9 @@ router.patch("/:id/channels/:cid", async (req, res) => {
 router.delete("/:id/channels/:cid", async (req, res) => {
   try {
     if (isOpenClawAgent(req.agent)) {
-      res.json(await deleteOpenClawChannel(req.agent, normalizeChannelType(req.params.cid)));
-      return;
+      return res.status(409).json({
+        error: "OpenClaw channels cannot be deleted from Nora. Disable the channel instead.",
+      });
     }
 
     await channels.deleteChannel(req.params.cid, req.params.id);
@@ -215,11 +215,7 @@ router.post("/:id/channels/:cid/connect", async (req, res) => {
     }
 
     res.json(
-      await connectOpenClawChannel(
-        req.agent,
-        normalizeChannelType(req.params.cid),
-        req.body || {},
-      ),
+      await connectOpenClawChannel(req.agent, normalizeChannelType(req.params.cid), req.body || {}),
     );
   } catch (e) {
     sendError(res, e, "Failed to connect channel");
@@ -275,11 +271,7 @@ router.post("/:id/channels/:cid/logout", async (req, res) => {
     }
 
     res.json(
-      await logoutOpenClawChannel(
-        req.agent,
-        normalizeChannelType(req.params.cid),
-        req.body || {},
-      ),
+      await logoutOpenClawChannel(req.agent, normalizeChannelType(req.params.cid), req.body || {}),
     );
   } catch (e) {
     sendError(res, e, "Failed to logout channel");

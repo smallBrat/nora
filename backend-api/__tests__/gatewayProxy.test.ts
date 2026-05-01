@@ -173,11 +173,13 @@ describe("gateway proxy control-plane routes", () => {
   let createGatewayRouter;
   let evictConnection;
   let app;
+  const originalFetch = global.fetch;
 
   beforeEach(() => {
     jest.resetModules();
     mockDb.query.mockReset();
     mockRecordMetric.mockClear();
+    global.fetch = jest.fn();
     mockFakeWebSocket.healthMode = "success";
     mockFakeWebSocket.statusMode = "success";
     mockFakeWebSocket.toolsCatalogResult = { tools: [] };
@@ -199,6 +201,7 @@ describe("gateway proxy control-plane routes", () => {
     evictConnection("10.0.0.10");
     evictConnection("10.0.0.20");
     evictConnection("10.0.0.30");
+    global.fetch = originalFetch;
   });
 
   it("sends non-streaming chat through the gateway and records usage metrics", async () => {
@@ -326,5 +329,81 @@ describe("gateway proxy control-plane routes", () => {
       [{ id: "int-gh", provider: "github", toolSpecs: [{ name: "github_list_repositories" }] }],
       { reservedNames: new Set(["gateway_native_tool"]) },
     );
+  });
+
+  it("proxies gateway UI assets only after resolving a safe gateway target", async () => {
+    mockDb.query.mockResolvedValueOnce({
+      rows: [
+        {
+          id: "agent-1",
+          user_id: "user-1",
+          status: "running",
+          host: "10.0.0.10",
+          gateway_token: "gateway-token",
+          gateway_host_port: null,
+        },
+      ],
+    });
+    global.fetch.mockResolvedValueOnce({
+      status: 200,
+      headers: new Headers({ "content-type": "application/javascript" }),
+      arrayBuffer: async () => Buffer.from("console.log('ok')"),
+    });
+
+    const res = await request(app).get("/agents/agent-1/gateway/assets/app.js?cache=1");
+
+    expect(res.status).toBe(200);
+    expect(global.fetch).toHaveBeenCalledWith(
+      "http://10.0.0.10:18789/assets/app.js?cache=1",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Host: "10.0.0.10:18789",
+        }),
+      }),
+    );
+  });
+
+  it("rejects gateway UI proxy targets that resolve to metadata addresses", async () => {
+    mockDb.query.mockResolvedValueOnce({
+      rows: [
+        {
+          id: "agent-1",
+          user_id: "user-1",
+          status: "running",
+          host: "169.254.169.254",
+          gateway_token: "gateway-token",
+          gateway_host_port: null,
+        },
+      ],
+    });
+
+    const res = await request(app).get("/agents/agent-1/gateway/assets/app.js");
+
+    expect(res.status).toBe(502);
+    expect(res.body.error).toBe("Gateway UI unreachable");
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("rejects gateway UI proxy targets on non-gateway ports", async () => {
+    mockDb.query.mockResolvedValueOnce({
+      rows: [
+        {
+          id: "agent-1",
+          user_id: "user-1",
+          status: "running",
+          host: "10.0.0.10",
+          gateway_host: "10.0.0.10",
+          gateway_port: 80,
+          gateway_token: "gateway-token",
+          gateway_host_port: null,
+        },
+      ],
+    });
+
+    const res = await request(app).get("/agents/agent-1/gateway/assets/app.js");
+
+    expect(res.status).toBe(502);
+    expect(res.body.error).toBe("Gateway UI unreachable");
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 });

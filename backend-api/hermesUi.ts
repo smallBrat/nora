@@ -175,12 +175,7 @@ const HERMES_CHANNEL_DEFINITIONS = Object.freeze({
     label: "Email",
     emoji: "📧",
     description: "IMAP/SMTP mailbox configuration for Hermes email workflows.",
-    requiredKeys: [
-      "EMAIL_ADDRESS",
-      "EMAIL_PASSWORD",
-      "EMAIL_IMAP_HOST",
-      "EMAIL_SMTP_HOST",
-    ],
+    requiredKeys: ["EMAIL_ADDRESS", "EMAIL_PASSWORD", "EMAIL_IMAP_HOST", "EMAIL_SMTP_HOST"],
     fields: Object.freeze([
       {
         key: "EMAIL_ADDRESS",
@@ -245,11 +240,7 @@ const HERMES_CHANNEL_DEFINITIONS = Object.freeze({
     label: "SMS (Twilio)",
     emoji: "📲",
     description: "Twilio account credentials and phone numbers for Hermes SMS delivery.",
-    requiredKeys: [
-      "TWILIO_ACCOUNT_SID",
-      "TWILIO_AUTH_TOKEN",
-      "TWILIO_PHONE_NUMBER",
-    ],
+    requiredKeys: ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_PHONE_NUMBER"],
     fields: Object.freeze([
       {
         key: "TWILIO_ACCOUNT_SID",
@@ -399,9 +390,7 @@ const HERMES_CHANNEL_DEFINITIONS = Object.freeze({
   }),
 });
 
-const HERMES_CHANNEL_TYPES = Object.freeze(
-  Object.keys(HERMES_CHANNEL_DEFINITIONS)
-);
+const HERMES_CHANNEL_TYPES = Object.freeze(Object.keys(HERMES_CHANNEL_DEFINITIONS));
 
 function decodeMaybeJson(value, fallback = {}) {
   if (!value) return fallback;
@@ -419,7 +408,7 @@ function sensitiveKeysForHermesChannel(definition) {
   return new Set(
     (definition?.fields || [])
       .filter((field) => field?.type === "password")
-      .map((field) => field.key)
+      .map((field) => field.key),
   );
 }
 
@@ -492,7 +481,7 @@ async function getPersistedHermesState(agentId) {
        FROM hermes_runtime_state
       WHERE agent_id = $1
       LIMIT 1`,
-    [agentId]
+    [agentId],
   );
   const row = result.rows[0];
   if (!row) {
@@ -547,11 +536,7 @@ async function replacePersistedHermesState(agentId, state = {}) {
        model_config = EXCLUDED.model_config,
        channel_configs = EXCLUDED.channel_configs,
        updated_at = NOW()`,
-    [
-      agentId,
-      JSON.stringify(normalizedModelConfig),
-      JSON.stringify(securedChannels),
-    ]
+    [agentId, JSON.stringify(normalizedModelConfig), JSON.stringify(securedChannels)],
   );
 
   return {
@@ -588,7 +573,7 @@ function snapshotToPersistedHermesState(snapshot = {}) {
       type,
       config: snapshot?.envValues?.[type] || {},
     })).filter((entry) =>
-      Object.values(entry.config || {}).some((value) => String(value || "").trim())
+      Object.values(entry.config || {}).some((value) => String(value || "").trim()),
     ),
   };
 }
@@ -631,7 +616,7 @@ async function runHermesPythonJson(agent, script, { timeout = 30000 } = {}) {
     return JSON.parse(raw);
   } catch (error) {
     const nextError = new Error(
-      `Unexpected Hermes helper output: ${raw.slice(0, 400) || error.message}`
+      `Unexpected Hermes helper output: ${raw.slice(0, 400) || error.message}`,
     );
     nextError.cause = error;
     throw nextError;
@@ -643,8 +628,6 @@ async function persistHermesModelConfig(agent, modelConfig = {}) {
   const script = `
 import json
 from pathlib import Path
-
-import yaml
 
 from hermes_cli.config import get_config_path, load_config
 
@@ -680,7 +663,8 @@ config_path = Path(get_config_path())
 config_path.parent.mkdir(parents=True, exist_ok=True)
 
 with config_path.open("w", encoding="utf-8") as handle:
-    yaml.safe_dump(config, handle, sort_keys=False)
+    handle.write(json.dumps(config, indent=2))
+    handle.write("\\n")
 
 print(json.dumps({
     "ok": True,
@@ -702,11 +686,7 @@ async function applyPersistedHermesState(agent, persistedState = null, { restart
   const channels = normalizeHermesChannelStateList(state?.channels || []);
   let mutated = false;
 
-  if (
-    modelConfig.defaultModel ||
-    modelConfig.provider ||
-    modelConfig.baseUrl
-  ) {
+  if (modelConfig.defaultModel || modelConfig.provider || modelConfig.baseUrl) {
     await persistHermesModelConfig(agent, modelConfig);
     mutated = true;
   }
@@ -776,8 +756,7 @@ function serializeKnownHermesChannel(definition, snapshot) {
   const envValues = snapshot?.envValues?.[definition.type] || {};
   const platformDetails = snapshot?.platformDetails?.[definition.type] || {};
   const platformStatus = snapshot?.runtimeStatus?.platforms?.[definition.type] || {};
-  const discoveredTargets =
-    snapshot?.directory?.platforms?.[definition.type] || [];
+  const discoveredTargets = snapshot?.directory?.platforms?.[definition.type] || [];
 
   return {
     id: definition.type,
@@ -866,7 +845,13 @@ function normalizeHermesChannelInput(definition, inputConfig = {}, existingEnv =
 }
 
 function definitionForChannelType(type) {
-  return HERMES_CHANNEL_DEFINITIONS[String(type || "").trim().toLowerCase()] || null;
+  return (
+    HERMES_CHANNEL_DEFINITIONS[
+      String(type || "")
+        .trim()
+        .toLowerCase()
+    ] || null
+  );
 }
 
 async function readHermesRuntimeSnapshot(agent) {
@@ -951,12 +936,12 @@ async function restartHermesRuntime(agent) {
         intervalMs: 5000,
         timeoutMs: 5000,
       },
-    }
+    },
   );
 
   if (!readiness.ok) {
     const error = new Error(
-      `Hermes runtime did not recover after configuration change (${readiness.runtime?.error || "unreachable"})`
+      `Hermes runtime did not recover after configuration change (${readiness.runtime?.error || "unreachable"})`,
     );
     error.statusCode = 502;
     throw error;
@@ -1001,11 +986,11 @@ print(json.dumps({"ok": True}))
 function buildHermesGatewaySummary(snapshot) {
   const directoryPlatforms = snapshot?.directory?.platforms || {};
   const configuredPlatforms = Object.values(snapshot?.platformDetails || {}).filter(
-    (entry) => entry?.connected || entry?.enabled
+    (entry) => entry?.connected || entry?.enabled,
   );
   const discoveredTargetsCount = Object.values(directoryPlatforms).reduce(
     (count, entries) => count + (Array.isArray(entries) ? entries.length : 0),
-    0
+    0,
   );
 
   return {
@@ -1016,8 +1001,7 @@ function buildHermesGatewaySummary(snapshot) {
     updatedAt: snapshot?.runtimeStatus?.updated_at || null,
     configuredPlatformsCount: configuredPlatforms.length,
     discoveredTargetsCount,
-    jobsCount:
-      typeof snapshot?.jobsCount === "number" ? snapshot.jobsCount : null,
+    jobsCount: typeof snapshot?.jobsCount === "number" ? snapshot.jobsCount : null,
     platformStates: snapshot?.runtimeStatus?.platforms || {},
   };
 }
@@ -1025,13 +1009,13 @@ function buildHermesGatewaySummary(snapshot) {
 async function listHermesChannels(agent) {
   const snapshot = await readHermesRuntimeSnapshot(agent);
   const knownChannels = HERMES_CHANNEL_TYPES.map((type) =>
-    serializeKnownHermesChannel(HERMES_CHANNEL_DEFINITIONS[type], snapshot)
+    serializeKnownHermesChannel(HERMES_CHANNEL_DEFINITIONS[type], snapshot),
   ).filter(
     (channel) =>
       channel.configured ||
       channel.discoveredTargets.length > 0 ||
       channel.status.state ||
-      channel.homeChannel
+      channel.homeChannel,
   );
 
   const unknownTypes = new Set([
@@ -1049,9 +1033,7 @@ async function listHermesChannels(agent) {
     .map((type) => serializeUnknownHermesChannel(type, snapshot))
     .filter(
       (channel) =>
-        channel.configured ||
-        channel.discoveredTargets.length > 0 ||
-        channel.status.state
+        channel.configured || channel.discoveredTargets.length > 0 || channel.status.state,
     );
 
   return {
@@ -1073,11 +1055,7 @@ async function saveHermesChannel(agent, type, inputConfig = {}, { create = false
   const snapshot = await readHermesRuntimeSnapshot(agent);
   const platformDetails = snapshot?.platformDetails?.[definition.type] || {};
   const existingEnv = snapshot?.envValues?.[definition.type] || {};
-  const alreadyConfigured = isHermesChannelConfigured(
-    definition,
-    existingEnv,
-    platformDetails
-  );
+  const alreadyConfigured = isHermesChannelConfigured(definition, existingEnv, platformDetails);
 
   if (create && alreadyConfigured) {
     const error = new Error(`${definition.label} is already configured`);
@@ -1085,11 +1063,7 @@ async function saveHermesChannel(agent, type, inputConfig = {}, { create = false
     throw error;
   }
 
-  const normalized = normalizeHermesChannelInput(
-    definition,
-    inputConfig,
-    existingEnv
-  );
+  const normalized = normalizeHermesChannelInput(definition, inputConfig, existingEnv);
 
   await persistHermesChannelState(agent.id, definition.type, normalized);
   await persistHermesChannelConfig(agent, definition, normalized);
@@ -1098,8 +1072,7 @@ async function saveHermesChannel(agent, type, inputConfig = {}, { create = false
   const payload = await listHermesChannels(agent);
   return {
     payload,
-    channel:
-      payload.channels.find((entry) => entry.type === definition.type) || null,
+    channel: payload.channels.find((entry) => entry.type === definition.type) || null,
   };
 }
 

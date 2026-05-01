@@ -1,68 +1,12 @@
 import { useEffect } from "react";
-import { useSession } from "next-auth/react";
 
-// Bridge page: after NextAuth finishes OAuth (or Credentials) and places the
-// platform JWT on the session, we hand that token to the backend over a
-// same-origin POST so it can set the HttpOnly nora_auth cookie on the user's
-// browser. From that point on, all API calls authenticate via the cookie and
-// the JWT never touches localStorage.
+// Legacy bridge path retained for stale OAuth redirects from older deploys.
+// Current OAuth routes finish at /auth/oauth/:provider/callback and set the
+// HttpOnly Nora session cookie server-side before redirecting into /app.
 export default function AuthCallback() {
-  const { data: session, status } = useSession();
-
   useEffect(() => {
-    if (status === "loading") return;
-    const accessToken = (session as any)?.accessToken;
-
-    async function routeAfterLogin() {
-      try {
-        const [providersRes, agentsRes] = await Promise.all([
-          fetch("/api/llm-providers", { credentials: "include" }),
-          fetch("/api/agents", { credentials: "include" }),
-        ]);
-
-        const [providers, agents] = await Promise.all([
-          providersRes.ok ? providersRes.json() : [],
-          agentsRes.ok ? agentsRes.json() : [],
-        ]);
-
-        const hasProviders = Array.isArray(providers) && providers.length > 0;
-        const hasAgents = Array.isArray(agents) && agents.length > 0;
-
-        window.location.href = hasProviders || hasAgents ? "/app/dashboard" : "/app/getting-started";
-      } catch {
-        window.location.href = "/app/dashboard";
-      }
-    }
-
-    async function upgradeToCookie(token: string) {
-      try {
-        const res = await fetch("/api/auth/session-upgrade", {
-          method: "POST",
-          credentials: "include",
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        // Regardless of the cookie upgrade result, clear any legacy token so
-        // we don't leave the JWT lingering in localStorage.
-        localStorage.removeItem("token");
-        if (!res.ok) {
-          // Cookie upgrade failed — send the user back to login so they can
-          // retry cleanly rather than limping along with no usable session.
-          window.location.href = "/login";
-          return;
-        }
-        await routeAfterLogin();
-      } catch {
-        localStorage.removeItem("token");
-        window.location.href = "/login";
-      }
-    }
-
-    if (accessToken) {
-      upgradeToCookie(accessToken);
-    } else {
-      window.location.href = "/login";
-    }
-  }, [session, status]);
+    window.location.href = "/login?error=OAuthCallbackExpired";
+  }, []);
 
   return (
     <div className="min-h-screen bg-[#0f172a] text-white flex items-center justify-center">

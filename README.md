@@ -8,7 +8,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License" />
-  <img src="https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg" alt="Node" />
+  <img src="https://img.shields.io/badge/node-%3E%3D24-brightgreen.svg" alt="Node" />
   <img src="https://img.shields.io/badge/docker-compose-2496ED.svg" alt="Docker Compose" />
   <img src="https://img.shields.io/badge/self--hosted-first-0ea5e9.svg" alt="Self-hosted first" />
   <img src="https://img.shields.io/badge/commercial%20use-Apache%202.0%20allowed-6d28d9.svg" alt="Commercial use allowed" />
@@ -29,8 +29,8 @@
 
 ---
 
-| | |
-|---|---|
+|                                                                                                          |                                                                                                                               |
+| -------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | ![OpenClaw UI tab in Nora](.github/readme-assets/proof-operator-openclaw-ui-tab.png) **OpenClaw UI tab** | ![Hermes official dashboard in Nora](.github/readme-assets/proof-operator-hermes-webui-tab.png) **Hermes official dashboard** |
 
 ## What Is Nora?
@@ -86,13 +86,13 @@ Runtime abstractions stay clean so teams can evolve the runtime layer without re
 
 The public repo does not present every runtime path at the same maturity. The current backend catalog breaks down like this:
 
-| Path | Status | Notes |
-|---|---|---|
-| **OpenClaw + Docker** | GA | Default self-hosted path and broadest operator contract |
-| **OpenClaw + K3s/Kubernetes** | Beta | Shared-cluster placement through a configured Kubernetes-compatible API instead of the local Docker host |
-| **OpenClaw + NemoClaw** | Experimental | NVIDIA secure sandbox path with stricter isolation on Docker, K3s/Kubernetes, or Proxmox |
-| **Hermes + Docker** | Experimental | Deployment-first Hermes contract with WebUI, logs, exec, and env sync |
-| **OpenClaw + Proxmox** | Beta | LXC placement through configured Proxmox API and SSH bootstrap |
+| Path                          | Status       | Notes                                                                                                    |
+| ----------------------------- | ------------ | -------------------------------------------------------------------------------------------------------- |
+| **OpenClaw + Docker**         | GA           | Default self-hosted path and broadest operator contract                                                  |
+| **OpenClaw + K3s/Kubernetes** | Beta         | Shared-cluster placement through a configured Kubernetes-compatible API instead of the local Docker host |
+| **OpenClaw + NemoClaw**       | Experimental | NVIDIA secure sandbox path with stricter isolation on Docker, K3s/Kubernetes, or Proxmox                 |
+| **Hermes + Docker**           | Experimental | Deployment-first Hermes contract with WebUI, logs, exec, and env sync                                    |
+| **OpenClaw + Proxmox**        | Beta         | LXC placement through configured Proxmox API and SSH bootstrap                                           |
 
 ### Runtime Transitions
 
@@ -110,14 +110,14 @@ The current public contract is intentionally explicit. Nora imports supported fi
 
 Nora is built to grow with infrastructure requirements, but the public repo does not present every execution path at the same maturity. The practical footprint today looks like this:
 
-| Path | Current status | Best fit |
-|---|---|---|
-| **Single-host Nora + OpenClaw Docker** | GA | Evaluation, smaller internal environments, and the clearest first production path |
-| **Nora control plane on public cloud or on-prem** | Supported topology | Teams placing the control plane inside infrastructure they already manage |
-| **Nora + OpenClaw K3s/Kubernetes** | Beta | Shared-cluster environments with configured Kubernetes-compatible API access |
-| **Nora + OpenClaw NemoClaw** | Experimental | Stronger sandboxing with NVIDIA/OpenShell policy controls on supported execution targets |
-| **Nora + Hermes Docker** | Experimental | Teams validating Hermes under Nora's deployment-first contract |
-| **Nora + OpenClaw Proxmox** | Beta | Proxmox-backed LXC environments with API credentials and SSH bootstrap configured |
+| Path                                              | Current status     | Best fit                                                                                 |
+| ------------------------------------------------- | ------------------ | ---------------------------------------------------------------------------------------- |
+| **Single-host Nora + OpenClaw Docker**            | GA                 | Evaluation, smaller internal environments, and the clearest first production path        |
+| **Nora control plane on public cloud or on-prem** | Supported topology | Teams placing the control plane inside infrastructure they already manage                |
+| **Nora + OpenClaw K3s/Kubernetes**                | Beta               | Shared-cluster environments with configured Kubernetes-compatible API access             |
+| **Nora + OpenClaw NemoClaw**                      | Experimental       | Stronger sandboxing with NVIDIA/OpenShell policy controls on supported execution targets |
+| **Nora + Hermes Docker**                          | Experimental       | Teams validating Hermes under Nora's deployment-first contract                           |
+| **Nora + OpenClaw Proxmox**                       | Beta               | Proxmox-backed LXC environments with API credentials and SSH bootstrap configured        |
 
 That footprint matters because Nora is not just a single-agent launcher. It is an operator surface that starts small and stays useful as the infrastructure underneath it gets more serious.
 
@@ -154,17 +154,17 @@ Screenshots below were captured from the current local Nora stack and reflect th
 
 ### Operator Workspace
 
-| | |
-|---|---|
-| ![System overview](.github/readme-assets/proof-operator-dashboard.png) **System overview** | ![Fleet management](.github/readme-assets/proof-operator-fleet.png) **Fleet management** |
-| ![Deploy flow](.github/readme-assets/proof-operator-deploy-flow.png) **Deploy flow** | ![Agent detail](.github/readme-assets/proof-operator-agent-detail.png) **Agent detail** |
-| ![Provider setup](.github/readme-assets/proof-operator-settings-provider-setup.png) **Provider setup** | ![Agent Hub browse](.github/readme-assets/proof-operator-agent-hub.png) **Agent Hub browse** |
+|                                                                                                                       |                                                                                                        |
+| --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| ![System overview](.github/readme-assets/proof-operator-dashboard.png) **System overview**                            | ![Fleet management](.github/readme-assets/proof-operator-fleet.png) **Fleet management**               |
+| ![Deploy flow](.github/readme-assets/proof-operator-deploy-flow.png) **Deploy flow**                                  | ![Agent detail](.github/readme-assets/proof-operator-agent-detail.png) **Agent detail**                |
+| ![Provider setup](.github/readme-assets/proof-operator-settings-provider-setup.png) **Provider setup**                | ![Agent Hub browse](.github/readme-assets/proof-operator-agent-hub.png) **Agent Hub browse**           |
 | ![Agent Hub template detail](.github/readme-assets/proof-operator-agent-hub-detail.png) **Agent Hub template detail** | ![Account event log](.github/readme-assets/proof-operator-account-event-log.png) **Account event log** |
 
 ### Admin Workspace
 
-| | |
-|---|---|
+|                                                                                                   |                                                                                                            |
+| ------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
 | ![Agent Hub moderation](.github/readme-assets/proof-admin-agent-hub.png) **Agent Hub moderation** | ![Admin template editor](.github/readme-assets/proof-admin-agent-hub-detail.png) **Admin template editor** |
 
 ## Open-Source Usage Paths
@@ -203,7 +203,7 @@ The installer can:
 - verify or install host prerequisites such as Git, Docker, Docker Compose, and OpenSSL depending on platform
 - clone the repository if you launched the installer outside the repo
 - update an existing install without deleting `.env`, PostgreSQL data, backup volumes, or provisioned agent instances
-- generate platform secrets and database credentials
+- generate platform secrets, Agent Hub hashing material, and database credentials
 - create a timestamped `.env` backup before overwriting an existing installer-generated config
 - run an explicit clean reinstall when you want to remove local compose data and local Nora agent containers
 - choose local-only or public-domain access mode
@@ -217,7 +217,7 @@ LLM provider keys are still added from **Settings** after login, which keeps the
 
 ### Updating an Existing Install
 
-Use update mode for normal code updates. It preserves `.env`, the Compose PostgreSQL volume, the backup volume, and provisioned agent instances:
+Use update mode for normal code updates. It preserves `.env`, the Compose PostgreSQL volume, the backup volume, and provisioned agent instances. If `NORA_AGENT_HUB_API_KEY_HASH_SECRET` is missing or empty, update mode backfills it without rotating an existing non-empty value:
 
 ```bash
 ./setup.sh --update
@@ -261,7 +261,7 @@ Then edit `.env` with at least the required secrets, database password, access U
 # Required secrets
 JWT_SECRET=<replace-with-random-secret-min-32-chars>
 ENCRYPTION_KEY=<replace-with-64-hex-chars>
-NEXTAUTH_SECRET=<replace-with-random-secret-min-32-chars>
+NORA_AGENT_HUB_API_KEY_HASH_SECRET=<replace-with-random-secret-min-32-chars>
 DB_PASSWORD=<replace-with-db-password>
 
 # Access / URL
@@ -325,20 +325,19 @@ docker compose up -d
 
    Local mode defaults:
 
-   | URL | What |
-   |---|---|
-   | `http://localhost:8080` | Marketing / entry page |
-   | `http://localhost:8080/login` | Login |
-   | `http://localhost:8080/signup` | Create operator account |
-   | `http://localhost:8080/app/dashboard` | System overview |
-   | `http://localhost:8080/app/deploy` | Deploy your first agent |
+   | URL                                   | What                    |
+   | ------------------------------------- | ----------------------- |
+   | `http://localhost:8080`               | Marketing / entry page  |
+   | `http://localhost:8080/login`         | Login                   |
+   | `http://localhost:8080/signup`        | Create operator account |
+   | `http://localhost:8080/app/dashboard` | System overview         |
+   | `http://localhost:8080/app/deploy`    | Deploy your first agent |
 
 2. **Add an LLM provider**
 
    Go to **Settings** and save a supported provider key or compatible endpoint configuration.
 
 3. **Deploy your first agent**
-
    - open **Deploy**
    - choose **Blank Deploy** for a fresh agent or **Migrate Existing** for an imported runtime
    - choose a runtime family
@@ -349,7 +348,6 @@ docker compose up -d
 4. **Validate the runtime**
 
    After deployment:
-
    - open the agent detail page
    - verify the agent is running
    - test the runtime-specific surface such as the OpenClaw UI or Hermes WebUI
@@ -362,7 +360,6 @@ docker compose up -d
 5. **Browse Agent Hub**
 
    Once one agent is healthy:
-
    - open **Agent Hub**
    - inspect a built-in starter template or published listing
    - install a listing as a new agent
@@ -431,55 +428,56 @@ The canonical public architecture write-up lives in [architecture.md](architectu
 
 ## Tech Stack
 
-| Layer | Technology |
-|---|---|
-| Reverse proxy | Nginx |
-| Frontends | Next.js 16, React 19, Tailwind CSS |
-| Backend API | Express.js 4, Node.js 24 LTS |
-| Auth | NextAuth.js, JWT, bcryptjs |
-| Database | PostgreSQL 15 |
-| Queue | BullMQ + Redis 7 |
-| Runtime families | OpenClaw, Hermes |
-| Provisioning backends | Docker, K3s/Kubernetes, Proxmox, NemoClaw |
-| Secrets at rest | AES-256-GCM |
+| Layer                 | Technology                                             |
+| --------------------- | ------------------------------------------------------ |
+| Reverse proxy         | Nginx                                                  |
+| Frontends             | Next.js 16, React 19, Tailwind CSS                     |
+| Backend API           | Express.js 4, Node.js 24 LTS                           |
+| Auth                  | JWT, HttpOnly cookies, bcryptjs, provider OAuth bridge |
+| Database              | PostgreSQL 15                                          |
+| Queue                 | BullMQ + Redis 7                                       |
+| Runtime families      | OpenClaw, Hermes                                       |
+| Provisioning backends | Docker, K3s/Kubernetes, Proxmox, NemoClaw              |
+| Secrets at rest       | AES-256-GCM                                            |
 
 ## Configuration
 
 ### Core Variables
 
-| Variable | Required | Description |
-|---|---|---|
-| `JWT_SECRET` | Yes | Secret used to sign JWTs |
-| `ENCRYPTION_KEY` | Yes | 64-char hex key for AES-256-GCM secret storage |
-| `NEXTAUTH_SECRET` | Yes | NextAuth session secret |
-| `NEXTAUTH_URL` | Yes | Base browser URL such as `http://localhost:8080` or `https://your-domain.example` |
-| `NGINX_CONFIG_FILE` | No | `nginx.conf` for local mode or `nginx.public.conf` for public-domain mode |
-| `NGINX_HTTP_PORT` | No | Host port for nginx in HTTP mode |
-| `PLATFORM_MODE` | No | `selfhosted` or `paas` |
-| `ENABLED_RUNTIME_FAMILIES` | No | Comma-separated runtime families. Supported values: `openclaw`, `hermes` |
-| `ENABLED_BACKENDS` | No | Comma-separated execution target ids. Supported values: `docker`, `k3s`, `k8s`, `proxmox`. Use `k3s` by default for the Kubernetes-compatible path; switch to `k8s` for upstream Kubernetes, AKS, GKE, or EKS. Both ids use the same adapter internally. |
-| `ENABLED_SANDBOX_PROFILES` | No | Comma-separated sandbox profile ids. Supported values: `standard`, `nemoclaw` |
-| `CORS_ORIGINS` | No | Comma-separated allowed browser origins |
-| `DEFAULT_ADMIN_EMAIL` | No | Bootstrap admin seeded on first boot when paired with a strong password |
-| `DEFAULT_ADMIN_PASSWORD` | No | Bootstrap admin password used on first boot only |
+| Variable                             | Required | Description                                                                                                                                                                                                                                              |
+| ------------------------------------ | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `JWT_SECRET`                         | Yes      | Secret used to sign JWTs                                                                                                                                                                                                                                 |
+| `ENCRYPTION_KEY`                     | Yes      | 64-char hex key for AES-256-GCM secret storage                                                                                                                                                                                                           |
+| `NEXTAUTH_URL`                       | Yes      | Public base browser URL such as `http://localhost:8080` or `https://your-domain.example`                                                                                                                                                                 |
+| `NGINX_CONFIG_FILE`                  | No       | `nginx.conf` for local mode or `nginx.public.conf` for public-domain mode                                                                                                                                                                                |
+| `NGINX_HTTP_PORT`                    | No       | Host port for nginx in HTTP mode                                                                                                                                                                                                                         |
+| `PLATFORM_MODE`                      | No       | `selfhosted` or `paas`                                                                                                                                                                                                                                   |
+| `ENABLED_RUNTIME_FAMILIES`           | No       | Comma-separated runtime families. Supported values: `openclaw`, `hermes`                                                                                                                                                                                 |
+| `ENABLED_BACKENDS`                   | No       | Comma-separated execution target ids. Supported values: `docker`, `k3s`, `k8s`, `proxmox`. Use `k3s` by default for the Kubernetes-compatible path; switch to `k8s` for upstream Kubernetes, AKS, GKE, or EKS. Both ids use the same adapter internally. |
+| `ENABLED_SANDBOX_PROFILES`           | No       | Comma-separated sandbox profile ids. Supported values: `standard`, `nemoclaw`                                                                                                                                                                            |
+| `CORS_ORIGINS`                       | No       | Comma-separated allowed browser origins                                                                                                                                                                                                                  |
+| `DEFAULT_ADMIN_EMAIL`                | No       | Bootstrap admin seeded on first boot when paired with a strong password                                                                                                                                                                                  |
+| `DEFAULT_ADMIN_PASSWORD`             | No       | Bootstrap admin password used on first boot only                                                                                                                                                                                                         |
+| `NORA_AGENT_HUB_API_KEY_HASH_SECRET` | No       | Dedicated HMAC secret for Agent Hub installation key digests. Setup and update generate it when missing or empty; existing non-empty values are preserved.                                                                                               |
 
 ### Backend-Specific Variables
 
-| Variable | Description |
-|---|---|
-| `K8S_EXPOSURE_MODE` | `cluster-ip` by default, `node-port` for local kind/K3s verification, or `load-balancer` for AKS/GKE/EKS/K3s clusters with a load balancer controller |
-| `K8S_NAMESPACE` | K3s/Kubernetes namespace for OpenClaw and NemoClaw workloads |
-| `K8S_SERVICE_ANNOTATIONS_JSON` | Optional JSON object copied to Kubernetes Service annotations for cloud-provider load balancer settings |
-| `K8S_LOAD_BALANCER_SOURCE_RANGES` | Optional comma-separated CIDRs allowed to reach `load-balancer` Services |
-| `K8S_LOAD_BALANCER_CLASS` | Optional Kubernetes `spec.loadBalancerClass` for clusters that require one |
-| `K8S_LOAD_BALANCER_READY_TIMEOUT_MS` / `K8S_LOAD_BALANCER_READY_INTERVAL_MS` | Optional wait controls for cloud load balancer address assignment |
-| `PROXMOX_API_URL` / `PROXMOX_TOKEN_ID` / `PROXMOX_TOKEN_SECRET` | Proxmox API configuration |
-| `PROXMOX_SSH_HOST` / `PROXMOX_SSH_USER` / `PROXMOX_SSH_PRIVATE_KEY_PATH` | Proxmox SSH configuration for LXC bootstrap |
-| `PROXMOX_HERMES_TEMPLATE` / `PROXMOX_NEMOCLAW_TEMPLATE` | Required for Hermes or NemoClaw on Proxmox |
-| `NVIDIA_API_KEY` | Required when `ENABLED_SANDBOX_PROFILES` includes `nemoclaw` |
-| `STRIPE_SECRET_KEY`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_ENTERPRISE` | Optional Stripe settings for operator-run `PLATFORM_MODE=paas` deployments |
-| `NORA_AUTO_UPGRADE_ENABLED` / `NORA_HOST_REPO_DIR` | Optional one-click Admin Settings GitHub upgrade controls |
-| `NORA_UPGRADE_REPO` / `NORA_UPGRADE_REF` / `NORA_UPGRADE_RUNNER_IMAGE` | Direct GitHub upgrade source and temporary Docker runner settings |
+| Variable                                                                     | Description                                                                                                                                           |
+| ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `K8S_EXPOSURE_MODE`                                                          | `cluster-ip` by default, `node-port` for local kind/K3s verification, or `load-balancer` for AKS/GKE/EKS/K3s clusters with a load balancer controller |
+| `K8S_NAMESPACE`                                                              | K3s/Kubernetes namespace for OpenClaw and NemoClaw workloads                                                                                          |
+| `K8S_SERVICE_ANNOTATIONS_JSON`                                               | Optional JSON object copied to Kubernetes Service annotations for cloud-provider load balancer settings                                               |
+| `K8S_LOAD_BALANCER_SOURCE_RANGES`                                            | Optional comma-separated CIDRs allowed to reach `load-balancer` Services                                                                              |
+| `K8S_LOAD_BALANCER_CLASS`                                                    | Optional Kubernetes `spec.loadBalancerClass` for clusters that require one                                                                            |
+| `K8S_LOAD_BALANCER_READY_TIMEOUT_MS` / `K8S_LOAD_BALANCER_READY_INTERVAL_MS` | Optional wait controls for cloud load balancer address assignment                                                                                     |
+| `NORA_GATEWAY_PROXY_ALLOWED_PORTS` / `NORA_GATEWAY_PROXY_ALLOWED_HOSTS`      | Optional gateway proxy SSRF-guard overrides for non-default gateway endpoints                                                                         |
+| `PROXMOX_API_URL` / `PROXMOX_TOKEN_ID` / `PROXMOX_TOKEN_SECRET`              | Proxmox API configuration                                                                                                                             |
+| `PROXMOX_SSH_HOST` / `PROXMOX_SSH_USER` / `PROXMOX_SSH_PRIVATE_KEY_PATH`     | Proxmox SSH configuration for LXC bootstrap                                                                                                           |
+| `PROXMOX_HERMES_TEMPLATE` / `PROXMOX_NEMOCLAW_TEMPLATE`                      | Required for Hermes or NemoClaw on Proxmox                                                                                                            |
+| `NVIDIA_API_KEY`                                                             | Required when `ENABLED_SANDBOX_PROFILES` includes `nemoclaw`                                                                                          |
+| `STRIPE_SECRET_KEY`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_ENTERPRISE`           | Optional Stripe settings for operator-run `PLATFORM_MODE=paas` deployments                                                                            |
+| `NORA_AUTO_UPGRADE_ENABLED` / `NORA_HOST_REPO_DIR`                           | Optional one-click Admin Settings GitHub upgrade controls                                                                                             |
+| `NORA_UPGRADE_REPO` / `NORA_UPGRADE_REF` / `NORA_UPGRADE_RUNNER_IMAGE`       | Direct GitHub upgrade source and temporary Docker runner settings                                                                                     |
 
 If you want both families on Docker-backed paths, use `ENABLED_RUNTIME_FAMILIES=openclaw,hermes` with `ENABLED_BACKENDS=docker`. To expose NemoClaw as an OpenClaw sandbox choice, add `ENABLED_SANDBOX_PROFILES=standard,nemoclaw`.
 
@@ -510,11 +508,11 @@ services:
 
 Use one of these exposure modes:
 
-| Mode | Best fit | Required reachability |
-|---|---|---|
-| `cluster-ip` | Nora runs inside the same cluster or network path that resolves `*.svc.cluster.local` | Control plane can reach ClusterIP Services |
-| `node-port` | K3s, local kind, and advanced manually routed clusters | Control plane can reach node IPs on selected NodePorts |
-| `load-balancer` | AKS/GKE/EKS/K3s cloud-native or bare-metal LB access from outside the cluster | Control plane can reach the assigned load balancer IP or hostname |
+| Mode            | Best fit                                                                              | Required reachability                                             |
+| --------------- | ------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| `cluster-ip`    | Nora runs inside the same cluster or network path that resolves `*.svc.cluster.local` | Control plane can reach ClusterIP Services                        |
+| `node-port`     | K3s, local kind, and advanced manually routed clusters                                | Control plane can reach node IPs on selected NodePorts            |
+| `load-balancer` | AKS/GKE/EKS/K3s cloud-native or bare-metal LB access from outside the cluster         | Control plane can reach the assigned load balancer IP or hostname |
 
 K3s example:
 

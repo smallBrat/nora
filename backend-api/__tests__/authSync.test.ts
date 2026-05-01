@@ -410,6 +410,8 @@ describe("auth sync", () => {
     expect(configScript).toContain("payload = json.loads(");
     expect(configScript).toContain('\\"provider\\":\\"gemini\\"');
     expect(configScript).toContain('\\"baseUrl\\":null');
+    expect(configScript).not.toContain("import yaml");
+    expect(configScript).toContain("json.dumps(config, indent=2)");
   });
 
   it("builds a shell-parseable Hermes env rewrite command", () => {

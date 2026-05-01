@@ -7,14 +7,41 @@ const REDACTED_SECRET = "[REDACTED]";
 const OPENCLAW_RUNTIME_READY_STATUSES = new Set(["running", "warning"]);
 const OPENCLAW_QR_LOGIN_CHANNELS = new Set(["whatsapp"]);
 const OPENCLAW_LOGOUT_CHANNELS = new Set(["telegram", "qqbot", "whatsapp"]);
-const OPENCLAW_QR_LOGIN_PROVIDER_INSTALLS = Object.freeze({
+const OPENCLAW_DEFAULT_CHANNEL_IDS = Object.freeze([
+  "bluebubbles",
+  "discord",
+  "feishu",
+  "googlechat",
+  "imessage",
+  "irc",
+  "line",
+  "mattermost",
+  "matrix",
+  "msteams",
+  "nextcloud-talk",
+  "nostr",
+  "qqbot",
+  "signal",
+  "slack",
+  "synology-chat",
+  "telegram",
+  "tlon",
+  "twitch",
+  "whatsapp",
+  "zalo",
+  "zalouser",
+]);
+const OPENCLAW_QR_LOGIN_PROVIDERS = Object.freeze({
   whatsapp: Object.freeze({
+    pluginId: "whatsapp",
     installSpec: "whatsapp",
     fallbackSpec: "@openclaw/whatsapp",
     packageSpec: "@openclaw/whatsapp",
   }),
 });
-const OPENCLAW_GATEWAY_RESTART_RETRY_DELAYS_MS = Object.freeze([0, 750, 1500, 3000, 5000, 8000]);
+const OPENCLAW_GATEWAY_RESTART_RETRY_DELAYS_MS = Object.freeze([
+  0, 750, 1500, 3000, 5000, 8000, 12000,
+]);
 const OPENCLAW_SELECTION_LABELS = Object.freeze({
   feishu: "Feishu/Lark (飞书)",
   googlechat: "Google Chat (Chat API)",
@@ -240,12 +267,13 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function buildOpenClawPluginInstallCommand(channelId) {
-  const install = OPENCLAW_QR_LOGIN_PROVIDER_INSTALLS[channelId];
-  if (!install) return "";
-  const installSpec = install.installSpec || install.packageSpec;
+function buildOpenClawPluginEnableCommand(channelId) {
+  const provider = OPENCLAW_QR_LOGIN_PROVIDERS[channelId];
+  if (!provider) return "";
+  const pluginId = provider.pluginId || channelId;
+  const installSpec = provider.installSpec || provider.packageSpec || "";
   const fallbackSpec =
-    install.fallbackSpec && install.fallbackSpec !== installSpec ? install.fallbackSpec : "";
+    provider.fallbackSpec && provider.fallbackSpec !== installSpec ? provider.fallbackSpec : "";
   const { shellSingleQuote } = require("../../agent-runtime/lib/containerCommand");
 
   return [
@@ -263,6 +291,14 @@ function buildOpenClawPluginInstallCommand(channelId) {
     "export npm_config_fund=false",
     "export npm_config_progress=false",
     "export npm_config_update_notifier=false",
+    "enable_openclaw_plugin() {",
+    '  plugin_id="$1"',
+    '  if "$OPENCLAW_BIN" plugins inspect "$plugin_id" >/dev/null 2>&1; then',
+    '    "$OPENCLAW_BIN" plugins enable "$plugin_id"',
+    "    return 0",
+    "  fi",
+    "  return 2",
+    "}",
     "install_openclaw_plugin() {",
     '  spec="$1"',
     '  log_file="$(mktemp /tmp/openclaw-plugin-install.XXXXXX)"',
@@ -284,39 +320,60 @@ function buildOpenClawPluginInstallCommand(channelId) {
     '  rm -f "$log_file"',
     '  return "$exit_code"',
     "}",
-    `install_openclaw_plugin ${shellSingleQuote(installSpec)} ${
-      fallbackSpec ? shellSingleQuote(fallbackSpec) : ""
-    } || {`,
-    '  install_status="$?"',
-    `  if [ "$install_status" -eq 2 ]; then install_openclaw_plugin ${shellSingleQuote(
-      fallbackSpec,
-    )}; else exit "$install_status"; fi`,
+    "restart_openclaw_gateway() {",
+    "  for proc in /proc/[0-9]*; do",
+    '    pid="${proc##*/}"',
+    '    comm="$(cat "$proc/comm" 2>/dev/null || true)"',
+    '    if [ "$comm" = "openclaw-gateway" ]; then',
+    '      kill -USR1 "$pid"',
+    "      return 0",
+    "    fi",
+    "  done",
+    '  "$OPENCLAW_BIN" gateway restart',
     "}",
-    'if ! "$OPENCLAW_BIN" gateway restart; then',
-    '  printf "%s\\n" "OpenClaw plugin install completed, but gateway restart did not complete through the CLI."',
+    `PLUGIN_ID=${shellSingleQuote(pluginId)}`,
+    `INSTALL_SPEC=${installSpec ? shellSingleQuote(installSpec) : "''"}`,
+    `FALLBACK_SPEC=${fallbackSpec ? shellSingleQuote(fallbackSpec) : "''"}`,
+    'enable_openclaw_plugin "$PLUGIN_ID" || {',
+    '  enable_status="$?"',
+    '  if [ "$enable_status" -ne 2 ]; then exit "$enable_status"; fi',
+    '  if [ -z "$INSTALL_SPEC" ]; then exit "$enable_status"; fi',
+    '  install_openclaw_plugin "$INSTALL_SPEC" "$FALLBACK_SPEC" || {',
+    '    install_status="$?"',
+    '    if [ "$install_status" -eq 2 ] && [ -n "$FALLBACK_SPEC" ]; then',
+    '      install_openclaw_plugin "$FALLBACK_SPEC"',
+    "    else",
+    '      exit "$install_status"',
+    "    fi",
+    "  }",
+    '  enable_openclaw_plugin "$PLUGIN_ID"',
+    "}",
+    "if ! restart_openclaw_gateway; then",
+    '  printf "%s\\n" "OpenClaw plugin enable completed, but gateway restart did not complete through the CLI."',
     "fi",
   ].join("\n");
 }
 
-function formatOpenClawPluginInstallError(channelId, install, error) {
+function formatOpenClawPluginEnableError(channelId, provider, error) {
   const label = buildSelectionLabel(channelId);
-  const installSpec = install.installSpec || install.packageSpec;
+  const pluginId = provider.pluginId || channelId;
+  const installSpec = provider.installSpec || provider.packageSpec;
   const fallbackSpec =
-    install.fallbackSpec && install.fallbackSpec !== installSpec
-      ? `; fallback ${install.fallbackSpec}`
+    provider.fallbackSpec && provider.fallbackSpec !== installSpec
+      ? `; fallback ${provider.fallbackSpec}`
       : "";
-  const detail = error?.message || "plugin install failed";
+  const detail = error?.message || "plugin enable failed";
   const exitCode = Number(error?.exitCode || 0);
 
   if (exitCode === 137 || /code 137|sigkill|oom|out of memory/i.test(detail)) {
     return (
-      `OpenClaw could not install the ${label} plugin using ${installSpec}${fallbackSpec}: ` +
-      "the install process was killed with exit code 137. This usually means the agent container or host ran out of memory while installing WhatsApp dependencies. " +
+      `OpenClaw could not enable the ${label} QR login provider (${pluginId}): ` +
+      "the activation process was killed with exit code 137. This usually means the agent container restarted or the host killed the helper while enabling the provider. " +
       `Increase the agent RAM to at least 2048 MB and retry. Underlying error: ${detail}`
     );
   }
 
-  return `OpenClaw could not install the ${label} plugin using ${installSpec}${fallbackSpec}: ${detail}`;
+  return `OpenClaw could not enable the ${label} QR login provider (${pluginId}${fallbackSpec}): ${detail}`;
 }
 
 function evictGatewayConnection(agent) {
@@ -330,18 +387,18 @@ function evictGatewayConnection(agent) {
   }
 }
 
-async function installOpenClawLoginProvider(agent, channelId) {
-  const install = OPENCLAW_QR_LOGIN_PROVIDER_INSTALLS[channelId];
-  if (!install) return false;
+async function enableOpenClawLoginProvider(agent, channelId) {
+  const provider = OPENCLAW_QR_LOGIN_PROVIDERS[channelId];
+  if (!provider) return false;
 
   const { runContainerCommand } = require("../authSync");
-  const command = buildOpenClawPluginInstallCommand(channelId);
+  const command = buildOpenClawPluginEnableCommand(channelId);
   try {
     await runContainerCommand(agent, command, { timeout: 240000 });
     evictGatewayConnection(agent);
     return true;
   } catch (error) {
-    throw createHttpError(502, formatOpenClawPluginInstallError(channelId, install, error));
+    throw createHttpError(502, formatOpenClawPluginEnableError(channelId, provider, error));
   }
 }
 
@@ -359,7 +416,7 @@ async function startLoginWithGatewayRetry(
   agent,
   channelId,
   options = {},
-  { retryProviderUnavailable = false } = {},
+  { retryProviderUnavailable = false, providerUnavailableMessage = "" } = {},
 ) {
   let lastError = null;
   for (const delayMs of OPENCLAW_GATEWAY_RESTART_RETRY_DELAYS_MS) {
@@ -378,10 +435,10 @@ async function startLoginWithGatewayRetry(
   }
 
   if (isWebLoginProviderUnavailableError(lastError)) {
-    throw createHttpError(
-      409,
-      `${buildSelectionLabel(channelId)} was installed, but the OpenClaw gateway has not loaded the QR login provider yet. Restart the agent and try connecting again.`,
-    );
+    if (!providerUnavailableMessage) {
+      throw lastError;
+    }
+    throw createHttpError(409, providerUnavailableMessage);
   }
 
   throw lastError || createHttpError(502, "OpenClaw QR login did not become available.");
@@ -462,6 +519,10 @@ function extractSchemaChannelEntries(lookup = {}) {
 
 function buildAvailableChannelIds(status = {}, configSnapshot = {}) {
   const known = new Set();
+
+  for (const id of OPENCLAW_DEFAULT_CHANNEL_IDS) {
+    known.add(id);
+  }
 
   for (const rawId of Array.isArray(status?.channelOrder) ? status.channelOrder : []) {
     const id = normalizeChannelId(rawId);
@@ -574,25 +635,16 @@ function serializeChannelEntry(channelId, meta, status = {}, configSnapshot = {}
     },
     actions: {
       canEdit: true,
-      canToggle: true,
-      canDelete: true,
+      canToggle: configured,
+      canDelete: false,
       canTest: false,
       canViewMessages: false,
       canQrLogin: OPENCLAW_QR_LOGIN_CHANNELS.has(channelId),
-      canLogout: OPENCLAW_LOGOUT_CHANNELS.has(channelId),
+      canLogout:
+        OPENCLAW_LOGOUT_CHANNELS.has(channelId) &&
+        (connected || running || primaryAccount?.linked === true),
     },
   };
-}
-
-function shouldIncludeChannel(channel = {}) {
-  return (
-    channel.configured ||
-    channel.enabled ||
-    channel.accountCount > 0 ||
-    Boolean(channel.status?.lastError) ||
-    channel.status?.state === "connected" ||
-    channel.status?.state === "running"
-  );
 }
 
 async function readChannelSnapshot(agent) {
@@ -847,6 +899,24 @@ function buildSeededChannelConfig(channelId, currentConfig = {}) {
   return seeded;
 }
 
+function buildOpenClawChannelConfigPatch(channelId, nextConfig) {
+  const patch = {};
+  const provider = OPENCLAW_QR_LOGIN_PROVIDERS[channelId];
+  if (provider?.pluginId && typeof nextConfig?.enabled === "boolean") {
+    patch.plugins = {
+      entries: {
+        [provider.pluginId]: {
+          enabled: nextConfig.enabled,
+        },
+      },
+    };
+  }
+  patch.channels = {
+    [channelId]: nextConfig,
+  };
+  return patch;
+}
+
 async function ensureKnownChannel(agent, channelId) {
   const snapshot = await readChannelSnapshot(agent);
   let ids = buildAvailableChannelIds(snapshot.status, snapshot.configSnapshot);
@@ -877,17 +947,15 @@ async function listOpenClawChannels(agent) {
   const availableTypes = channelIds.map((channelId) =>
     serializeTypeMeta(channelId, typeMetaById.get(channelId)),
   );
-  const channels = channelIds
-    .map((channelId) =>
-      serializeChannelEntry(channelId, typeMetaById.get(channelId), status, configSnapshot),
-    )
-    .filter(shouldIncludeChannel);
+  const channels = channelIds.map((channelId) =>
+    serializeChannelEntry(channelId, typeMetaById.get(channelId), status, configSnapshot),
+  );
 
   return {
     runtime: "openclaw",
     title: "OpenClaw Channels",
     description:
-      "Nora manages these channels through the underlying OpenClaw gateway and config API.",
+      "Nora lists available OpenClaw channels here. Link or set up a channel to enable it.",
     capabilities: {
       supportsTesting: false,
       supportsMessageHistory: false,
@@ -920,37 +988,50 @@ async function getOpenClawChannelType(agent, channelId) {
 }
 
 async function saveOpenClawChannel(agent, channelId, input = {}, { create = false } = {}) {
-  const { configSnapshot } = await ensureKnownChannel(agent, channelId);
-  const snapshot = configSnapshot;
-  const currentConfig = getConfigChannels(snapshot)[channelId];
-  let nextConfig = create
-    ? buildSeededChannelConfig(channelId, currentConfig)
-    : buildSeededChannelConfig(channelId, currentConfig);
+  let lastError = null;
 
-  if (isPlainObject(input?.config)) {
-    nextConfig = deepMerge(nextConfig, restoreRedactedConfigValue(input.config, currentConfig));
+  for (const delayMs of OPENCLAW_GATEWAY_RESTART_RETRY_DELAYS_MS) {
+    await sleep(delayMs);
+    try {
+      const { configSnapshot } = await ensureKnownChannel(agent, channelId);
+      const snapshot = configSnapshot;
+      const currentConfig = getConfigChannels(snapshot)[channelId];
+      let nextConfig = create
+        ? buildSeededChannelConfig(channelId, currentConfig)
+        : buildSeededChannelConfig(channelId, currentConfig);
+
+      if (isPlainObject(input?.config)) {
+        nextConfig = deepMerge(nextConfig, restoreRedactedConfigValue(input.config, currentConfig));
+      }
+
+      if (typeof input?.enabled === "boolean") {
+        nextConfig.enabled = input.enabled;
+      }
+
+      const result = await writeConfigPatch(
+        agent,
+        snapshot,
+        buildOpenClawChannelConfigPatch(channelId, nextConfig),
+      );
+
+      return {
+        success: true,
+        channel: channelId,
+        restart: result?.restart || null,
+      };
+    } catch (error) {
+      if (!isTransientGatewayRestartError(error)) {
+        throw error;
+      }
+      lastError = error;
+      evictGatewayConnection(agent);
+    }
   }
 
-  if (typeof input?.enabled === "boolean") {
-    nextConfig.enabled = input.enabled;
-  }
-
-  const result = await writeConfigPatch(agent, snapshot, {
-    channels: {
-      [channelId]: nextConfig,
-    },
-  });
-
-  return {
-    success: true,
-    channel: channelId,
-    restart: result?.restart || null,
-  };
+  throw lastError || createHttpError(502, "OpenClaw channel save did not become available.");
 }
 
 async function connectOpenClawChannel(agent, channelId, options = {}) {
-  requireSupportedQrChannel(channelId);
-
   const saveResult = await saveOpenClawChannel(
     agent,
     channelId,
@@ -963,7 +1044,18 @@ async function connectOpenClawChannel(agent, channelId, options = {}) {
   if (saveResult?.restart) {
     evictGatewayConnection(agent);
   }
-  const loginResult = await startOpenClawChannelLogin(agent, channelId, options);
+  if (!OPENCLAW_QR_LOGIN_CHANNELS.has(channelId)) {
+    return {
+      success: true,
+      channel: channelId,
+      restart: saveResult?.restart || null,
+      linked: true,
+    };
+  }
+
+  const loginResult = await startOpenClawChannelLogin(agent, channelId, options, {
+    retryProviderUnavailable: Boolean(saveResult?.restart),
+  });
 
   return {
     success: true,
@@ -974,36 +1066,25 @@ async function connectOpenClawChannel(agent, channelId, options = {}) {
   };
 }
 
-async function deleteOpenClawChannel(agent, channelId) {
-  const { configSnapshot } = await ensureKnownChannel(agent, channelId);
-  const snapshot = configSnapshot;
-  const result = await writeConfigPatch(agent, snapshot, {
-    channels: {
-      [channelId]: null,
-    },
-  });
-
-  return {
-    success: true,
-    channel: channelId,
-    restart: result?.restart || null,
-  };
-}
-
-async function startOpenClawChannelLogin(agent, channelId, options = {}) {
+async function startOpenClawChannelLogin(agent, channelId, options = {}, retryOptions = {}) {
   requireSupportedQrChannel(channelId);
   try {
-    return await startLoginWithGatewayRetry(agent, channelId, options);
+    return await startLoginWithGatewayRetry(agent, channelId, options, {
+      retryProviderUnavailable: retryOptions.retryProviderUnavailable === true,
+    });
   } catch (error) {
     if (!isWebLoginProviderUnavailableError(error)) {
       throw error;
     }
-    const installed = await installOpenClawLoginProvider(agent, channelId);
-    if (!installed) {
+    const enabled = await enableOpenClawLoginProvider(agent, channelId);
+    if (!enabled) {
       throw error;
     }
     return await startLoginWithGatewayRetry(agent, channelId, options, {
       retryProviderUnavailable: true,
+      providerUnavailableMessage: `${buildSelectionLabel(
+        channelId,
+      )} was enabled, but the OpenClaw gateway has not loaded the QR login provider yet. Restart the agent and try connecting again.`,
     });
   }
 }
@@ -1033,7 +1114,6 @@ module.exports = {
   getOpenClawChannelType,
   listOpenClawChannels,
   saveOpenClawChannel,
-  deleteOpenClawChannel,
   startOpenClawChannelLogin,
   waitOpenClawChannelLogin,
   logoutOpenClawChannel,

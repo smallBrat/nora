@@ -1,10 +1,7 @@
 // @ts-nocheck
 const fs = require("fs");
 const path = require("path");
-const {
-  AGENT_RUNTIME_PORT,
-  OPENCLAW_GATEWAY_PORT,
-} = require("./contracts");
+const { AGENT_RUNTIME_PORT, OPENCLAW_GATEWAY_PORT } = require("./contracts");
 const { NORA_INTEGRATION_TOOL_COMMAND } = require("./integrationTools");
 
 const TSX_PACKAGE_SPEC = process.env.OPENCLAW_TSX_PACKAGE || "tsx@4.21.0";
@@ -38,12 +35,11 @@ const INTEGRATION_TOOL_WRAPPER_B64 = Buffer.from(
     'exec "$TSX_BIN" /opt/openclaw-runtime/lib/integrationToolCli.ts "$@"',
     "",
   ].join("\n"),
-  "utf8"
+  "utf8",
 ).toString("base64");
 
 const OPENCLAW_WORKSPACE_ROOT = "/root/.openclaw/workspace";
-const OPENCLAW_LEGACY_AGENT_TEMPLATE_ROOT =
-  "/root/.openclaw/agents/main/agent";
+const OPENCLAW_LEGACY_AGENT_TEMPLATE_ROOT = "/root/.openclaw/agents/main/agent";
 const NORA_INTEGRATIONS_CONTEXT_FILE = "NORA_INTEGRATIONS.md";
 
 function buildRuntimeBootstrapFiles() {
@@ -58,7 +54,9 @@ const SAFE_TEMPLATE_PATH_RE = /^[A-Za-z0-9._/-]+$/;
 
 function normalizeTemplateEntry(entry, baseDir) {
   if (!entry || typeof entry !== "object") return null;
-  const rawPath = String(entry.path || "").trim().replace(/\\/g, "/");
+  const rawPath = String(entry.path || "")
+    .trim()
+    .replace(/\\/g, "/");
   if (!rawPath) return null;
 
   const normalizedPath = path.posix.normalize(rawPath).replace(/^\/+/, "");
@@ -91,9 +89,7 @@ function normalizeTemplateEntry(entry, baseDir) {
 
 function normalizeTemplatePayloadEntries(templatePayload = {}) {
   const files = Array.isArray(templatePayload.files) ? templatePayload.files : [];
-  const memoryFiles = Array.isArray(templatePayload.memoryFiles)
-    ? templatePayload.memoryFiles
-    : [];
+  const memoryFiles = Array.isArray(templatePayload.memoryFiles) ? templatePayload.memoryFiles : [];
 
   return [
     ...files
@@ -102,9 +98,7 @@ function normalizeTemplatePayloadEntries(templatePayload = {}) {
         normalizeTemplateEntry(entry, OPENCLAW_LEGACY_AGENT_TEMPLATE_ROOT),
       ])
       .filter(Boolean),
-    ...memoryFiles
-      .map((entry) => normalizeTemplateEntry(entry, "/root/.openclaw"))
-      .filter(Boolean),
+    ...memoryFiles.map((entry) => normalizeTemplateEntry(entry, "/root/.openclaw")).filter(Boolean),
   ];
 }
 
@@ -123,18 +117,55 @@ function buildTemplatePayloadBootstrapCommand(templatePayload = {}) {
   if (entries.length === 0) return "";
 
   return entries
-    .map(
-      ({ targetPath, contentBuffer, mode }) => {
-        const quotedDir = shellSingleQuote(path.posix.dirname(targetPath));
-        const quotedPath = shellSingleQuote(targetPath);
-        return (
-          `mkdir -p ${quotedDir} && ` +
-          `printf '%s' '${contentBuffer.toString("base64")}' | base64 -d > ${quotedPath} && ` +
-          `chmod ${mode.toString(8)} ${quotedPath} && `
-        );
-      }
-    )
+    .map(({ targetPath, contentBuffer, mode }) => {
+      const quotedDir = shellSingleQuote(path.posix.dirname(targetPath));
+      const quotedPath = shellSingleQuote(targetPath);
+      return (
+        `mkdir -p ${quotedDir} && ` +
+        `printf '%s' '${contentBuffer.toString("base64")}' | base64 -d > ${quotedPath} && ` +
+        `chmod ${mode.toString(8)} ${quotedPath} && `
+      );
+    })
     .join("");
+}
+
+function buildOpenClawConfigMergeScript(gatewayConfig) {
+  return [
+    "cat <<'__NORA_MANAGED_OPENCLAW_CONFIG__' > /tmp/nora-managed-openclaw.json",
+    JSON.stringify(gatewayConfig || {}, null, 2),
+    "__NORA_MANAGED_OPENCLAW_CONFIG__",
+    "node <<'__NORA_MERGE_OPENCLAW_CONFIG__'",
+    "const fs = require('fs');",
+    "const path = require('path');",
+    "const configPath = '/root/.openclaw/openclaw.json';",
+    "const managedPath = '/tmp/nora-managed-openclaw.json';",
+    "function isPlainObject(value) {",
+    "  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);",
+    "}",
+    "function mergeConfig(current, managed) {",
+    "  if (!isPlainObject(managed)) return managed;",
+    "  const next = isPlainObject(current) ? { ...current } : {};",
+    "  for (const [key, value] of Object.entries(managed)) {",
+    "    next[key] = isPlainObject(value) ? mergeConfig(next[key], value) : value;",
+    "  }",
+    "  return next;",
+    "}",
+    "let current = {};",
+    "try {",
+    "  if (fs.existsSync(configPath)) {",
+    "    current = JSON.parse(fs.readFileSync(configPath, 'utf8'));",
+    "  }",
+    "} catch {",
+    "  current = {};",
+    "}",
+    "const managed = JSON.parse(fs.readFileSync(managedPath, 'utf8'));",
+    "const next = mergeConfig(current, managed);",
+    "fs.mkdirSync(path.dirname(configPath), { recursive: true });",
+    "fs.writeFileSync(configPath, JSON.stringify(next, null, 2) + '\\n');",
+    "fs.chmodSync(configPath, 0o600);",
+    "__NORA_MERGE_OPENCLAW_CONFIG__",
+    "rm -f /tmp/nora-managed-openclaw.json",
+  ];
 }
 
 function buildRuntimeBootstrapCommand() {
@@ -142,7 +173,7 @@ function buildRuntimeBootstrapCommand() {
     "mkdir -p /opt/openclaw-runtime/lib /var/log && ",
     ...RUNTIME_FILES.map(
       ({ relPath, sourceB64 }) =>
-        `printf '%s' '${sourceB64}' | base64 -d > /opt/openclaw-runtime/lib/${relPath} && `
+        `printf '%s' '${sourceB64}' | base64 -d > /opt/openclaw-runtime/lib/${relPath} && `,
     ),
     `printf '%s' '${INTEGRATION_TOOL_WRAPPER_B64}' | base64 -d > /usr/local/bin/${NORA_INTEGRATION_TOOL_COMMAND} && `,
     `chmod 755 /usr/local/bin/${NORA_INTEGRATION_TOOL_COMMAND} && `,
@@ -160,9 +191,7 @@ function buildOpenClawInstallCommand(packages = ["openclaw@latest"]) {
     throw new Error("buildOpenClawInstallCommand requires at least one package");
   }
 
-  const invalidPackage = normalizedPackages.find(
-    (pkg) => !/^[a-zA-Z0-9@._+/\-]+$/.test(pkg)
-  );
+  const invalidPackage = normalizedPackages.find((pkg) => !/^[a-zA-Z0-9@._+/\-]+$/.test(pkg));
   if (invalidPackage) {
     throw new Error(`Invalid package spec: ${invalidPackage}`);
   }
@@ -244,6 +273,7 @@ module.exports = {
   buildOpenClawInstallCommand,
   buildRuntimeBootstrapCommand,
   buildRuntimeBootstrapFiles,
+  buildOpenClawConfigMergeScript,
   buildTemplatePayloadBootstrapCommand,
   buildTemplatePayloadBootstrapFiles,
   buildRuntimeEnv,

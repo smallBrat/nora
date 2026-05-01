@@ -238,6 +238,73 @@ function Update-ReleaseTrackingEnv {
     Write-Ok "Release tracking stamped: $label @ $($currentCommit.Substring(0, [Math]::Min(12, $currentCommit.Length)))"
 }
 
+function Get-EnvAssignmentValue {
+    param([string]$Line)
+
+    $value = $Line -replace '^[^=]*=', ''
+    $value = $value -replace '\s+#.*$', ''
+    $value = $value.Trim()
+    if (
+        ($value.Length -ge 2) -and
+        (($value.StartsWith('"') -and $value.EndsWith('"')) -or ($value.StartsWith("'") -and $value.EndsWith("'")))
+    ) {
+        $value = $value.Substring(1, $value.Length - 2).Trim()
+    }
+    return $value
+}
+
+function Test-AgentHubHashSecretPresent {
+    param([string[]]$Lines)
+
+    foreach ($line in $Lines) {
+        if ($line -match '^\s*NORA_AGENT_HUB_API_KEY_HASH_SECRET\s*=') {
+            if (Get-EnvAssignmentValue -Line $line) {
+                return $true
+            }
+        }
+    }
+    return $false
+}
+
+function Ensure-AgentHubHashSecretEnv {
+    param([string]$EnvPath)
+
+    if (-not (Test-Path $EnvPath)) {
+        return
+    }
+
+    $lines = Get-Content -LiteralPath $EnvPath
+    if (Test-AgentHubHashSecretPresent -Lines $lines) {
+        Write-Info "NORA_AGENT_HUB_API_KEY_HASH_SECRET already set; preserving existing value."
+        return
+    }
+
+    $secret = New-HexSecret
+    $updatedLines = New-Object System.Collections.Generic.List[string]
+    $wroteSecret = $false
+
+    foreach ($line in $lines) {
+        if ($line -match '^\s*NORA_AGENT_HUB_API_KEY_HASH_SECRET\s*=') {
+            if (-not $wroteSecret) {
+                $updatedLines.Add("NORA_AGENT_HUB_API_KEY_HASH_SECRET=$secret")
+                $wroteSecret = $true
+            }
+            continue
+        }
+        $updatedLines.Add($line)
+    }
+
+    if (-not $wroteSecret) {
+        if ($updatedLines.Count -gt 0) {
+            $updatedLines.Add("")
+        }
+        $updatedLines.Add("NORA_AGENT_HUB_API_KEY_HASH_SECRET=$secret")
+    }
+
+    $updatedLines | Out-File -FilePath $EnvPath -Encoding utf8NoBOM
+    Write-Ok "NORA_AGENT_HUB_API_KEY_HASH_SECRET generated (64-char hex)"
+}
+
 function Remove-LocalAgentContainers {
     $containerIds = @()
     foreach ($label in @("openclaw.agent.id", "nora.agent.id")) {
@@ -744,6 +811,7 @@ if ($SETUP_MODE -eq "update") {
     Write-Info "Code update mode keeps $ENV_FILE, Postgres/backup volumes, and provisioned instances."
     Update-SourceCheckout
     Refresh-ReleaseTags
+    Ensure-AgentHubHashSecretEnv -EnvPath $ENV_FILE
     Update-ReleaseTrackingEnv -EnvPath $ENV_FILE
     Assert-NoraHostPortsAvailable -Checks (Get-NoraHostPortChecks -EnvPath $ENV_FILE)
     Start-NoraComposeStack
@@ -778,14 +846,14 @@ Write-Header "Generating Secrets"
 
 $JWT_SECRET      = New-HexSecret
 $ENCRYPTION_KEY  = New-HexSecret
-$NEXTAUTH_SECRET = New-HexSecret
+$NORA_AGENT_HUB_API_KEY_HASH_SECRET = New-HexSecret
 $DB_USER         = "nora"
 $DB_NAME         = "nora"
 $DB_PASSWORD     = New-HexSecret -Bytes 24
 
 Write-Ok "JWT_SECRET      (64-char hex)"
 Write-Ok "ENCRYPTION_KEY  (64-char hex — AES-256-GCM)"
-Write-Ok "NEXTAUTH_SECRET (64-char hex)"
+Write-Ok "AGENT_HUB_HASH  (64-char hex)"
 Write-Ok "DB_PASSWORD     (48-char hex)"
 
 # ── Platform mode ────────────────────────────────────────────
@@ -1144,6 +1212,7 @@ $envContent = @"
 # ── Required (auto-generated) ────────────────────────────────
 JWT_SECRET=$JWT_SECRET
 ENCRYPTION_KEY=$ENCRYPTION_KEY
+NORA_AGENT_HUB_API_KEY_HASH_SECRET=$NORA_AGENT_HUB_API_KEY_HASH_SECRET
 
 # ── Bootstrap Admin Account (optional; seeded only when both are set securely) ──
 DEFAULT_ADMIN_EMAIL=$DEFAULT_ADMIN_EMAIL
@@ -1173,7 +1242,6 @@ GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID
 GOOGLE_CLIENT_SECRET=$GOOGLE_CLIENT_SECRET
 GITHUB_CLIENT_ID=$GITHUB_CLIENT_ID
 GITHUB_CLIENT_SECRET=$GITHUB_CLIENT_SECRET
-NEXTAUTH_SECRET=$NEXTAUTH_SECRET
 NEXTAUTH_URL=$NEXTAUTH_URL
 
 # ── Platform Mode ────────────────────────────────────────────
@@ -1285,7 +1353,7 @@ if ($DEFAULT_ADMIN_EMAIL) {
     Write-Host "  Admin:        Not pre-seeded (create via signup)"
     Write-Host "  Password:     Not set"
 }
-Write-Host "  Secrets:      auto-generated (JWT, AES, NextAuth)"
+Write-Host "  Secrets:      auto-generated (JWT, AES, Agent Hub)"
 Write-Host "  Database:     PostgreSQL 15 (Docker Compose)"
 Write-Host "  DB Access:    $DB_USER / auto-generated / $DB_NAME (.env)"
 Write-Host "  Redis:        Redis 7 (Docker Compose)"

@@ -91,10 +91,7 @@ function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === "string");
 }
 
-function ensureAgentRecord(
-  value: AgentRecord | string | null,
-  description: string
-): AgentRecord {
+function ensureAgentRecord(value: AgentRecord | string | null, description: string): AgentRecord {
   const record = assertJsonRecord<AgentRecord>(value, description);
   if (typeof record.id !== "string" || !record.id) {
     throw new Error(`Expected agent id in ${description}`);
@@ -104,7 +101,7 @@ function ensureAgentRecord(
 
 function ensureIntegrationRecord(
   value: IntegrationRecord | string | null,
-  description: string
+  description: string,
 ): IntegrationRecord {
   const record = assertJsonRecord<IntegrationRecord>(value, description);
   if (typeof record.id !== "string" || !record.id) {
@@ -115,7 +112,7 @@ function ensureIntegrationRecord(
 
 function ensureChannelRecord(
   value: ChannelRecord | string | null,
-  description: string
+  description: string,
 ): ChannelRecord {
   const record = assertJsonRecord<ChannelRecord>(value, description);
   if (typeof record.id !== "string" || !record.id) {
@@ -124,23 +121,19 @@ function ensureChannelRecord(
   return record;
 }
 
-function normalizePlatformConfig(
-  value: PlatformConfig | string | null
-): PlatformConfig {
+function normalizePlatformConfig(value: PlatformConfig | string | null): PlatformConfig {
   if (!isJsonRecord(value)) {
     return {};
   }
 
   return {
     ...value,
-    enabledBackends: isStringArray(value.enabledBackends)
-      ? value.enabledBackends
-      : undefined,
+    enabledBackends: isStringArray(value.enabledBackends) ? value.enabledBackends : undefined,
     enabledDeployTargets: isStringArray(value.enabledDeployTargets)
       ? value.enabledDeployTargets
       : undefined,
     runtimeFamilies: Array.isArray(value.runtimeFamilies)
-      ? value.runtimeFamilies.filter(isJsonRecord) as PlatformRuntimeFamily[]
+      ? (value.runtimeFamilies.filter(isJsonRecord) as PlatformRuntimeFamily[])
       : undefined,
   };
 }
@@ -156,12 +149,8 @@ function backendSupported(platform: PlatformConfig, backendId: string) {
 }
 
 function runtimeSupported(platform: PlatformConfig, runtimeFamily: string) {
-  const families = Array.isArray(platform.runtimeFamilies)
-    ? platform.runtimeFamilies
-    : [];
-  return families.some(
-    (fam) => (fam?.id || fam?.runtimeFamily) === runtimeFamily
-  );
+  const families = Array.isArray(platform.runtimeFamilies) ? platform.runtimeFamilies : [];
+  return families.some((fam) => (fam?.id || fam?.runtimeFamily) === runtimeFamily);
 }
 
 async function deployAgent(
@@ -177,7 +166,7 @@ async function deployAgent(
     diskGb = 5,
     image,
     model,
-  }: DeployAgentOptions = {}
+  }: DeployAgentOptions = {},
 ) {
   const { body } = await apiJson<AgentRecord>(request, "/api/agents/deploy", {
     method: "POST",
@@ -208,11 +197,9 @@ async function waitForAgentStatus(
   token: string,
   agentId: string,
   desiredStatuses: string | string[],
-  { timeoutMs = 300000, intervalMs = 5000 }: WaitForAgentStatusOptions = {}
+  { timeoutMs = 300000, intervalMs = 5000 }: WaitForAgentStatusOptions = {},
 ) {
-  const targets = Array.isArray(desiredStatuses)
-    ? desiredStatuses
-    : [desiredStatuses];
+  const targets = Array.isArray(desiredStatuses) ? desiredStatuses : [desiredStatuses];
   const startedAt = Date.now();
   let lastStatus = "unknown";
 
@@ -223,7 +210,7 @@ async function waitForAgentStatus(
       if (targets.includes(lastStatus)) return agent;
       if (lastStatus === "error" && !targets.includes("error")) {
         throw new Error(
-          `Agent ${agentId} entered error state (last message: ${agent?.status_message || "none"})`
+          `Agent ${agentId} entered error state (last message: ${agent?.status_message || "none"})`,
         );
       }
     } catch (error) {
@@ -236,7 +223,31 @@ async function waitForAgentStatus(
   }
 
   throw new Error(
-    `Timed out waiting for agent ${agentId} to reach ${targets.join(" | ")}; last status: ${lastStatus}`
+    `Timed out waiting for agent ${agentId} to reach ${targets.join(" | ")}; last status: ${lastStatus}`,
+  );
+}
+
+async function waitForOpenClawGateway(
+  request: APIRequestContext,
+  token: string,
+  agentId: string,
+  { timeoutMs = 300000, intervalMs = 5000 }: WaitForAgentStatusOptions = {},
+) {
+  const startedAt = Date.now();
+  let lastStatus = 0;
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const { response } = await apiJson(request, `/api/agents/${agentId}/gateway/status`, {
+      token,
+      failOnStatus: false,
+    });
+    lastStatus = response.status();
+    if (lastStatus < 400) return;
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+
+  throw new Error(
+    `Timed out waiting for OpenClaw gateway on agent ${agentId}; last status: ${lastStatus}`,
   );
 }
 
@@ -273,33 +284,40 @@ async function deleteAgent(request: APIRequestContext, token: string, agentId: s
   });
 }
 
-async function chatOpenClaw(request: APIRequestContext, token: string, agentId: string, message: string) {
-  const { body } = await apiJson(
-    request,
-    `/api/agents/${agentId}/gateway/chat`,
-    {
-      method: "POST",
-      token,
-      data: { message, stream: false },
-    }
-  );
+async function chatOpenClaw(
+  request: APIRequestContext,
+  token: string,
+  agentId: string,
+  message: string,
+) {
+  const { body } = await apiJson(request, `/api/agents/${agentId}/gateway/chat`, {
+    method: "POST",
+    token,
+    data: { message, stream: false },
+  });
   return body;
 }
 
-async function chatHermes(request: APIRequestContext, token: string, agentId: string, message: string) {
-  const { body } = await apiJson(
-    request,
-    `/api/agents/${agentId}/hermes-ui/chat`,
-    {
-      method: "POST",
-      token,
-      data: { messages: [{ role: "user", content: message }] },
-    }
-  );
+async function chatHermes(
+  request: APIRequestContext,
+  token: string,
+  agentId: string,
+  message: string,
+) {
+  const { body } = await apiJson(request, `/api/agents/${agentId}/hermes-ui/chat`, {
+    method: "POST",
+    token,
+    data: { messages: [{ role: "user", content: message }] },
+  });
   return body;
 }
 
-async function chatWithAgent(request: APIRequestContext, token: string, agent: AgentRecord, message: string) {
+async function chatWithAgent(
+  request: APIRequestContext,
+  token: string,
+  agent: AgentRecord,
+  message: string,
+) {
   const family = agent.runtime_family || "openclaw";
   if (family === "hermes") return chatHermes(request, token, agent.id, message);
   return chatOpenClaw(request, token, agent.id, message);
@@ -309,7 +327,7 @@ async function chatWithAgent(request: APIRequestContext, token: string, agent: A
 async function saveProviderKey(
   request: APIRequestContext,
   token: string,
-  { provider, apiKey, model }: SaveProviderKeyOptions
+  { provider, apiKey, model }: SaveProviderKeyOptions,
 ) {
   const { body } = await apiJson(request, "/api/llm-providers", {
     method: "POST",
@@ -329,7 +347,7 @@ async function connectIntegration(
   request: APIRequestContext,
   token: string,
   agentId: string,
-  { provider, token: providerToken, config = {} }: IntegrationOptions
+  { provider, token: providerToken, config = {} }: IntegrationOptions,
 ) {
   const { body } = await apiJson<IntegrationRecord>(
     request,
@@ -338,40 +356,44 @@ async function connectIntegration(
       method: "POST",
       token,
       data: { provider, token: providerToken, config },
-    }
+    },
   );
   return ensureIntegrationRecord(body, `/api/agents/${agentId}/integrations`);
 }
 
-async function testIntegration(request: APIRequestContext, token: string, agentId: string, integrationId: string) {
+async function testIntegration(
+  request: APIRequestContext,
+  token: string,
+  agentId: string,
+  integrationId: string,
+) {
   const { body } = await apiJson<IntegrationTestResult>(
     request,
     `/api/agents/${agentId}/integrations/${integrationId}/test`,
-    { method: "POST", token, failOnStatus: false }
+    { method: "POST", token, failOnStatus: false },
   );
   return assertJsonRecord<IntegrationTestResult>(
     body,
-    `/api/agents/${agentId}/integrations/${integrationId}/test`
+    `/api/agents/${agentId}/integrations/${integrationId}/test`,
   );
 }
 
 async function listAgentIntegrations(request: APIRequestContext, token: string, agentId: string) {
-  const { body } = await apiJson(
-    request,
-    `/api/agents/${agentId}/integrations`,
-    { token }
-  );
-  return Array.isArray(body)
-    ? body.filter(isJsonRecord) as IntegrationRecord[]
-    : [];
+  const { body } = await apiJson(request, `/api/agents/${agentId}/integrations`, { token });
+  return Array.isArray(body) ? (body.filter(isJsonRecord) as IntegrationRecord[]) : [];
 }
 
-async function deleteIntegration(request: APIRequestContext, token: string, agentId: string, integrationId: string) {
-  await apiJson(
-    request,
-    `/api/agents/${agentId}/integrations/${integrationId}`,
-    { method: "DELETE", token, failOnStatus: false }
-  );
+async function deleteIntegration(
+  request: APIRequestContext,
+  token: string,
+  agentId: string,
+  integrationId: string,
+) {
+  await apiJson(request, `/api/agents/${agentId}/integrations/${integrationId}`, {
+    method: "DELETE",
+    token,
+    failOnStatus: false,
+  });
 }
 
 // ── Channels ──────────────────────────────────────────────
@@ -379,7 +401,7 @@ async function createChannel(
   request: APIRequestContext,
   token: string,
   agentId: string,
-  { type, name, config = {} }: ChannelOptions
+  { type, name, config = {} }: ChannelOptions,
 ) {
   const { body, response } = await apiJson<ChannelRecord>(
     request,
@@ -389,32 +411,40 @@ async function createChannel(
       token,
       data: { type, name, config },
       failOnStatus: false,
-    }
+    },
   );
   if (!response.ok()) {
     throw Object.assign(
-      new Error(
-        `createChannel(${type}) failed: ${response.status()} ${JSON.stringify(body)}`
-      ),
-      { status: response.status(), body }
+      new Error(`createChannel(${type}) failed: ${response.status()} ${JSON.stringify(body)}`),
+      { status: response.status(), body },
     );
   }
   return ensureChannelRecord(body, `/api/agents/${agentId}/channels`);
 }
 
-async function testChannel(request: APIRequestContext, token: string, agentId: string, channelId: string) {
+async function testChannel(
+  request: APIRequestContext,
+  token: string,
+  agentId: string,
+  channelId: string,
+) {
   const { body } = await apiJson<ChannelTestResult>(
     request,
     `/api/agents/${agentId}/channels/${channelId}/test`,
-    { method: "POST", token, failOnStatus: false }
+    { method: "POST", token, failOnStatus: false },
   );
   return assertJsonRecord<ChannelTestResult>(
     body,
-    `/api/agents/${agentId}/channels/${channelId}/test`
+    `/api/agents/${agentId}/channels/${channelId}/test`,
   );
 }
 
-async function deleteChannel(request: APIRequestContext, token: string, agentId: string, channelId: string) {
+async function deleteChannel(
+  request: APIRequestContext,
+  token: string,
+  agentId: string,
+  channelId: string,
+) {
   await apiJson(request, `/api/agents/${agentId}/channels/${channelId}`, {
     method: "DELETE",
     token,
@@ -429,6 +459,7 @@ export {
   deployAgent,
   getAgent,
   waitForAgentStatus,
+  waitForOpenClawGateway,
   stopAgent,
   startAgent,
   deleteAgent,

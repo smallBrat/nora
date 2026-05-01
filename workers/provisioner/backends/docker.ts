@@ -5,6 +5,7 @@ const crypto = require("crypto");
 const path = require("path");
 const {
   buildOpenClawInstallCommand,
+  buildOpenClawConfigMergeScript,
   buildRuntimeBootstrapFiles,
   buildTemplatePayloadBootstrapFiles,
   buildRuntimeEnv,
@@ -204,9 +205,7 @@ class DockerBackend extends ProvisionerBackend {
       "set -eu",
       buildOpenClawInstallCommand([getStandardDockerPackageSpec()]),
       "mkdir -p ~/.openclaw/devices",
-      "cat <<'__NORA_GATEWAY_CONFIG__' > ~/.openclaw/openclaw.json",
-      JSON.stringify(gatewayConfig, null, 2),
-      "__NORA_GATEWAY_CONFIG__",
+      ...buildOpenClawConfigMergeScript(gatewayConfig),
       "cat <<'__NORA_PAIRED_DEVICES__' > ~/.openclaw/devices/paired.json",
       pairedJson,
       "__NORA_PAIRED_DEVICES__",

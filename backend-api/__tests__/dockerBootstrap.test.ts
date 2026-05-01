@@ -2,6 +2,7 @@
 const fs = require("fs");
 const path = require("path");
 const {
+  buildOpenClawConfigMergeScript,
   buildOpenClawInstallCommand,
   buildRuntimeBootstrapCommand,
   buildTemplatePayloadBootstrapFiles,
@@ -85,6 +86,17 @@ describe("OpenClaw bootstrap helpers", () => {
       ]),
     );
   });
+
+  it("merges managed OpenClaw config without replacing runtime-owned sections", () => {
+    const script = buildOpenClawConfigMergeScript({
+      gateway: { bind: "lan", mode: "local" },
+    }).join("\n");
+
+    expect(script).toContain("/tmp/nora-managed-openclaw.json");
+    expect(script).toContain("const configPath = '/root/.openclaw/openclaw.json';");
+    expect(script).toContain("mergeConfig(current, managed)");
+    expect(script).not.toContain("> ~/.openclaw/openclaw.json");
+  });
 });
 
 describe("Provisioner backends", () => {
@@ -116,6 +128,7 @@ describe("Provisioner backends", () => {
     expect(startupScript.content).toContain(
       "mkdir -p /var/log /root/.openclaw/workspace /root/.openclaw/agents/main/agent",
     );
+    expect(startupScript.content).toContain("__NORA_MERGE_OPENCLAW_CONFIG__");
     expect(startupScript.content).toContain(
       '"$OPENCLAW_TSX_BIN" /opt/openclaw-runtime/lib/agent.ts >> /var/log/openclaw-agent.log 2>&1 &',
     );

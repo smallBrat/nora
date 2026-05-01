@@ -10,6 +10,7 @@ Updates or appends:
   NORA_CURRENT_VERSION
   NORA_CURRENT_COMMIT
   NORA_GITHUB_REPO (when provided)
+  NORA_AGENT_HUB_API_KEY_HASH_SECRET (only when missing or empty)
 
 Removes retired release metadata token keys:
   NORA_GITHUB_TOKEN
@@ -47,6 +48,33 @@ fi
 
 env_dir="$(dirname "$env_file")"
 
+env_has_agent_hub_hash_secret() {
+  awk -F= '
+    /^[[:space:]]*NORA_AGENT_HUB_API_KEY_HASH_SECRET[[:space:]]*=/ {
+      value = $0
+      sub(/^[^=]*=/, "", value)
+      sub(/[[:space:]]+#.*$/, "", value)
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+      if (value == "\"\"" || value == sprintf("%c%c", 39, 39)) {
+        value = ""
+      }
+      if (value != "") {
+        found = 1
+      }
+    }
+    END { exit found ? 0 : 1 }
+  ' "$env_file"
+}
+
+agent_hub_hash_secret=""
+if ! env_has_agent_hub_hash_secret; then
+  if ! command -v openssl >/dev/null 2>&1; then
+    echo "openssl is required to generate NORA_AGENT_HUB_API_KEY_HASH_SECRET" >&2
+    exit 1
+  fi
+  agent_hub_hash_secret="$(openssl rand -hex 32)"
+fi
+
 tmp_file="$(mktemp "$env_dir/.nora-release-env.XXXXXX")"
 trap 'rm -f "$tmp_file"' EXIT
 
@@ -54,11 +82,13 @@ awk \
   -v version="$version" \
   -v commit="$commit" \
   -v github_repo="$github_repo" \
+  -v agent_hub_hash_secret="$agent_hub_hash_secret" \
   '
   BEGIN {
     saw_version = 0
     saw_commit = 0
     saw_repo = 0
+    saw_agent_hub_hash_secret = 0
   }
 
   /^NORA_CURRENT_VERSION=/ {
@@ -83,6 +113,14 @@ awk \
     next
   }
 
+  /^[[:space:]]*NORA_AGENT_HUB_API_KEY_HASH_SECRET[[:space:]]*=/ && agent_hub_hash_secret != "" {
+    if (!saw_agent_hub_hash_secret) {
+      print "NORA_AGENT_HUB_API_KEY_HASH_SECRET=" agent_hub_hash_secret
+      saw_agent_hub_hash_secret = 1
+    }
+    next
+  }
+
   {
     print
   }
@@ -96,6 +134,9 @@ awk \
     }
     if (github_repo != "" && !saw_repo) {
       print "NORA_GITHUB_REPO=" github_repo
+    }
+    if (agent_hub_hash_secret != "" && !saw_agent_hub_hash_secret) {
+      print "NORA_AGENT_HUB_API_KEY_HASH_SECRET=" agent_hub_hash_secret
     }
   }
   ' "$env_file" > "$tmp_file"

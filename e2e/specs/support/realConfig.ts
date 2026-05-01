@@ -43,13 +43,36 @@ function requireEnv(name: string) {
   return value.trim();
 }
 
-const real = {
-  // LLM provider — at least one must be set.
-  llmProviderId: requireEnv("REAL_LLM_PROVIDER_ID") || "anthropic",
-  llmApiKey:
+const llmProviderId = requireEnv("REAL_LLM_PROVIDER_ID") || "anthropic";
+
+function providerMatchedLlmKey(providerId: string) {
+  const generic = requireEnv("REAL_LLM_API_KEY");
+  const normalized = providerId.toLowerCase();
+
+  if (normalized.includes("anthropic") || normalized === "claude") {
+    return requireEnv("REAL_ANTHROPIC_API_KEY") || generic;
+  }
+
+  if (normalized.includes("openai")) {
+    return requireEnv("REAL_OPENAI_API_KEY") || generic;
+  }
+
+  if (normalized.includes("google") || normalized.includes("gemini")) {
+    return requireEnv("REAL_GOOGLE_API_KEY") || generic;
+  }
+
+  return (
+    generic ||
     requireEnv("REAL_ANTHROPIC_API_KEY") ||
     requireEnv("REAL_OPENAI_API_KEY") ||
-    requireEnv("REAL_LLM_API_KEY"),
+    requireEnv("REAL_GOOGLE_API_KEY")
+  );
+}
+
+const real = {
+  // LLM provider — at least one must be set.
+  llmProviderId,
+  llmApiKey: providerMatchedLlmKey(llmProviderId),
   llmModel: requireEnv("REAL_LLM_MODEL"),
 
   // Integrations (any subset is fine — each spec skips when its cred is empty)
@@ -73,38 +96,34 @@ const real = {
   telegramBotToken: requireEnv("REAL_TELEGRAM_BOT_TOKEN"),
   telegramChatId: requireEnv("REAL_TELEGRAM_CHAT_ID"),
   discordWebhookUrl: requireEnv("REAL_DISCORD_WEBHOOK_URL"),
+  openclawDiscordConfig: (() => {
+    const raw = requireEnv("REAL_OPENCLAW_DISCORD_CONFIG_JSON");
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  })(),
 
   // Enable/disable matrix cells explicitly
-  enableOpenclawDocker:
-    (requireEnv("REAL_ENABLE_OPENCLAW_DOCKER") || "1") !== "0",
+  enableOpenclawDocker: (requireEnv("REAL_ENABLE_OPENCLAW_DOCKER") || "1") !== "0",
   enableOpenclawK8s: (requireEnv("REAL_ENABLE_OPENCLAW_K8S") || "0") === "1",
-  enableOpenclawNemoclaw:
-    (requireEnv("REAL_ENABLE_OPENCLAW_NEMOCLAW") || "0") === "1",
-  enableHermesDocker:
-    (requireEnv("REAL_ENABLE_HERMES_DOCKER") || "0") === "1",
+  enableOpenclawNemoclaw: (requireEnv("REAL_ENABLE_OPENCLAW_NEMOCLAW") || "0") === "1",
+  enableHermesDocker: (requireEnv("REAL_ENABLE_HERMES_DOCKER") || "0") === "1",
   enableHermesK8s: (requireEnv("REAL_ENABLE_HERMES_K8S") || "0") === "1",
 
   // Timeouts (ms)
-  provisionTimeoutMs: Number.parseInt(
-    requireEnv("REAL_PROVISION_TIMEOUT_MS") || "600000",
-    10
-  ),
-  chatTimeoutMs: Number.parseInt(
-    requireEnv("REAL_CHAT_TIMEOUT_MS") || "120000",
-    10
-  ),
+  provisionTimeoutMs: Number.parseInt(requireEnv("REAL_PROVISION_TIMEOUT_MS") || "600000", 10),
+  chatTimeoutMs: Number.parseInt(requireEnv("REAL_CHAT_TIMEOUT_MS") || "120000", 10),
 };
 
 function skipUnless(
   test: { skip: (condition: boolean, description?: string) => void },
   predicate: () => boolean,
-  reason: string
+  reason: string,
 ) {
   test.skip(!predicate(), reason);
 }
 
-export {
-  real,
-  skipUnless,
-  requireEnv,
-};
+export { real, skipUnless, requireEnv };

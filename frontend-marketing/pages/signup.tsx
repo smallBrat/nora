@@ -1,7 +1,6 @@
 import Head from "next/head";
 import Link from "next/link";
 import { useState } from "react";
-import { signIn } from "next-auth/react";
 import { ArrowUpRight, CheckCircle2, Loader2, Lock, Mail, Server, Shield, Zap } from "lucide-react";
 
 const OAUTH_LOGIN_ENABLED = process.env.NEXT_PUBLIC_OAUTH_LOGIN_ENABLED === "true";
@@ -71,7 +70,7 @@ export default function Signup() {
 
   function handleOAuth(provider) {
     setOauthLoading(provider);
-    signIn(provider, { callbackUrl: "/auth/callback" });
+    window.location.assign(`/auth/oauth/${provider}`);
   }
 
   return (
@@ -91,7 +90,9 @@ export default function Signup() {
               N
             </div>
             <div>
-              <div className="text-sm font-black uppercase tracking-[0.28em] text-slate-300">Nora</div>
+              <div className="text-sm font-black uppercase tracking-[0.28em] text-slate-300">
+                Nora
+              </div>
               <div className="text-xs text-slate-500">Deploy intelligence anywhere.</div>
             </div>
           </Link>
@@ -124,16 +125,22 @@ export default function Signup() {
               Create the operator account for this Nora instance.
             </h1>
             <p className="mt-5 max-w-xl text-base leading-8 text-slate-300">
-              Nora is fully open source, self-hostable, and commercially usable under Apache 2.0. This page should help teams
-              get into the product quickly without hiding the fact that the repo stays public and the trust model stays OSS-first.
-              From there, operators can launch OpenClaw or Hermes on the same Nora instance.
+              Nora is fully open source, self-hostable, and commercially usable under Apache 2.0.
+              This page should help teams get into the product quickly without hiding the fact that
+              the repo stays public and the trust model stays OSS-first. From there, operators can
+              launch OpenClaw or Hermes on the same Nora instance.
             </p>
 
             <div className="mt-8 rounded-[28px] border border-white/10 bg-white/[0.03] p-5">
-              <div className="text-xs font-black uppercase tracking-[0.28em] text-[#f2d7a1]">After account creation</div>
+              <div className="text-xs font-black uppercase tracking-[0.28em] text-[#f2d7a1]">
+                After account creation
+              </div>
               <div className="mt-4 space-y-4">
                 {NEXT_STEPS.map((item, index) => (
-                  <div key={item} className="flex items-start gap-3 text-sm leading-7 text-slate-300">
+                  <div
+                    key={item}
+                    className="flex items-start gap-3 text-sm leading-7 text-slate-300"
+                  >
                     <div className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-[#8ae6ff]/20 bg-[#8ae6ff]/10 text-[0.68rem] font-black text-[#dff9ff]">
                       {index + 1}
                     </div>
@@ -150,7 +157,9 @@ export default function Signup() {
                 rel="noopener noreferrer"
                 className="rounded-[24px] border border-white/10 bg-white/[0.03] px-4 py-4 transition-colors hover:bg-white/[0.06]"
               >
-                <div className="text-xs font-black uppercase tracking-[0.28em] text-slate-500">Public repo</div>
+                <div className="text-xs font-black uppercase tracking-[0.28em] text-slate-500">
+                  Public repo
+                </div>
                 <div className="mt-2 text-lg font-black text-white">Inspect Nora on GitHub</div>
                 <div className="mt-2 text-sm leading-7 text-slate-400">
                   Review the source before or after creating the account.
@@ -162,16 +171,21 @@ export default function Signup() {
                 rel="noopener noreferrer"
                 className="rounded-[24px] border border-white/10 bg-white/[0.03] px-4 py-4 transition-colors hover:bg-white/[0.06]"
               >
-                <div className="text-xs font-black uppercase tracking-[0.28em] text-slate-500">Self-host guide</div>
+                <div className="text-xs font-black uppercase tracking-[0.28em] text-slate-500">
+                  Self-host guide
+                </div>
                 <div className="mt-2 text-lg font-black text-white">Open the quick start</div>
                 <div className="mt-2 text-sm leading-7 text-slate-400">
-                  Clone the repo, run the installer, and create the first account on your own deployment.
+                  Clone the repo, run the installer, and create the first account on your own
+                  deployment.
                 </div>
               </a>
             </div>
 
             <div className="mt-6 rounded-[28px] border border-[#8ae6ff]/18 bg-[#8ae6ff]/7 px-5 py-5">
-              <div className="text-xs font-black uppercase tracking-[0.28em] text-[#dff9ff]">Instance note</div>
+              <div className="text-xs font-black uppercase tracking-[0.28em] text-[#dff9ff]">
+                Instance note
+              </div>
               <p className="mt-3 text-sm leading-7 text-slate-300">
                 {IS_SELF_HOSTED
                   ? "This account belongs to this self-hosted Nora instance. On a brand-new Nora instance, the first created account becomes the admin account. If a bootstrap operator was already created during setup, use that instead of creating a duplicate."
@@ -185,10 +199,12 @@ export default function Signup() {
               <Shield size={14} />
               Easy account creation
             </div>
-            <h2 className="text-3xl font-black leading-tight text-slate-950">Create operator account</h2>
+            <h2 className="text-3xl font-black leading-tight text-slate-950">
+              Create operator account
+            </h2>
             <p className="mt-3 text-sm leading-7 text-slate-700">
-              Use this account to enter the Nora operator surface for OpenClaw and Hermes deployments on this instance. OAuth
-              appears here only when it is enabled.
+              Use this account to enter the Nora operator surface for OpenClaw and Hermes
+              deployments on this instance. OAuth appears here only when it is enabled.
             </p>
 
             {OAUTH_LOGIN_ENABLED && (
@@ -203,10 +219,22 @@ export default function Signup() {
                     <Loader2 size={18} className="animate-spin" />
                   ) : (
                     <svg width="18" height="18" viewBox="0 0 24 24">
-                      <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4" />
-                      <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
-                      <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
-                      <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
+                      <path
+                        d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"
+                        fill="#4285F4"
+                      />
+                      <path
+                        d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                        fill="#34A853"
+                      />
+                      <path
+                        d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+                        fill="#FBBC05"
+                      />
+                      <path
+                        d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+                        fill="#EA4335"
+                      />
                     </svg>
                   )}
                   Continue with Google
@@ -240,9 +268,14 @@ export default function Signup() {
 
             <form onSubmit={handleSignup} className="flex flex-col gap-4">
               <label className="flex flex-col gap-2">
-                <span className="text-[0.68rem] font-black uppercase tracking-[0.28em] text-slate-500">Email address</span>
+                <span className="text-[0.68rem] font-black uppercase tracking-[0.28em] text-slate-500">
+                  Email address
+                </span>
                 <div className="relative">
-                  <Mail size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
+                  <Mail
+                    size={18}
+                    className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500"
+                  />
                   <input
                     type="email"
                     value={email}
@@ -256,9 +289,14 @@ export default function Signup() {
               </label>
 
               <label className="flex flex-col gap-2">
-                <span className="text-[0.68rem] font-black uppercase tracking-[0.28em] text-slate-500">Password</span>
+                <span className="text-[0.68rem] font-black uppercase tracking-[0.28em] text-slate-500">
+                  Password
+                </span>
                 <div className="relative">
-                  <Lock size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
+                  <Lock
+                    size={18}
+                    className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500"
+                  />
                   <input
                     type="password"
                     value={password}
@@ -282,7 +320,11 @@ export default function Signup() {
                 disabled={loading}
                 className="mt-2 inline-flex items-center justify-center gap-2 rounded-full bg-slate-950 px-5 py-4 text-sm font-black text-white transition-transform hover:-translate-y-0.5 disabled:opacity-60"
               >
-                {loading ? <Loader2 size={18} className="animate-spin" /> : <CheckCircle2 size={18} />}
+                {loading ? (
+                  <Loader2 size={18} className="animate-spin" />
+                ) : (
+                  <CheckCircle2 size={18} />
+                )}
                 {loading ? "Creating account..." : "Create Account"}
               </button>
             </form>
@@ -290,7 +332,10 @@ export default function Signup() {
             <div className="mt-6 flex flex-col gap-3 text-sm text-slate-700">
               <p>
                 Already have an account?{" "}
-                <Link href="/login" className="font-black text-slate-950 underline underline-offset-4">
+                <Link
+                  href="/login"
+                  className="font-black text-slate-950 underline underline-offset-4"
+                >
                   Log in here.
                 </Link>
               </p>

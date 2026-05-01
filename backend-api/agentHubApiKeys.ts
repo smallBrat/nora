@@ -5,6 +5,8 @@ const db = require("./db");
 const KEY_PREFIX = "nora_hub_";
 const KEY_STATUS_ACTIVE = "active";
 const KEY_STATUS_REVOKED = "revoked";
+const HASH_SECRET_ENV_NAME = "NORA_AGENT_HUB_API_KEY_HASH_SECRET";
+const LEGACY_HASH_SECRET_ENV_NAMES = ["ENCRYPTION_KEY", "JWT_SECRET"];
 
 function normalizeLabel(value) {
   const normalized = typeof value === "string" ? value.trim() : "";
@@ -15,11 +17,88 @@ function generateRawKey() {
   return `${KEY_PREFIX}${crypto.randomBytes(32).toString("base64url")}`;
 }
 
-function hashApiKey(rawKey) {
+function buildMissingSecretError(message) {
+  const error = new Error(
+    message ||
+      "Agent Hub API key hashing requires NORA_AGENT_HUB_API_KEY_HASH_SECRET, ENCRYPTION_KEY, or JWT_SECRET",
+  );
+  error.statusCode = 503;
+  return error;
+}
+
+function normalizeSecret(value) {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  return normalized.length >= 32 ? normalized : "";
+}
+
+function explicitHashSecret() {
+  const rawSecret = process.env[HASH_SECRET_ENV_NAME];
+  const trimmed = typeof rawSecret === "string" ? rawSecret.trim() : "";
+  if (trimmed && trimmed.length < 32) {
+    throw buildMissingSecretError(
+      "Agent Hub API key hashing requires NORA_AGENT_HUB_API_KEY_HASH_SECRET to be at least 32 characters",
+    );
+  }
+  return normalizeSecret(rawSecret);
+}
+
+function testHashSecret() {
+  if (process.env.NODE_ENV === "test") return "nora-agent-hub-api-key-test-hash-secret";
+  return "";
+}
+
+function addUniqueSecret(secrets, secret) {
+  if (secret && !secrets.includes(secret)) secrets.push(secret);
+}
+
+function apiKeyHashSecrets({ includeLegacy = false } = {}) {
+  const secrets = [];
+  addUniqueSecret(secrets, explicitHashSecret());
+
+  if (includeLegacy || secrets.length === 0) {
+    for (const envName of LEGACY_HASH_SECRET_ENV_NAMES) {
+      addUniqueSecret(secrets, normalizeSecret(process.env[envName]));
+    }
+  }
+
+  if (secrets.length === 0) addUniqueSecret(secrets, testHashSecret());
+  if (secrets.length > 0) return secrets;
+  throw buildMissingSecretError();
+}
+
+function apiKeyHashSecret() {
+  return apiKeyHashSecrets()[0];
+}
+
+function hmacHashApiKey(rawKey, secret) {
+  return crypto
+    .createHmac("sha256", secret)
+    .update(String(rawKey || ""), "utf8")
+    .digest("hex");
+}
+
+function legacySha256HashApiKey(rawKey) {
   return crypto
     .createHash("sha256")
     .update(String(rawKey || ""), "utf8")
     .digest("hex");
+}
+
+function hashApiKey(rawKey) {
+  return hmacHashApiKey(rawKey, apiKeyHashSecret());
+}
+
+function apiKeyHashCandidates(rawKey) {
+  const hashes = [];
+  const addUniqueHash = (hash) => {
+    if (hash && !hashes.includes(hash)) hashes.push(hash);
+  };
+
+  for (const secret of apiKeyHashSecrets({ includeLegacy: true })) {
+    addUniqueHash(hmacHashApiKey(rawKey, secret));
+  }
+  addUniqueHash(legacySha256HashApiKey(rawKey));
+  return hashes;
 }
 
 function keyPrefix(rawKey) {
@@ -104,10 +183,13 @@ async function verifyApiKey(rawKey) {
   const normalized = String(rawKey || "").trim();
   if (!normalized) return null;
 
+  const candidateHashes = apiKeyHashCandidates(normalized);
+  const primaryHash = hashApiKey(normalized);
   const result = await db.query(
     `SELECT k.id,
             k.user_id,
             k.label,
+            k.key_hash,
             k.key_prefix,
             k.status,
             k.created_at,
@@ -119,17 +201,26 @@ async function verifyApiKey(rawKey) {
             u.role
        FROM agent_hub_api_keys k
        JOIN users u ON u.id = k.user_id
-      WHERE k.key_hash = $1
+      WHERE k.key_hash = ANY($1::text[])
         AND k.status = $2
         AND k.revoked_at IS NULL
+      ORDER BY CASE WHEN k.key_hash = $3 THEN 0 ELSE 1 END
       LIMIT 1`,
-    [hashApiKey(normalized), KEY_STATUS_ACTIVE],
+    [candidateHashes, KEY_STATUS_ACTIVE, primaryHash],
   );
 
   const row = result.rows[0];
   if (!row) return null;
 
-  await db.query("UPDATE agent_hub_api_keys SET last_used_at = NOW() WHERE id = $1", [row.id]);
+  if (row.key_hash && row.key_hash !== primaryHash) {
+    await db.query(
+      "UPDATE agent_hub_api_keys SET key_hash = $1, last_used_at = NOW() WHERE id = $2",
+      [primaryHash, row.id],
+    );
+  } else {
+    await db.query("UPDATE agent_hub_api_keys SET last_used_at = NOW() WHERE id = $1", [row.id]);
+  }
+
   return {
     key: serializeApiKey(row),
     user: {

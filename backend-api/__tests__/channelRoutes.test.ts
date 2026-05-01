@@ -18,7 +18,6 @@ const mockOpenClaw = {
   listOpenClawChannels: jest.fn(),
   getOpenClawChannelType: jest.fn(),
   saveOpenClawChannel: jest.fn(),
-  deleteOpenClawChannel: jest.fn(),
   startOpenClawChannelLogin: jest.fn(),
   waitOpenClawChannelLogin: jest.fn(),
   logoutOpenClawChannel: jest.fn(),
@@ -67,7 +66,6 @@ describe("channel routes", () => {
     mockOpenClaw.listOpenClawChannels.mockReset();
     mockOpenClaw.getOpenClawChannelType.mockReset();
     mockOpenClaw.saveOpenClawChannel.mockReset();
-    mockOpenClaw.deleteOpenClawChannel.mockReset();
     mockOpenClaw.startOpenClawChannelLogin.mockReset();
     mockOpenClaw.waitOpenClawChannelLogin.mockReset();
     mockOpenClaw.logoutOpenClawChannel.mockReset();
@@ -94,9 +92,7 @@ describe("channel routes", () => {
         type: "telegram",
         label: "Telegram",
         icon: "send",
-        configFields: [
-          { key: "bot_token", label: "Bot Token", type: "password", required: true },
-        ],
+        configFields: [{ key: "bot_token", label: "Bot Token", type: "password", required: true }],
       },
     ]);
 
@@ -178,7 +174,7 @@ describe("channel routes", () => {
     );
   });
 
-  it("creates, updates, and deletes OpenClaw channels through the helper", async () => {
+  it("creates and updates OpenClaw channels while blocking deletes", async () => {
     queueOwnedAgent({
       id: "agent-openclaw-save",
       user_id: "user-1",
@@ -200,10 +196,6 @@ describe("channel routes", () => {
     mockOpenClaw.saveOpenClawChannel
       .mockResolvedValueOnce({ success: true, channel: "whatsapp" })
       .mockResolvedValueOnce({ success: true, channel: "whatsapp" });
-    mockOpenClaw.deleteOpenClawChannel.mockResolvedValueOnce({
-      success: true,
-      channel: "whatsapp",
-    });
 
     const createRes = await request(app)
       .post("/agent-openclaw-save/channels")
@@ -211,16 +203,14 @@ describe("channel routes", () => {
         type: "WhatsApp",
         config: { accounts: { default: { enabled: true } } },
       });
-    const updateRes = await request(app)
-      .patch("/agent-openclaw-save/channels/whatsapp")
-      .send({
-        enabled: false,
-      });
+    const updateRes = await request(app).patch("/agent-openclaw-save/channels/whatsapp").send({
+      enabled: false,
+    });
     const deleteRes = await request(app).delete("/agent-openclaw-save/channels/whatsapp");
 
     expect(createRes.status).toBe(200);
     expect(updateRes.status).toBe(200);
-    expect(deleteRes.status).toBe(200);
+    expect(deleteRes.status).toBe(409);
     expect(mockOpenClaw.saveOpenClawChannel).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({ id: "agent-openclaw-save" }),
@@ -237,10 +227,7 @@ describe("channel routes", () => {
       "whatsapp",
       { enabled: false },
     );
-    expect(mockOpenClaw.deleteOpenClawChannel).toHaveBeenCalledWith(
-      expect.objectContaining({ id: "agent-openclaw-save" }),
-      "whatsapp",
-    );
+    expect(deleteRes.body.error).toMatch(/cannot be deleted/i);
   });
 
   it("supports OpenClaw login and logout actions but blocks legacy login", async () => {
@@ -401,11 +388,7 @@ describe("channel routes", () => {
     expect(openClawTestRes.status).toBe(409);
     expect(openClawMessagesRes.status).toBe(409);
     expect(mockChannels.testChannel).toHaveBeenCalledWith("ch-1", "agent-legacy-actions");
-    expect(mockChannels.getMessages).toHaveBeenCalledWith(
-      "ch-1",
-      "agent-legacy-actions",
-      25,
-    );
+    expect(mockChannels.getMessages).toHaveBeenCalledWith("ch-1", "agent-legacy-actions", 25);
     expect(openClawTestRes.body.error).toMatch(/not available for OpenClaw/i);
     expect(openClawMessagesRes.body.error).toMatch(/not available for OpenClaw/i);
   });

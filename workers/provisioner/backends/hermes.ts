@@ -18,10 +18,9 @@ const {
 const HERMES_RUNTIME_PORT = 8642;
 const HERMES_HOME = "/opt/data";
 const HERMES_WORKSPACE = `${HERMES_HOME}/workspace`;
+const HERMES_DASHBOARD_LOG = `${HERMES_HOME}/hermes-dashboard.log`;
 const HERMES_ENTRYPOINT = "/opt/hermes/docker/entrypoint.sh";
 const HERMES_BIN = "/opt/hermes/.venv/bin/hermes";
-const CONTAINER_STDOUT_FD = "/proc/1/fd/1";
-const CONTAINER_STDERR_FD = "/proc/1/fd/2";
 
 function isMutableImageReference(imgName) {
   const ref = String(imgName || "").trim();
@@ -39,7 +38,7 @@ function buildHermesStartCommand() {
     "set -eu",
     `HERMES_BIN="${HERMES_BIN}"`,
     '[ -x "$HERMES_BIN" ] || HERMES_BIN="$(command -v hermes)"',
-    `nohup "$HERMES_BIN" dashboard --host 0.0.0.0 --insecure --no-open >> ${CONTAINER_STDOUT_FD} 2>> ${CONTAINER_STDERR_FD} &`,
+    `nohup "$HERMES_BIN" dashboard --host 0.0.0.0 --insecure --no-open >> ${HERMES_DASHBOARD_LOG} 2>&1 &`,
     'exec "$HERMES_BIN" gateway run',
   ].join("\n");
 

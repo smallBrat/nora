@@ -56,7 +56,7 @@ cd e2e && npm run smoke:runtime-path        # Runtime resolution
 cd e2e && npm run capture:operator-readme   # Regenerate README screenshots
 ```
 
-CI (`.github/workflows/ci.yml`) runs backend tests + E2E smoke on every PR and push to master under Node 24.
+CI is split across `.github/workflows/ci-quality.yml`, `.github/workflows/ci-security.yml`, `.github/workflows/ci-compose.yml`, and `.github/workflows/ci-codeql.yml` on pull requests and pushes to `master` under Node 24.
 
 ## Architecture
 
@@ -141,7 +141,7 @@ Commonly toggled: `PLATFORM_MODE` (`selfhosted` or `paas`), `ENABLED_RUNTIME_FAM
 
 - WebSocket upgrade is handled at the nginx layer; the Express app attaches WS handlers via `attachGatewayWS` — do not add duplicate upgrade headers.
 - SSE chat endpoints (`/api/agents/*/gateway/chat`) have chunked transfer encoding disabled for real-time streaming.
-- NextAuth callbacks are proxied through nginx before reaching the frontend; large header buffers are configured for cookie/auth tokens.
+- OAuth callbacks are handled by the marketing app before redirecting into backend-issued HttpOnly session cookies; large header buffers are configured for cookie/auth tokens.
 - Gateway UI/assets and logs/terminal WebSocket paths (`/api/ws/`) are routed explicitly.
 
 ## Maintenance Rule

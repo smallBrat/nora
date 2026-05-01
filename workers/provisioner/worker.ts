@@ -363,8 +363,6 @@ python3 - <<'PY'
 import json
 from pathlib import Path
 
-import yaml
-
 from hermes_cli.config import get_config_path, load_config
 
 payload = json.loads(${JSON.stringify(payloadJson)})
@@ -399,7 +397,8 @@ config_path = Path(get_config_path())
 config_path.parent.mkdir(parents=True, exist_ok=True)
 
 with config_path.open("w", encoding="utf-8") as handle:
-    yaml.safe_dump(config, handle, sort_keys=False)
+    handle.write(json.dumps(config, indent=2))
+    handle.write("\\n")
 
 print(json.dumps({"ok": True}))
 PY`.trim();

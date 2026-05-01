@@ -8,6 +8,7 @@ const { URL } = require("url");
 const ProvisionerBackend = require("./interface");
 const {
   buildOpenClawInstallCommand,
+  buildOpenClawConfigMergeScript,
   buildRuntimeBootstrapFiles,
   buildRuntimeEnv,
   buildTemplatePayloadBootstrapFiles,
@@ -497,21 +498,15 @@ class ProxmoxBackend extends ProvisionerBackend {
         isNemoClaw ? ["openclaw@latest", "nemoclaw@latest"] : ["openclaw@latest"],
       ),
       "mkdir -p ~/.openclaw/devices /var/log /root/.openclaw/workspace /root/.openclaw/agents/main/agent",
-      "cat <<'__NORA_GATEWAY_CONFIG__' > ~/.openclaw/openclaw.json",
-      JSON.stringify(
-        {
-          gateway: {
-            port: OPENCLAW_GATEWAY_PORT,
-            bind: "lan",
-            mode: "local",
-            reload: { mode: "hot" },
-            auth: { password: gatewayToken },
-          },
+      ...buildOpenClawConfigMergeScript({
+        gateway: {
+          port: OPENCLAW_GATEWAY_PORT,
+          bind: "lan",
+          mode: "local",
+          reload: { mode: "hot" },
+          auth: { password: gatewayToken },
         },
-        null,
-        2,
-      ),
-      "__NORA_GATEWAY_CONFIG__",
+      }),
       "cat <<'__NORA_PAIRED_DEVICES__' > ~/.openclaw/devices/paired.json",
       pairedJson,
       "__NORA_PAIRED_DEVICES__",

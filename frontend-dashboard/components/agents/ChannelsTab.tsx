@@ -3,17 +3,17 @@ import {
   AlertTriangle,
   ChevronDown,
   ChevronUp,
+  Link2,
   Loader2,
   LogOut,
   MessagesSquare,
   Pencil,
-  Plus,
   Power,
   QrCode,
   RefreshCw,
   Save,
   SearchCheck,
-  Trash2,
+  Settings,
   X,
 } from "lucide-react";
 import MessageTimeline from "./MessageTimeline";
@@ -197,15 +197,15 @@ function createEmptyCreatePairingState(channelType = ""): CreatePairingState {
 }
 
 function getTypeId(entry: { id?: string; type?: string } | null | undefined) {
-  return String(entry?.type || entry?.id || "").trim().toLowerCase();
+  return String(entry?.type || entry?.id || "")
+    .trim()
+    .toLowerCase();
 }
 
 function prettifyStatus(value: string | null | undefined) {
   const normalized = String(value || "").trim();
   if (!normalized) return "Unknown";
-  return normalized
-    .replace(/[_-]+/g, " ")
-    .replace(/\b\w/g, (match) => match.toUpperCase());
+  return normalized.replace(/[_-]+/g, " ").replace(/\b\w/g, (match) => match.toUpperCase());
 }
 
 function formatTimestamp(value: string | null | undefined) {
@@ -220,7 +220,11 @@ function formatTimestamp(value: string | null | undefined) {
 function channelTone(state: string | null | undefined, enabled: boolean) {
   if (!enabled) return "bg-slate-100 text-slate-600";
 
-  switch (String(state || "").trim().toLowerCase()) {
+  switch (
+    String(state || "")
+      .trim()
+      .toLowerCase()
+  ) {
     case "connected":
     case "running":
       return "bg-emerald-50 text-emerald-700";
@@ -328,9 +332,7 @@ function normalizeChannel(raw: any): ChannelRecord {
             running: raw.status.running === true,
             healthState: raw.status.healthState ? String(raw.status.healthState) : null,
             lastError: raw.status.lastError ? String(raw.status.lastError) : null,
-            lastConnectedAt: raw.status.lastConnectedAt
-              ? String(raw.status.lastConnectedAt)
-              : null,
+            lastConnectedAt: raw.status.lastConnectedAt ? String(raw.status.lastConnectedAt) : null,
             lastProbeAt: raw.status.lastProbeAt ? String(raw.status.lastProbeAt) : null,
           }
         : {
@@ -417,7 +419,9 @@ function buildChannelFromTypeDefinition(
   typeName: string,
   definition: ChannelTypeDefinition | null,
 ): ChannelRecord {
-  const normalizedType = String(typeName || getTypeId(definition)).trim().toLowerCase();
+  const normalizedType = String(typeName || getTypeId(definition))
+    .trim()
+    .toLowerCase();
   return {
     id: normalizedType,
     type: normalizedType,
@@ -429,7 +433,7 @@ function buildChannelFromTypeDefinition(
     selectionLabel: definition?.label,
     detailLabel: definition?.detailLabel || definition?.label,
     configured: false,
-    enabled: true,
+    enabled: false,
     readOnly: false,
     accountCount: 0,
     defaultAccountId: "default",
@@ -446,8 +450,8 @@ function buildChannelFromTypeDefinition(
     },
     actions: {
       canEdit: true,
-      canToggle: true,
-      canDelete: true,
+      canToggle: false,
+      canDelete: false,
       canTest: false,
       canViewMessages: false,
       canQrLogin: definition?.actions?.canQrLogin === true,
@@ -467,7 +471,9 @@ function getValueAtPath(source: Record<string, any>, path: string) {
 }
 
 function setValueAtPath(target: Record<string, any>, path: string, value: unknown) {
-  const segments = String(path || "").split(".").filter(Boolean);
+  const segments = String(path || "")
+    .split(".")
+    .filter(Boolean);
   if (segments.length === 0) return target;
 
   let cursor: Record<string, any> = target;
@@ -548,10 +554,12 @@ function hasRequiredValue(
 ) {
   if (field.type === "boolean") return true;
   if (field.type === "list") {
-    return String(rawValue || "")
-      .split("\n")
-      .map((entry) => entry.trim())
-      .filter(Boolean).length > 0;
+    return (
+      String(rawValue || "")
+        .split("\n")
+        .map((entry) => entry.trim())
+        .filter(Boolean).length > 0
+    );
   }
   if (field.type === "password") {
     return String(rawValue || "").trim() !== "" || currentValue === REDACTED_SECRET;
@@ -688,7 +696,9 @@ function extractQrText(payload: any) {
 }
 
 function loginCompleted(payload: any) {
-  const status = String(payload?.status || payload?.state || "").trim().toLowerCase();
+  const status = String(payload?.status || payload?.state || "")
+    .trim()
+    .toLowerCase();
   return (
     payload?.success === true ||
     payload?.connected === true ||
@@ -702,12 +712,7 @@ function loginCompleted(payload: any) {
 }
 
 function describeLoginResult(payload: any) {
-  const candidates = [
-    payload?.message,
-    payload?.statusMessage,
-    payload?.state,
-    payload?.status,
-  ];
+  const candidates = [payload?.message, payload?.statusMessage, payload?.state, payload?.status];
 
   const match = candidates.find((value) => typeof value === "string" && value.trim());
   return match ? String(match) : "";
@@ -726,10 +731,7 @@ function ChannelStatePill({
 }) {
   return (
     <span
-      className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${channelTone(
-        state,
-        enabled,
-      )}`}
+      className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${channelTone(state, enabled)}`}
     >
       {prettifyStatus(enabled ? state || "configured" : "disabled")}
     </span>
@@ -957,7 +959,8 @@ function QrLoginDialog({
               Pairing Status
             </p>
             <p className="mt-2 text-sm font-medium text-slate-700">
-              {state.status || "Scan the QR code in your messaging app, then check the login state."}
+              {state.status ||
+                "Scan the QR code in your messaging app, then check the login state."}
             </p>
           </div>
         </div>
@@ -974,7 +977,11 @@ function QrLoginDialog({
             disabled={state.starting}
             className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-50"
           >
-            {state.starting ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+            {state.starting ? (
+              <Loader2 size={12} className="animate-spin" />
+            ) : (
+              <RefreshCw size={12} />
+            )}
             Refresh QR
           </button>
           <button
@@ -1007,9 +1014,7 @@ export default function ChannelsTab({ agentId }: { agentId: string }) {
   const [editorName, setEditorName] = useState("");
   const [editorError, setEditorError] = useState("");
   const [formValues, setFormValues] = useState<FormValues>({});
-  const [typeDefinitions, setTypeDefinitions] = useState<Record<string, ChannelTypeDefinition>>(
-    {},
-  );
+  const [typeDefinitions, setTypeDefinitions] = useState<Record<string, ChannelTypeDefinition>>({});
   const [loadingType, setLoadingType] = useState(false);
   const [saving, setSaving] = useState(false);
   const [expandedChannelId, setExpandedChannelId] = useState("");
@@ -1132,7 +1137,9 @@ export default function ChannelsTab({ agentId }: { agentId: string }) {
   }, []);
 
   async function ensureTypeDefinition(typeName: string) {
-    const normalizedType = String(typeName || "").trim().toLowerCase();
+    const normalizedType = String(typeName || "")
+      .trim()
+      .toLowerCase();
     if (!normalizedType) return null;
 
     const cached = typeDefinitions[normalizedType];
@@ -1142,7 +1149,9 @@ export default function ChannelsTab({ agentId }: { agentId: string }) {
 
     const baseDefinition =
       cached ||
-      payload.availableTypes.find((entry) => entry.type === normalizedType || entry.id === normalizedType) ||
+      payload.availableTypes.find(
+        (entry) => entry.type === normalizedType || entry.id === normalizedType,
+      ) ||
       null;
 
     if (
@@ -1217,11 +1226,11 @@ export default function ChannelsTab({ agentId }: { agentId: string }) {
   const creatableTypes = payload.capabilities.supportsArbitraryNames
     ? payload.availableTypes
     : payload.availableTypes.filter((type) => !configuredTypeIds.has(type.type));
-  const totalConfigured = payload.channels.length;
-  const totalConnected = payload.channels.filter(
-    (channel) => channel.status?.connected || channel.status?.state === "connected",
+  const totalConfigured = payload.channels.filter((channel) => channel.configured).length;
+  const totalEnabled = payload.channels.filter((channel) => channel.enabled !== false).length;
+  const totalErrors = payload.channels.filter((channel) =>
+    Boolean(channel.status?.lastError),
   ).length;
-  const totalErrors = payload.channels.filter((channel) => Boolean(channel.status?.lastError)).length;
 
   async function openCreateEditor() {
     const firstType = getTypeId(creatableTypes[0]);
@@ -1244,7 +1253,9 @@ export default function ChannelsTab({ agentId }: { agentId: string }) {
   }
 
   async function handleSave() {
-    const normalizedType = String(selectedType || "").trim().toLowerCase();
+    const normalizedType = String(selectedType || "")
+      .trim()
+      .toLowerCase();
     if (!normalizedType) return;
 
     const definition = await ensureTypeDefinition(normalizedType);
@@ -1272,13 +1283,15 @@ export default function ChannelsTab({ agentId }: { agentId: string }) {
           ? `/api/agents/${agentId}/channels`
           : `/api/agents/${agentId}/channels/${editingChannelId || normalizedType}`;
       const method = editorMode === "create" ? "POST" : "PATCH";
-      const body: Record<string, any> =
-        editorMode === "create" ? { type: normalizedType } : {};
+      const body: Record<string, any> = editorMode === "create" ? { type: normalizedType } : {};
 
       if (payload.capabilities.supportsArbitraryNames) {
         body.name = editorName.trim();
       }
       body.config = config;
+      if (payload.runtime === "openclaw") {
+        body.enabled = true;
+      }
 
       const res = await fetchWithAuth(endpoint, {
         method,
@@ -1290,7 +1303,13 @@ export default function ChannelsTab({ agentId }: { agentId: string }) {
         throw new Error(data.error || "Failed to save channel");
       }
 
-      toast.success(editorMode === "create" ? "Channel created" : "Channel updated");
+      toast.success(
+        payload.runtime === "openclaw"
+          ? "Channel setup saved"
+          : editorMode === "create"
+            ? "Channel created"
+            : "Channel updated",
+      );
       closeEditor();
       await loadChannels({ quiet: true });
     } catch (nextError: any) {
@@ -1313,7 +1332,9 @@ export default function ChannelsTab({ agentId }: { agentId: string }) {
         throw new Error(data.error || "Failed to delete channel");
       }
 
-      toast.success(payload.runtime === "openclaw" ? "Channel configuration removed" : "Channel deleted");
+      toast.success(
+        payload.runtime === "openclaw" ? "Channel configuration removed" : "Channel deleted",
+      );
       await loadChannels({ quiet: true });
     } catch (nextError: any) {
       toast.error(nextError.message || "Failed to delete channel");
@@ -1377,7 +1398,9 @@ export default function ChannelsTab({ agentId }: { agentId: string }) {
     setLoadingMessagesId(channel.id);
 
     try {
-      const res = await fetchWithAuth(`/api/agents/${agentId}/channels/${channel.id}/messages?limit=50`);
+      const res = await fetchWithAuth(
+        `/api/agents/${agentId}/channels/${channel.id}/messages?limit=50`,
+      );
       const data = await parseJson(res);
       if (!res.ok) {
         throw new Error(data.error || "Failed to load channel messages");
@@ -1433,9 +1456,7 @@ export default function ChannelsTab({ agentId }: { agentId: string }) {
               qrDataUrl: extractQrDataUrl(data) || current.qrDataUrl,
               qrText: extractQrText(data) || current.qrText,
               status:
-                describeLoginResult(data) ||
-                current.status ||
-                "Waiting for the scan to complete.",
+                describeLoginResult(data) || current.status || "Waiting for the scan to complete.",
               error: "",
               checking: false,
             }
@@ -1509,10 +1530,7 @@ export default function ChannelsTab({ agentId }: { agentId: string }) {
         ...current,
         qrDataUrl: extractQrDataUrl(data) || current.qrDataUrl,
         qrText: extractQrText(data) || current.qrText,
-        status:
-          describeLoginResult(data) ||
-          current.status ||
-          "Waiting for the scan to complete.",
+        status: describeLoginResult(data) || current.status || "Waiting for the scan to complete.",
         error: "",
         checking: false,
       }));
@@ -1548,7 +1566,9 @@ export default function ChannelsTab({ agentId }: { agentId: string }) {
   }
 
   async function handleCreateConnect() {
-    const normalizedType = String(selectedType || "").trim().toLowerCase();
+    const normalizedType = String(selectedType || "")
+      .trim()
+      .toLowerCase();
     if (!normalizedType) return;
 
     const definition = await ensureTypeDefinition(normalizedType);
@@ -1566,25 +1586,21 @@ export default function ChannelsTab({ agentId }: { agentId: string }) {
     });
 
     try {
-      const res = await fetchWithAuth(
-        `/api/agents/${agentId}/channels/${normalizedType}/connect`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            force: true,
-            accountId: channel.defaultAccountId || undefined,
-            timeoutMs: 30000,
-          }),
-        },
-      );
+      const res = await fetchWithAuth(`/api/agents/${agentId}/channels/${normalizedType}/connect`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          force: true,
+          accountId: channel.defaultAccountId || undefined,
+          timeoutMs: 30000,
+        }),
+      });
       const data = await parseJson(res);
       if (!res.ok) {
         throw new Error(data.error || "Failed to connect channel");
       }
 
-      const loginPayload =
-        data?.login && typeof data.login === "object" ? data.login : data;
+      const loginPayload = data?.login && typeof data.login === "object" ? data.login : data;
       if (loginCompleted(loginPayload)) {
         toast.success(describeLoginResult(loginPayload) || "Channel linked successfully");
         closeEditor();
@@ -1641,23 +1657,37 @@ export default function ChannelsTab({ agentId }: { agentId: string }) {
     });
 
     try {
-      const res = await fetchWithAuth(`/api/agents/${agentId}/channels/${channel.id}/login`, {
+      const res = await fetchWithAuth(`/api/agents/${agentId}/channels/${channel.id}/connect`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ force: true }),
+        body: JSON.stringify({
+          force: true,
+          accountId: channel.defaultAccountId || undefined,
+          timeoutMs: 30000,
+        }),
       });
       const data = await parseJson(res);
       if (!res.ok) {
-        throw new Error(data.error || "Failed to start login");
+        throw new Error(data.error || "Failed to link channel");
+      }
+
+      const loginPayload = data?.login && typeof data.login === "object" ? data.login : data;
+      if (loginCompleted(loginPayload)) {
+        toast.success(describeLoginResult(loginPayload) || "Channel linked successfully");
+        closeLoginDialog();
+        await loadChannels({ quiet: true });
+        return;
       }
 
       setLoginState({
         open: true,
         channel,
-        qrDataUrl: extractQrDataUrl(data),
-        qrText: extractQrText(data),
+        qrDataUrl: extractQrDataUrl(loginPayload) || extractQrDataUrl(data),
+        qrText: extractQrText(loginPayload) || extractQrText(data),
         status:
-          describeLoginResult(data) || "Scan the QR code in the messaging app to link the channel.",
+          describeLoginResult(loginPayload) ||
+          describeLoginResult(data) ||
+          "Scan the QR code in the messaging app to link the channel.",
         error: "",
         starting: false,
         checking: false,
@@ -1668,7 +1698,7 @@ export default function ChannelsTab({ agentId }: { agentId: string }) {
         void checkLoginStatus(channel.id, { silent: true });
       }, 2500);
     } catch (nextError: any) {
-      const message = nextError.message || "Failed to start login";
+      const message = nextError.message || "Failed to link channel";
       setLoginState({
         open: true,
         channel,
@@ -1711,7 +1741,9 @@ export default function ChannelsTab({ agentId }: { agentId: string }) {
 
   const selectedTypeDefinition =
     typeDefinitions[selectedType] ||
-    payload.availableTypes.find((entry) => entry.type === selectedType || entry.id === selectedType) ||
+    payload.availableTypes.find(
+      (entry) => entry.type === selectedType || entry.id === selectedType,
+    ) ||
     null;
   const createUsesQrConnect =
     editorMode === "create" &&
@@ -1720,7 +1752,9 @@ export default function ChannelsTab({ agentId }: { agentId: string }) {
   const createPairingHasQr = Boolean(createPairingState.qrDataUrl || createPairingState.qrText);
 
   useEffect(() => {
-    const normalizedType = String(selectedType || "").trim().toLowerCase();
+    const normalizedType = String(selectedType || "")
+      .trim()
+      .toLowerCase();
     if (!showEditor || !createUsesQrConnect || !normalizedType) return;
     if (
       createPairingState.starting ||
@@ -1762,9 +1796,7 @@ export default function ChannelsTab({ agentId }: { agentId: string }) {
             <p className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-700">
               {payload.runtime === "openclaw" ? "OpenClaw Catalog" : "Nora Channels"}
             </p>
-            <p className="mt-1 text-sm font-bold text-slate-900">
-              {payload.title || "Channels"}
-            </p>
+            <p className="mt-1 text-sm font-bold text-slate-900">{payload.title || "Channels"}</p>
             <p className="mt-1 text-xs text-slate-500">
               {payload.description ||
                 (payload.runtime === "openclaw"
@@ -1773,7 +1805,8 @@ export default function ChannelsTab({ agentId }: { agentId: string }) {
             </p>
             {payload.runtime === "openclaw" ? (
               <p className="mt-2 text-[11px] text-slate-500">
-                Available channel types mirror the OpenClaw CLI catalog, including QR pairing where the gateway exposes it.
+                Available channel types mirror the OpenClaw CLI catalog, including QR pairing where
+                the gateway exposes it.
               </p>
             ) : null}
           </div>
@@ -1785,35 +1818,43 @@ export default function ChannelsTab({ agentId }: { agentId: string }) {
               disabled={refreshing}
               className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-50"
             >
-              {refreshing ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+              {refreshing ? (
+                <Loader2 size={12} className="animate-spin" />
+              ) : (
+                <RefreshCw size={12} />
+              )}
               Refresh
             </button>
-            <button
-              onClick={() => {
-                void openCreateEditor();
-              }}
-              disabled={creatableTypes.length === 0}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <Plus size={12} />
-              Add Channel
-            </button>
+            {payload.runtime !== "openclaw" ? (
+              <button
+                onClick={() => {
+                  void openCreateEditor();
+                }}
+                disabled={creatableTypes.length === 0}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <MessagesSquare size={12} />
+                Add Channel
+              </button>
+            ) : null}
           </div>
         </div>
 
         <div className="grid gap-3 md:grid-cols-3">
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
-              Configured
+              {payload.runtime === "openclaw" ? "Available" : "Configured"}
             </p>
-            <p className="mt-2 text-sm font-bold text-slate-900">{totalConfigured}</p>
+            <p className="mt-2 text-sm font-bold text-slate-900">
+              {payload.runtime === "openclaw" ? payload.channels.length : totalConfigured}
+            </p>
           </div>
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
-              {payload.runtime === "openclaw" ? "Connected" : "Available Types"}
+              {payload.runtime === "openclaw" ? "Enabled" : "Available Types"}
             </p>
             <p className="mt-2 text-sm font-bold text-slate-900">
-              {payload.runtime === "openclaw" ? totalConnected : payload.availableTypes.length}
+              {payload.runtime === "openclaw" ? totalEnabled : payload.availableTypes.length}
             </p>
           </div>
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -1839,12 +1880,12 @@ export default function ChannelsTab({ agentId }: { agentId: string }) {
             <MessagesSquare size={24} className="mx-auto text-slate-300" />
             <p className="mt-3 text-sm font-bold text-slate-600">
               {payload.runtime === "openclaw"
-                ? "No OpenClaw channels are configured yet"
+                ? "No OpenClaw channels are available yet"
                 : "No channels configured yet"}
             </p>
             <p className="mt-1 text-xs text-slate-500">
               {payload.runtime === "openclaw"
-                ? "Choose a channel type from the OpenClaw catalog to connect it or edit its config."
+                ? "Refresh once the OpenClaw gateway exposes its channel catalog."
                 : "Add a channel to let this agent send and receive messages outside Nora."}
             </p>
           </div>
@@ -1853,11 +1894,22 @@ export default function ChannelsTab({ agentId }: { agentId: string }) {
             {payload.channels.map((channel) => {
               const typeDefinition =
                 typeDefinitions[channel.type] ||
-                payload.availableTypes.find((entry) => entry.type === channel.type || entry.id === channel.type) ||
+                payload.availableTypes.find(
+                  (entry) => entry.type === channel.type || entry.id === channel.type,
+                ) ||
                 null;
               const state = channel.status?.state || (channel.enabled ? "configured" : "disabled");
+              const isLinked =
+                channel.status?.connected === true ||
+                channel.status?.state === "connected" ||
+                channel.accounts?.some((account) => account.linked || account.connected) ||
+                false;
+              const displayLinked = channel.actions?.canQrLogin ? isLinked : channel.configured;
               const accountChips = (channel.accounts || []).slice(0, 3);
-              const moreAccounts = Math.max(0, (channel.accounts || []).length - accountChips.length);
+              const moreAccounts = Math.max(
+                0,
+                (channel.accounts || []).length - accountChips.length,
+              );
 
               return (
                 <div
@@ -1906,9 +1958,14 @@ export default function ChannelsTab({ agentId }: { agentId: string }) {
                             configured: {channel.configured ? "yes" : "no"}
                           </span>
                           {payload.runtime === "openclaw" ? (
-                            <span className="rounded-full bg-slate-100 px-2.5 py-1">
-                              accounts: {channel.accountCount || 0}
-                            </span>
+                            <>
+                              <span className="rounded-full bg-slate-100 px-2.5 py-1">
+                                linked: {displayLinked ? "yes" : "no"}
+                              </span>
+                              <span className="rounded-full bg-slate-100 px-2.5 py-1">
+                                accounts: {channel.accountCount || 0}
+                              </span>
+                            </>
                           ) : null}
                           {channel.status?.healthState ? (
                             <span className="rounded-full bg-slate-100 px-2.5 py-1">
@@ -1956,7 +2013,39 @@ export default function ChannelsTab({ agentId }: { agentId: string }) {
                       </div>
 
                       <div className="flex flex-wrap items-center gap-2">
-                        {channel.actions?.canEdit !== false && !channel.readOnly ? (
+                        {payload.runtime === "openclaw" && channel.actions?.canQrLogin ? (
+                          <button
+                            onClick={() => {
+                              void handleQrLogin(channel);
+                            }}
+                            disabled={busyAction === `${channel.id}:login`}
+                            className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 px-3 py-2 text-xs font-bold text-emerald-700 transition-colors hover:bg-emerald-50 disabled:opacity-50"
+                          >
+                            {busyAction === `${channel.id}:login` ? (
+                              <Loader2 size={12} className="animate-spin" />
+                            ) : (
+                              <Link2 size={12} />
+                            )}
+                            {isLinked ? "Relink" : "Link"}
+                          </button>
+                        ) : null}
+                        {payload.runtime === "openclaw" &&
+                        !channel.actions?.canQrLogin &&
+                        channel.actions?.canEdit !== false &&
+                        !channel.readOnly ? (
+                          <button
+                            onClick={() => {
+                              void openEditEditor(channel);
+                            }}
+                            className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 px-3 py-2 text-xs font-bold text-emerald-700 transition-colors hover:bg-emerald-50"
+                          >
+                            <Settings size={12} />
+                            {channel.configured ? "Edit Setup" : "Setup"}
+                          </button>
+                        ) : null}
+                        {payload.runtime !== "openclaw" &&
+                        channel.actions?.canEdit !== false &&
+                        !channel.readOnly ? (
                           <button
                             onClick={() => {
                               void openEditEditor(channel);
@@ -1967,7 +2056,7 @@ export default function ChannelsTab({ agentId }: { agentId: string }) {
                             Edit
                           </button>
                         ) : null}
-                        {channel.actions?.canToggle !== false ? (
+                        {channel.actions?.canToggle !== false && channel.configured ? (
                           <button
                             onClick={() => {
                               void handleToggle(channel);
@@ -1999,7 +2088,7 @@ export default function ChannelsTab({ agentId }: { agentId: string }) {
                             Test
                           </button>
                         ) : null}
-                        {channel.actions?.canQrLogin ? (
+                        {payload.runtime !== "openclaw" && channel.actions?.canQrLogin ? (
                           <button
                             onClick={() => {
                               void handleQrLogin(channel);
@@ -2031,7 +2120,9 @@ export default function ChannelsTab({ agentId }: { agentId: string }) {
                             Logout
                           </button>
                         ) : null}
-                        {channel.actions?.canDelete !== false && !channel.readOnly ? (
+                        {payload.runtime !== "openclaw" &&
+                        channel.actions?.canDelete !== false &&
+                        !channel.readOnly ? (
                           <button
                             onClick={() => {
                               void handleDelete(channel);
@@ -2042,7 +2133,7 @@ export default function ChannelsTab({ agentId }: { agentId: string }) {
                             {busyAction === `${channel.id}:delete` ? (
                               <Loader2 size={12} className="animate-spin" />
                             ) : (
-                              <Trash2 size={12} />
+                              <X size={12} />
                             )}
                             Delete
                           </button>
@@ -2094,7 +2185,11 @@ export default function ChannelsTab({ agentId }: { agentId: string }) {
             <div className="flex items-center justify-between border-b border-slate-100 p-4">
               <div>
                 <p className="text-sm font-bold text-slate-900">
-                  {editorMode === "create" ? "Add Channel" : "Edit Channel"}
+                  {payload.runtime === "openclaw"
+                    ? "Setup Channel"
+                    : editorMode === "create"
+                      ? "Add Channel"
+                      : "Edit Channel"}
                 </p>
                 <p className="mt-1 text-[11px] text-slate-500">
                   {payload.runtime === "openclaw"
@@ -2168,35 +2263,45 @@ export default function ChannelsTab({ agentId }: { agentId: string }) {
                 />
               ) : (
                 <>
-                  {(typeDefinitions[selectedType]?.description ||
-                    payload.availableTypes.find((entry) => entry.type === selectedType)?.description) ? (
+                  {typeDefinitions[selectedType]?.description ||
+                  payload.availableTypes.find((entry) => entry.type === selectedType)
+                    ?.description ? (
                     <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
                       {typeDefinitions[selectedType]?.description ||
-                        payload.availableTypes.find((entry) => entry.type === selectedType)?.description}
+                        payload.availableTypes.find((entry) => entry.type === selectedType)
+                          ?.description}
                     </div>
                   ) : null}
 
-                  {(typeDefinitions[selectedType]?.hasComplexFields ||
-                    payload.availableTypes.find((entry) => entry.type === selectedType)?.hasComplexFields) ? (
+                  {typeDefinitions[selectedType]?.hasComplexFields ||
+                  payload.availableTypes.find((entry) => entry.type === selectedType)
+                    ?.hasComplexFields ? (
                     <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                      Some advanced runtime settings are not fully editable here yet. Nora will preserve the rest of the channel config when it saves.
+                      Some advanced runtime settings are not fully editable here yet. Nora will
+                      preserve the rest of the channel config when it saves.
                     </div>
                   ) : null}
 
-                  {(typeDefinitions[selectedType]?.configFields ||
-                    payload.availableTypes.find((entry) => entry.type === selectedType)?.configFields ||
+                  {(
+                    typeDefinitions[selectedType]?.configFields ||
+                    payload.availableTypes.find((entry) => entry.type === selectedType)
+                      ?.configFields ||
                     []
                   ).length > 0 ? (
                     <div className="space-y-4">
-                      {(typeDefinitions[selectedType]?.configFields ||
-                        payload.availableTypes.find((entry) => entry.type === selectedType)?.configFields ||
+                      {(
+                        typeDefinitions[selectedType]?.configFields ||
+                        payload.availableTypes.find((entry) => entry.type === selectedType)
+                          ?.configFields ||
                         []
                       ).map((field) => (
                         <div key={field.key}>
                           {field.type !== "boolean" ? (
                             <label className="mb-1 block text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">
                               {field.label}
-                              {field.required ? <span className="ml-1 text-rose-500">*</span> : null}
+                              {field.required ? (
+                                <span className="ml-1 text-rose-500">*</span>
+                              ) : null}
                             </label>
                           ) : null}
 
@@ -2262,7 +2367,11 @@ export default function ChannelsTab({ agentId }: { agentId: string }) {
                 {saving || createPairingState.starting ? (
                   <Loader2 size={12} className="animate-spin" />
                 ) : createUsesQrConnect ? (
-                  createPairingHasQr ? <RefreshCw size={12} /> : <QrCode size={12} />
+                  createPairingHasQr ? (
+                    <RefreshCw size={12} />
+                  ) : (
+                    <QrCode size={12} />
+                  )
                 ) : (
                   <Save size={12} />
                 )}
@@ -2270,7 +2379,9 @@ export default function ChannelsTab({ agentId }: { agentId: string }) {
                   ? createPairingHasQr
                     ? "Refresh QR"
                     : "Connect Channel"
-                  : "Save Channel"}
+                  : payload.runtime === "openclaw"
+                    ? "Save Setup"
+                    : "Save Channel"}
               </button>
             </div>
           </div>

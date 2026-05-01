@@ -229,6 +229,61 @@ stamp_release_tracking_env() {
   ok "Release tracking stamped: ${current_version:-source checkout} @ ${current_commit:0:12}"
 }
 
+env_has_agent_hub_hash_secret() {
+  local env_path="$1"
+
+  awk -F= '
+    /^[[:space:]]*NORA_AGENT_HUB_API_KEY_HASH_SECRET[[:space:]]*=/ {
+      value = $0
+      sub(/^[^=]*=/, "", value)
+      sub(/[[:space:]]+#.*$/, "", value)
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+      if (value == "\"\"" || value == sprintf("%c%c", 39, 39)) {
+        value = ""
+      }
+      if (value != "") {
+        found = 1
+      }
+    }
+    END { exit found ? 0 : 1 }
+  ' "$env_path"
+}
+
+ensure_agent_hub_hash_secret_env() {
+  local env_path="$1" env_dir secret tmp_file
+
+  if [ ! -f "$env_path" ]; then
+    return 0
+  fi
+
+  if env_has_agent_hub_hash_secret "$env_path"; then
+    info "NORA_AGENT_HUB_API_KEY_HASH_SECRET already set; preserving existing value."
+    return 0
+  fi
+
+  secret="$(openssl rand -hex 32)"
+  env_dir="$(dirname "$env_path")"
+  tmp_file="$(mktemp "$env_dir/.nora-env.XXXXXX")"
+  awk -v secret="$secret" '
+    /^[[:space:]]*NORA_AGENT_HUB_API_KEY_HASH_SECRET[[:space:]]*=/ {
+      if (!wrote_secret) {
+        print "NORA_AGENT_HUB_API_KEY_HASH_SECRET=" secret
+        wrote_secret = 1
+      }
+      next
+    }
+    { print }
+    END {
+      if (!wrote_secret) {
+        if (NR > 0) print ""
+        print "NORA_AGENT_HUB_API_KEY_HASH_SECRET=" secret
+      }
+    }
+  ' "$env_path" > "$tmp_file"
+  mv "$tmp_file" "$env_path"
+  ok "NORA_AGENT_HUB_API_KEY_HASH_SECRET generated (64-char hex)"
+}
+
 remove_local_agent_containers() {
   local containers
   containers="$(
@@ -792,6 +847,7 @@ if [ "$SETUP_MODE" = "update" ]; then
   info "Code update mode keeps $ENV_FILE, Postgres/backup volumes, and provisioned instances."
   update_source_checkout
   refresh_release_tags
+  ensure_agent_hub_hash_secret_env "$ENV_FILE"
   stamp_release_tracking_env "$ENV_FILE"
   assert_nora_host_ports_available "$ENV_FILE"
   start_compose_stack
@@ -827,14 +883,14 @@ header "Generating Secrets"
 
 JWT_SECRET=$(openssl rand -hex 32)
 ENCRYPTION_KEY=$(openssl rand -hex 32)
-NEXTAUTH_SECRET=$(openssl rand -hex 32)
+NORA_AGENT_HUB_API_KEY_HASH_SECRET=$(openssl rand -hex 32)
 DB_USER="nora"
 DB_NAME="nora"
 DB_PASSWORD=$(openssl rand -hex 24)
 
 ok "JWT_SECRET      (64-char hex)"
 ok "ENCRYPTION_KEY  (64-char hex — AES-256-GCM)"
-ok "NEXTAUTH_SECRET (64-char hex)"
+ok "AGENT_HUB_HASH  (64-char hex)"
 ok "DB_PASSWORD     (48-char hex)"
 
 # ── Platform mode ────────────────────────────────────────────
@@ -1209,6 +1265,7 @@ cat > "$ENV_FILE" <<EOF
 # ── Required (auto-generated) ────────────────────────────────
 JWT_SECRET=${JWT_SECRET}
 ENCRYPTION_KEY=${ENCRYPTION_KEY}
+NORA_AGENT_HUB_API_KEY_HASH_SECRET=${NORA_AGENT_HUB_API_KEY_HASH_SECRET}
 
 # ── Bootstrap Admin Account (optional; seeded only when both are set securely) ──
 DEFAULT_ADMIN_EMAIL=${DEFAULT_ADMIN_EMAIL}
@@ -1238,7 +1295,6 @@ GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
 GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
 GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID}
 GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET}
-NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
 NEXTAUTH_URL=${NEXTAUTH_URL}
 
 # ── Platform Mode ────────────────────────────────────────────
@@ -1347,7 +1403,7 @@ else
   printf "  Admin:        Not pre-seeded (create via signup)\n"
   printf "  Password:     Not set\n"
 fi
-printf "  Secrets:      auto-generated (JWT, AES, NextAuth)\n"
+printf "  Secrets:      auto-generated (JWT, AES, Agent Hub)\n"
 printf "  Database:     PostgreSQL 15 (Docker Compose)\n"
 printf "  DB Access:    %s / auto-generated / %s (.env)\n" "$DB_USER" "$DB_NAME"
 printf "  Redis:        Redis 7 (Docker Compose)\n"

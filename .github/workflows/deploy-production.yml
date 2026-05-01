@@ -171,7 +171,7 @@ jobs:
             exit 1
           fi
 
-          for required_key in JWT_SECRET ENCRYPTION_KEY NEXTAUTH_SECRET DB_PASSWORD; do
+          for required_key in JWT_SECRET ENCRYPTION_KEY DB_PASSWORD; do
             if ! grep -Eq "^${required_key}=.+" "$DEPLOY_ENV_FILE"; then
               echo "Deploy env file $DEPLOY_ENV_FILE is missing required key: $required_key" >&2
               exit 1

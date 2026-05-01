@@ -20,6 +20,8 @@ docker-compose.override.yml
 nginx.public.conf
 nginx.conf.tls
 
-# generated proof assets and private-first docs
+# documentation, plans, and testing reports
 docs/
+plans/
+testing-report/
 e2e/artifacts/

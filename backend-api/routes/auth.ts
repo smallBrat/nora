@@ -327,15 +327,13 @@ router.patch("/profile", authenticateToken, async (req, res) => {
 
 // POST /auth/session-upgrade — upgrade a Bearer token into an HttpOnly cookie.
 //
-// The NextAuth flow (frontend-marketing) talks to /auth/login and
-// /auth/oauth-login server-to-server, so the Set-Cookie response lands on the
-// NextAuth server rather than the user's browser. The callback bridge page
-// then hits this endpoint from the browser, passing its JWT in the
-// Authorization header, so the cookie can be set directly on the user's
-// session. The token is re-verified here — a forged Bearer gets rejected.
+// Legacy bridge endpoint for older marketing auth flows that produced a
+// backend-issued JWT server-side, then needed to upgrade it into the browser's
+// HttpOnly session cookie. The token is re-verified here — a forged Bearer gets
+// rejected.
 //
-// Path avoids /auth/session because nginx routes /api/auth/session to
-// NextAuth's own session endpoint on the marketing site.
+// Path avoids /auth/session to remain compatible with older deployments that
+// routed that path through the marketing app.
 router.post("/session-upgrade", authenticateToken, (req, res) => {
   const authHeader = req.headers["authorization"] || "";
   const [, token] = authHeader.split(" ");

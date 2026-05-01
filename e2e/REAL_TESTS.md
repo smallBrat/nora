@@ -10,8 +10,10 @@ security fixes shipped in integrations.ts / channels/adapters.ts.
   OpenClaw/Hermes × Docker/K8s/NemoClaw matrix.
 - `specs/real-integrations.spec.ts` — §4 GitHub + Slack + URL-based integration
   with real-cred success and SSRF-guard refusal.
-- `specs/real-channels.spec.ts` — §5 Telegram + Discord delivery with real
-  creds and SSRF-guard refusal.
+- `specs/real-channels.spec.ts` — §5 OpenClaw channel delivery with real
+  creds. Discord runs only with `REAL_OPENCLAW_DISCORD_CONFIG_JSON`; webhook
+  URLs belong to the legacy adapter and are not accepted by OpenClaw's Discord
+  Bot API schema.
 - `specs/support/realConfig.ts` — `.env.real` loader and skip gates.
 - `specs/support/agents.ts` — API helpers.
 - `.env.real.example` — fill in and copy to `.env.real`.
@@ -33,7 +35,9 @@ security fixes shipped in integrations.ts / channels/adapters.ts.
 3. **`.env.real` filled in**:
    ```bash
    cp .env.real.example .env.real
-   # edit — at minimum REAL_ANTHROPIC_API_KEY (or REAL_OPENAI_API_KEY).
+   # edit — at minimum REAL_LLM_PROVIDER_ID and its matching API key
+   # (REAL_ANTHROPIC_API_KEY, REAL_OPENAI_API_KEY, REAL_GOOGLE_API_KEY,
+   # or REAL_LLM_API_KEY as a generic fallback).
    ```
 
 ## Running
@@ -66,12 +70,12 @@ up.
 
 ## What each cell expects
 
-| Cell | Enabled by | Extra host requirements |
-| --- | --- | --- |
-| OpenClaw + Docker | `REAL_ENABLE_OPENCLAW_DOCKER=1` (default) | Docker socket reachable from `backend-api` / `worker-provisioner` (already wired in the default compose) |
-| OpenClaw + K8s | `REAL_ENABLE_OPENCLAW_K8S=1` | Control plane started via `docker compose -f docker-compose.yml -f docker-compose.kind.yml up -d`, with `kind` + `kubectl` on the host |
-| OpenClaw + NemoClaw | `REAL_ENABLE_OPENCLAW_NEMOCLAW=1` | `NVIDIA_API_KEY` set in `.env` for the stack |
-| Hermes + Docker | `REAL_ENABLE_HERMES_DOCKER=1` | First run pulls a large Hermes image — warm the cache or raise `REAL_PROVISION_TIMEOUT_MS` |
+| Cell                | Enabled by                                | Extra host requirements                                                                                                                |
+| ------------------- | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| OpenClaw + Docker   | `REAL_ENABLE_OPENCLAW_DOCKER=1` (default) | Docker socket reachable from `backend-api` / `worker-provisioner` (already wired in the default compose)                               |
+| OpenClaw + K8s      | `REAL_ENABLE_OPENCLAW_K8S=1`              | Control plane started via `docker compose -f docker-compose.yml -f docker-compose.kind.yml up -d`, with `kind` + `kubectl` on the host |
+| OpenClaw + NemoClaw | `REAL_ENABLE_OPENCLAW_NEMOCLAW=1`         | `NVIDIA_API_KEY` set in `.env` for the stack                                                                                           |
+| Hermes + Docker     | `REAL_ENABLE_HERMES_DOCKER=1`             | First run pulls a large Hermes image — warm the cache or raise `REAL_PROVISION_TIMEOUT_MS`                                             |
 
 Each cell runs in order: `[L1] deploy → [L2] reach running → [L3] gateway
 reachable → [L4] chat roundtrip → [L5] logs/events → [L7] metrics populate →

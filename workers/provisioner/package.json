@@ -11,8 +11,8 @@
   "dependencies": {
     "@kubernetes/client-node": "^1.4.0",
     "axios": "^1.15.0",
-    "bullmq": "^5.74.1",
-    "dockerode": "^4.0.10",
+    "bullmq": "^5.76.4",
+    "dockerode": "5.0.0",
     "ioredis": "^5.10.1",
     "pg": "^8.11.5",
     "ssh2": "^1.17.0",

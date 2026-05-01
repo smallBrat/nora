@@ -6,6 +6,8 @@
 const { WebSocketServer, WebSocket } = require("ws");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
+const dns = require("node:dns").promises;
+const net = require("node:net");
 const db = require("./db");
 const integrations = require("./integrations");
 const { resolveAgentRuntimeFamily } = require("./agentRuntimeFields");
@@ -21,6 +23,12 @@ const CONNECT_TIMEOUT = 8000;
 const CALL_TIMEOUT = 30000;
 const CHAT_TIMEOUT = 120000;
 const RELAY_CONNECT_DELAY_MS = 750;
+const DOCKER_GATEWAY_HOST_PORT_MIN = 19000;
+const DOCKER_GATEWAY_HOST_PORT_MAX = 19999;
+const K8S_NODE_PORT_MIN = 30000;
+const K8S_NODE_PORT_MAX = 32767;
+const GATEWAY_PROXY_PATH_RE = /^[A-Za-z0-9._~/-]*$/;
+const GATEWAY_PROXY_SEARCH_RE = /^\?[A-Za-z0-9._~!$&'()*+,;=:@/?%-]*$/;
 
 // Hostname must be a plain DNS name / IP literal — no URL meta-chars that
 // could alter the parsed origin (no "@", "/", "?", "#", ":", whitespace, etc.).
@@ -42,6 +50,141 @@ function assertSafeAgentAddress(addr, label = "agent gateway") {
     throw new Error(`${label} port is out of range`);
   }
   return { host, port };
+}
+
+function parseCsvSet(value) {
+  return new Set(
+    String(value || "")
+      .split(",")
+      .map((entry) => entry.trim().toLowerCase())
+      .filter(Boolean),
+  );
+}
+
+function parseCsvPortSet(value) {
+  return new Set(
+    String(value || "")
+      .split(",")
+      .map((entry) => Number.parseInt(entry.trim(), 10))
+      .filter((port) => Number.isInteger(port) && port >= 1 && port <= 65535),
+  );
+}
+
+function isAllowedGatewayPort(port) {
+  const configuredPorts = parseCsvPortSet(process.env.NORA_GATEWAY_PROXY_ALLOWED_PORTS);
+  const configuredK8sNodePort = Number.parseInt(process.env.K8S_GATEWAY_NODE_PORT || "", 10);
+  return (
+    port === OPENCLAW_GATEWAY_PORT ||
+    (port >= DOCKER_GATEWAY_HOST_PORT_MIN && port <= DOCKER_GATEWAY_HOST_PORT_MAX) ||
+    (port >= K8S_NODE_PORT_MIN && port <= K8S_NODE_PORT_MAX) ||
+    configuredPorts.has(port) ||
+    port === configuredK8sNodePort
+  );
+}
+
+function isAllowedGatewayIPv4(address) {
+  const octets = address.split(".").map((part) => Number.parseInt(part, 10));
+  if (octets.length !== 4 || octets.some((part) => !Number.isInteger(part))) return false;
+  const [a, b] = octets;
+  if (a === 127 || a === 10) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 192 && b === 168) return true;
+  return false;
+}
+
+function isAllowedGatewayIPv6(address) {
+  const normalized = String(address || "").toLowerCase();
+  return normalized === "::1" || normalized.startsWith("fc") || normalized.startsWith("fd");
+}
+
+function isBlockedGatewayIP(address) {
+  const normalized = String(address || "").toLowerCase();
+  return (
+    normalized === "0.0.0.0" ||
+    normalized.startsWith("169.254.") ||
+    normalized.startsWith("224.") ||
+    normalized.startsWith("255.") ||
+    normalized === "::" ||
+    normalized.startsWith("fe80:")
+  );
+}
+
+function isAllowedGatewayIP(address, hostname) {
+  if (isBlockedGatewayIP(address)) return false;
+  const allowedHosts = parseCsvSet(process.env.NORA_GATEWAY_PROXY_ALLOWED_HOSTS);
+  if (allowedHosts.has(String(hostname || "").toLowerCase())) return true;
+  const ipVersion = net.isIP(address);
+  if (ipVersion === 4) return isAllowedGatewayIPv4(address);
+  if (ipVersion === 6) return isAllowedGatewayIPv6(address);
+  return false;
+}
+
+async function resolveGatewayHostForProxy(host, label = "agent gateway") {
+  const normalizedHost = String(host || "").trim();
+  if (net.isIP(normalizedHost)) {
+    if (!isAllowedGatewayIP(normalizedHost, normalizedHost)) {
+      throw new Error(`${label} host is not an allowed gateway address`);
+    }
+    return normalizedHost;
+  }
+
+  let addresses;
+  try {
+    addresses = await dns.lookup(normalizedHost, { all: true, verbatim: true });
+  } catch (error) {
+    throw new Error(`${label} host could not be resolved (${error.code || error.message})`);
+  }
+
+  const firstAllowed = addresses.find((entry) => isAllowedGatewayIP(entry.address, normalizedHost));
+  if (!firstAllowed) {
+    throw new Error(`${label} host does not resolve to an allowed gateway network`);
+  }
+  return firstAllowed.address;
+}
+
+function hostHeaderForGateway(host, port) {
+  return net.isIP(host) === 6 ? `[${host}]:${port}` : `${host}:${port}`;
+}
+
+function hostForUrl(host) {
+  return net.isIP(host) === 6 ? `[${host}]` : host;
+}
+
+function normalizeProxySearch(search) {
+  const normalized = String(search || "");
+  if (!normalized) return "";
+  if (!GATEWAY_PROXY_SEARCH_RE.test(normalized) || /[\r\n]/.test(normalized)) {
+    throw new Error("gateway query string is not valid");
+  }
+  return normalized;
+}
+
+function normalizeProxyPath(gatewayPath) {
+  const cleanPath = String(gatewayPath || "").replace(/^\/+/, "");
+  if (
+    cleanPath.startsWith("//") ||
+    cleanPath.includes("..") ||
+    !GATEWAY_PROXY_PATH_RE.test(cleanPath)
+  ) {
+    throw new Error("gateway path is not valid");
+  }
+  return cleanPath;
+}
+
+async function resolveSafeGatewayHttpTarget(agent, gatewayPath = "", search = "") {
+  const addr = assertSafeAgentAddress(resolveGatewayAddress(agent));
+  if (!isAllowedGatewayPort(addr.port)) {
+    throw new Error("agent gateway port is not allowed for proxying");
+  }
+  const resolvedHost = await resolveGatewayHostForProxy(addr.host);
+  const targetUrl = new URL(`http://${hostForUrl(resolvedHost)}:${addr.port}/`);
+  const cleanPath = normalizeProxyPath(gatewayPath);
+  targetUrl.pathname = cleanPath ? `/${cleanPath}` : "/";
+  targetUrl.search = normalizeProxySearch(search);
+  return {
+    url: targetUrl.toString(),
+    hostHeader: hostHeaderForGateway(addr.host, addr.port),
+  };
 }
 
 // ─── Device Identity (Ed25519 keypair for Gateway auth) ──────────
@@ -352,6 +495,9 @@ async function getConnection(agent) {
   const rawAddr = resolveGatewayAddress(agent);
   if (!rawAddr) throw new Error("Agent gateway not yet provisioned");
   const addr = assertSafeAgentAddress(rawAddr);
+  if (!isAllowedGatewayPort(addr.port)) {
+    throw new Error("Agent gateway port is not allowed");
+  }
   const key = `${addr.host}:${addr.port}`;
   let conn = pool.get(key);
   if (conn?.isAlive) return conn;
@@ -794,12 +940,19 @@ function createGatewayRouter() {
     return async (req, res) => {
       try {
         const gatewayPath = buildGatewayProxyPath(req, prefix);
-        const addr = assertSafeAgentAddress(resolveGatewayAddress(req.agent));
-        const targetUrl = `http://${addr.host}:${addr.port}/${gatewayPath}${req._parsedUrl?.search || ""}`;
+        const target = await resolveSafeGatewayHttpTarget(
+          req.agent,
+          gatewayPath,
+          req._parsedUrl?.search || "",
+        );
 
-        const resp = await fetch(targetUrl, {
+        const resp = await fetch(target.url, {
           method: req.method,
-          headers: { Accept: req.headers.accept || "*/*", "Accept-Encoding": "identity" },
+          headers: {
+            Accept: req.headers.accept || "*/*",
+            "Accept-Encoding": "identity",
+            Host: target.hostHeader,
+          },
           signal: AbortSignal.timeout(15000),
         });
 
@@ -822,9 +975,11 @@ function createGatewayRouter() {
   async function proxyGatewayFavicon(req, res) {
     try {
       const fullPath = req.path.replace(/^\/+/, "") || "favicon.svg";
-      const addr = assertSafeAgentAddress(resolveGatewayAddress(req.agent));
-      const targetUrl = `http://${addr.host}:${addr.port}/${fullPath}`;
-      const resp = await fetch(targetUrl, { signal: AbortSignal.timeout(5000) });
+      const target = await resolveSafeGatewayHttpTarget(req.agent, fullPath);
+      const resp = await fetch(target.url, {
+        headers: { Host: target.hostHeader },
+        signal: AbortSignal.timeout(5000),
+      });
       res.status(resp.status);
       const ct = resp.headers.get("content-type");
       if (ct) res.setHeader("Content-Type", ct);
@@ -940,6 +1095,9 @@ function attachGatewayWS(server) {
       let relayConnectTimer = null;
 
       const addr = assertSafeAgentAddress(resolveGatewayAddress(agent));
+      if (!isAllowedGatewayPort(addr.port)) {
+        throw new Error("Agent gateway port is not allowed");
+      }
       const gwWs = new WebSocket(`ws://${addr.host}:${addr.port}`);
       const role = "operator";
       const scopes = [
@@ -1146,4 +1304,11 @@ function evictConnection(target) {
   }
 }
 
-module.exports = { createGatewayRouter, attachGatewayWS, rpcCall, resolveAgent, evictConnection };
+module.exports = {
+  createGatewayRouter,
+  attachGatewayWS,
+  rpcCall,
+  resolveAgent,
+  evictConnection,
+  resolveSafeGatewayHttpTarget,
+};

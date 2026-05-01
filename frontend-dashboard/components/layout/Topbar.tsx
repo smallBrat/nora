@@ -60,12 +60,17 @@ export default function Topbar({ onMenuClick }) {
   return (
     <div className="h-16 md:h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 px-4 md:px-8 flex items-center justify-between gap-4 z-40 sticky top-0">
       <div className="flex items-center gap-4 min-w-0">
-        <button className="lg:hidden p-2 text-slate-500 hover:bg-slate-50 rounded-xl transition-all shrink-0" onClick={onMenuClick}>
+        <button
+          className="lg:hidden p-2 text-slate-500 hover:bg-slate-50 rounded-xl transition-all shrink-0"
+          onClick={onMenuClick}
+        >
           <Menu size={24} />
         </button>
 
         <div className="min-w-0">
-          <p className="text-sm md:text-base font-black text-slate-900 truncate">{pageMeta.title}</p>
+          <p className="text-sm md:text-base font-black text-slate-900 truncate">
+            {pageMeta.title}
+          </p>
           <p className="hidden sm:block text-xs text-slate-500 truncate">{pageMeta.subtitle}</p>
         </div>
       </div>
@@ -86,9 +91,17 @@ export default function Topbar({ onMenuClick }) {
             </div>
             <div className="hidden sm:flex flex-col items-start mr-2">
               <span className="text-sm font-bold text-slate-900 leading-none">{displayName}</span>
-              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1 opacity-70 leading-none">{role}</span>
+              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1 opacity-70 leading-none">
+                {role}
+              </span>
             </div>
-            <ChevronDown size={14} className={clsx("text-slate-400 transition-transform hidden sm:block", userMenuOpen ? "rotate-180" : "")} />
+            <ChevronDown
+              size={14}
+              className={clsx(
+                "text-slate-400 transition-transform hidden sm:block",
+                userMenuOpen ? "rotate-180" : "",
+              )}
+            />
           </button>
 
           {userMenuOpen && (
@@ -97,18 +110,13 @@ export default function Topbar({ onMenuClick }) {
                 className="flex items-center gap-3 p-3 text-red-600 hover:bg-red-50 rounded-xl transition-all text-sm font-medium cursor-pointer"
                 onClick={() => {
                   localStorage.removeItem("token");
-                  // Clear both the HttpOnly nora_auth cookie (server-side)
-                  // and the NextAuth session (if present). Navigate to login
-                  // only after the cookie clear round-trips, otherwise the
-                  // user can race back into an authed page.
+                  // Navigate only after the cookie clear round-trips, otherwise
+                  // the user can race back into an authed page.
                   const clearAuth = fetch("/api/auth/logout", {
                     method: "POST",
                     credentials: "include",
                   }).catch(() => {});
-                  const clearNextAuth = fetch("/api/auth/signout", {
-                    method: "POST",
-                  }).catch(() => {});
-                  Promise.all([clearAuth, clearNextAuth]).finally(() => {
+                  clearAuth.finally(() => {
                     window.location.href = "/login";
                   });
                 }}
