@@ -243,6 +243,9 @@ function buildRuntimeEnv() {
   const env = {
     AGENT_HTTP_PORT: String(AGENT_RUNTIME_PORT),
     OPENCLAW_GATEWAY_PORT: String(OPENCLAW_GATEWAY_PORT),
+    // Nora reaches managed gateways through recorded endpoints; mDNS is noisy
+    // in container networks.
+    OPENCLAW_DISABLE_BONJOUR: process.env.OPENCLAW_DISABLE_BONJOUR || "1",
     BACKEND_API_URL:
       process.env.AGENT_RUNTIME_BACKEND_API_URL ||
       process.env.BACKEND_API_URL ||

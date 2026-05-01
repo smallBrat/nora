@@ -69,6 +69,48 @@ describe("OpenClaw bootstrap helpers", () => {
     expect(cmd).toContain('export OPENCLAW_TSX_BIN="$OPENCLAW_TSX_BIN"');
   });
 
+  it("disables Bonjour in managed runtime environments by default", () => {
+    const previous = process.env.OPENCLAW_DISABLE_BONJOUR;
+    delete process.env.OPENCLAW_DISABLE_BONJOUR;
+    jest.resetModules();
+    try {
+      const runtimeBootstrap = require("../../agent-runtime/lib/runtimeBootstrap");
+
+      expect(runtimeBootstrap.buildRuntimeEnv()).toEqual(
+        expect.objectContaining({
+          OPENCLAW_DISABLE_BONJOUR: "1",
+        }),
+      );
+    } finally {
+      if (previous === undefined) {
+        delete process.env.OPENCLAW_DISABLE_BONJOUR;
+      } else {
+        process.env.OPENCLAW_DISABLE_BONJOUR = previous;
+      }
+    }
+  });
+
+  it("lets host-level runtime env explicitly force Bonjour back on", () => {
+    const previous = process.env.OPENCLAW_DISABLE_BONJOUR;
+    jest.resetModules();
+    process.env.OPENCLAW_DISABLE_BONJOUR = "0";
+    try {
+      const runtimeBootstrap = require("../../agent-runtime/lib/runtimeBootstrap");
+
+      expect(runtimeBootstrap.buildRuntimeEnv()).toEqual(
+        expect.objectContaining({
+          OPENCLAW_DISABLE_BONJOUR: "0",
+        }),
+      );
+    } finally {
+      if (previous === undefined) {
+        delete process.env.OPENCLAW_DISABLE_BONJOUR;
+      } else {
+        process.env.OPENCLAW_DISABLE_BONJOUR = previous;
+      }
+    }
+  });
+
   it("mirrors template files into both the workspace root and the legacy agent root", () => {
     const files = buildTemplatePayloadBootstrapFiles({
       files: [{ path: "AGENTS.md", content: "# Agent\n" }],
