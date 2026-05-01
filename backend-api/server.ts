@@ -25,6 +25,7 @@ const { authenticateToken } = require("./middleware/auth");
 const { correlationId, errorHandler } = require("./middleware/errorHandler");
 const { createGatewayRouter, attachGatewayWS } = require("./gatewayProxy");
 const { isGatewayAvailableStatus } = require("./agentStatus");
+const { repairHermesAgentConfig } = require("./hermesUi");
 const {
   gatewayUrlForAgent,
   dashboardUrlForAgent,
@@ -371,6 +372,13 @@ async function lookupHermesEmbedAgent(agentId, userId) {
     return null;
   }
   return result.rows[0];
+}
+
+async function fetchAgentForHermesRepair(agentId) {
+  const result = await db.query("SELECT * FROM agents WHERE id = $1", [agentId]);
+  const row = result.rows[0];
+  if (!row || !row.container_id) return null;
+  return row;
 }
 
 async function resolveEmbedAccess(
@@ -789,15 +797,41 @@ async function proxyEmbeddedHermes(req, res) {
       }
     }
 
-    const resp = await fetch(targetUrl, {
-      method,
-      headers,
-      body,
-      signal: AbortSignal.timeout(15000),
-    });
+    const fetchUpstream = () =>
+      fetch(targetUrl, {
+        method,
+        headers,
+        body,
+        signal: AbortSignal.timeout(15000),
+      });
+
+    let resp = await fetchUpstream();
+
+    const isApiRequest = hermesPath.startsWith("api/");
+    // Self-heal: Hermes's response serializer (UTF-8) crashes on lone UTF-16
+    // surrogates that can land in its on-disk config (emoji-bearing usernames,
+    // channel labels). When we see 500 on an api/* request, attempt one
+    // surrogate repair against the agent's config; only retry the upstream
+    // request if the repair actually mutated something — otherwise the 500 is
+    // unrelated and we let it propagate.
+    if (resp.status === 500 && isApiRequest && method === "GET") {
+      try {
+        const fullAgent = await fetchAgentForHermesRepair(access.agentId);
+        if (fullAgent) {
+          const repair = await repairHermesAgentConfig(fullAgent);
+          if (repair?.mutated) {
+            console.warn(
+              `[hermes-embed-proxy] surrogate repair applied for agent ${access.agentId}, retrying upstream`,
+            );
+            resp = await fetchUpstream();
+          }
+        }
+      } catch (repairErr) {
+        console.error("[hermes-embed-proxy] surrogate repair failed:", repairErr);
+      }
+    }
 
     const contentType = resp.headers.get("content-type") || "";
-    const isApiRequest = hermesPath.startsWith("api/");
     res.status(resp.status);
 
     if (/text\/html/i.test(contentType)) {

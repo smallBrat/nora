@@ -623,14 +623,12 @@ async function runHermesPythonJson(agent, script, { timeout = 30000 } = {}) {
   }
 }
 
-async function persistHermesModelConfig(agent, modelConfig = {}) {
-  const payloadJson = JSON.stringify(modelConfig || {});
-  const script = `
-import json
-from pathlib import Path
-
-from hermes_cli.config import get_config_path, load_config, save_config
-
+// Inlined into every Hermes helper script that touches the on-disk config.
+// Lone UTF-16 surrogates (e.g. emoji fragments pasted into bot/channel names)
+// are valid in Python str but blow up Hermes's own UTF-8 response serializer
+// with `UnicodeEncodeError: surrogates not allowed`, which is what produced
+// 500s on `/api/agents/:id/hermes-ui/embed/api/config` in production.
+const HERMES_REPAIR_SURROGATES_PY = `
 def repair_surrogates(value):
     if isinstance(value, str):
         return value.encode("utf-16", "surrogatepass").decode("utf-16", "replace")
@@ -642,7 +640,41 @@ def repair_surrogates(value):
             for key, item in value.items()
         }
     return value
+`;
 
+async function repairHermesAgentConfig(agent) {
+  const script = `
+import json
+from pathlib import Path
+
+from hermes_cli.config import get_config_path, load_config, save_config
+${HERMES_REPAIR_SURROGATES_PY}
+original = load_config() or {}
+repaired = repair_surrogates(original)
+mutated = json.dumps(original, ensure_ascii=False, sort_keys=True) != json.dumps(
+    repaired, ensure_ascii=False, sort_keys=True
+)
+if mutated:
+    save_config(repaired)
+
+print(json.dumps({
+    "ok": True,
+    "mutated": mutated,
+    "configPath": str(Path(get_config_path())),
+}))
+`;
+
+  return runHermesPythonJson(agent, script, { timeout: 30000 });
+}
+
+async function persistHermesModelConfig(agent, modelConfig = {}) {
+  const payloadJson = JSON.stringify(modelConfig || {});
+  const script = `
+import json
+from pathlib import Path
+
+from hermes_cli.config import get_config_path, load_config, save_config
+${HERMES_REPAIR_SURROGATES_PY}
 payload = json.loads(${JSON.stringify(payloadJson)})
 config = repair_surrogates(load_config() or {})
 current_model = config.get("model")
@@ -1160,6 +1192,7 @@ module.exports = {
   listHermesChannels,
   persistHermesModelConfig,
   readHermesRuntimeSnapshot,
+  repairHermesAgentConfig,
   replacePersistedHermesState,
   saveHermesChannel,
   snapshotToPersistedHermesState,

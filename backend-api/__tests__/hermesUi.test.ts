@@ -22,6 +22,7 @@ const {
   getPersistedHermesState,
   persistHermesModelConfig,
   readHermesRuntimeSnapshot,
+  repairHermesAgentConfig,
   replacePersistedHermesState,
   snapshotToPersistedHermesState,
 } = require("../hermesUi");
@@ -71,6 +72,33 @@ describe("Hermes helper execution", () => {
       'PYTHONPATH="$HERMES_ROOT${PYTHONPATH:+:$PYTHONPATH}" exec "$HERMES_PYTHON" - <<\'PY\'',
     );
     expect(command).not.toContain("python3 - <<'PY'");
+  });
+
+  it("runs the surrogate repair script and reports whether the file was mutated", async () => {
+    mockRunContainerCommand.mockResolvedValueOnce({
+      output: JSON.stringify({
+        ok: true,
+        mutated: true,
+        configPath: "/opt/hermes/config.json",
+      }),
+    });
+
+    const result = await repairHermesAgentConfig({
+      id: "agent-hermes-1",
+      container_id: "hermes-container-1",
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      mutated: true,
+      configPath: "/opt/hermes/config.json",
+    });
+
+    const [, command] = mockRunContainerCommand.mock.calls[0];
+    const script = decodeHermesHelperScript(command);
+    expect(script).toContain("def repair_surrogates(value):");
+    expect(script).toContain("repaired = repair_surrogates(original)");
+    expect(script).toContain("save_config(repaired)");
   });
 
   it("persists model config through Hermes save_config and repairs surrogate pairs", async () => {

@@ -9,6 +9,7 @@ const { buildAgentHubTemplateUpdate } = require("../agentHubTemplateEdits");
 const snapshots = require("../snapshots");
 const containerManager = require("../containerManager");
 const releaseUpgrade = require("../releaseUpgrade");
+const { repairHermesAgentConfig } = require("../hermesUi");
 const { addDeploymentJob, getDLQJobs, retryDLQJob } = require("../redisQueue");
 const { requireAdmin } = require("../middleware/auth");
 const { asyncHandler } = require("../middleware/errorHandler");
@@ -1025,6 +1026,35 @@ router.post(
       ),
     );
     res.json(serializeAgent(updated.rows[0]));
+  }),
+);
+
+router.post(
+  "/agents/:id/hermes/repair-config",
+  asyncHandler(async (req, res) => {
+    const agent = await findAdminAgent(req.params.id, { includeOwner: true });
+    if (!agent) return res.status(404).json({ error: "Agent not found" });
+    res.locals.auditContext = buildAgentContext(agent);
+    if (agent.runtime_family !== "hermes") {
+      return res.status(400).json({ error: "Agent is not a Hermes runtime" });
+    }
+    if (!agent.container_id) {
+      return res.status(400).json({ error: "No container - redeploy the agent first" });
+    }
+
+    const result = await repairHermesAgentConfig(agent);
+    await monitoring.logEvent(
+      "admin_hermes_config_repaired",
+      `Admin ran Hermes config surrogate repair on "${agent.name}" (${result?.mutated ? "mutated" : "no change"})`,
+      adminAgentAuditMetadata(req, agent, {
+        result: { mutated: !!result?.mutated, configPath: result?.configPath || null },
+      }),
+    );
+    res.json({
+      ok: true,
+      mutated: !!result?.mutated,
+      configPath: result?.configPath || null,
+    });
   }),
 );
 
