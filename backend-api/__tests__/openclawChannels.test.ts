@@ -12,9 +12,11 @@ jest.mock("../authSync", () => ({
 
 const {
   connectOpenClawChannel,
+  getOpenClawChannelType,
   listOpenClawChannels,
   saveOpenClawChannel,
   startOpenClawChannelLogin,
+  waitOpenClawChannelLogin,
 } = require("../channels/openclaw");
 
 describe("openclaw channel catalog compatibility", () => {
@@ -604,5 +606,128 @@ describe("openclaw channel catalog compatibility", () => {
       },
       undefined,
     );
+  });
+
+  it("returns docs-backed setup fields when gateway schema has no editable fields", async () => {
+    mockRpcCall
+      .mockResolvedValueOnce({
+        channelMeta: [{ id: "telegram", label: "Telegram" }],
+      })
+      .mockResolvedValueOnce({
+        hash: "cfg-type-telegram",
+        config: { channels: {} },
+      })
+      .mockResolvedValueOnce({
+        path: "channels.telegram",
+        children: [],
+      });
+
+    const result = await getOpenClawChannelType(agent, "telegram");
+
+    expect(result).toMatchObject({
+      type: "telegram",
+      description: expect.stringContaining("Telegram bot"),
+      configFields: [
+        expect.objectContaining({
+          key: "botToken",
+          type: "password",
+          required: true,
+        }),
+      ],
+    });
+  });
+
+  it("returns minimum Slack setup fields with conditional credential requirements", async () => {
+    mockRpcCall
+      .mockResolvedValueOnce({
+        channelMeta: [{ id: "slack", label: "Slack" }],
+      })
+      .mockResolvedValueOnce({
+        hash: "cfg-type-slack",
+        config: { channels: {} },
+      })
+      .mockResolvedValueOnce({
+        path: "channels.slack",
+        children: [],
+      });
+
+    const result = await getOpenClawChannelType(agent, "slack");
+
+    expect(result.configFields).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "mode",
+          type: "select",
+          defaultValue: "socket",
+        }),
+        expect.objectContaining({
+          key: "botToken",
+          type: "password",
+          required: true,
+        }),
+        expect.objectContaining({
+          key: "appToken",
+          requiredWhen: { key: "mode", value: "socket" },
+        }),
+        expect.objectContaining({
+          key: "signingSecret",
+          requiredWhen: { key: "mode", value: "http" },
+        }),
+      ]),
+    );
+  });
+
+  it("starts and polls allowlisted OpenClaw CLI login channels", async () => {
+    mockRunContainerCommand
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        output:
+          '__NORA_OPENCLAW_LOGIN_OUTPUT__\nScan this Feishu QR\n__NORA_OPENCLAW_LOGIN_STATUS__\n{"status":"running"}',
+      })
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        output:
+          '__NORA_OPENCLAW_LOGIN_OUTPUT__\nFeishu linked\n__NORA_OPENCLAW_LOGIN_STATUS__\n{"status":"complete","exitCode":0}',
+      });
+
+    const start = await connectOpenClawChannel(agent, "feishu", {
+      accountId: "default",
+    });
+    const wait = await waitOpenClawChannelLogin(agent, "feishu");
+
+    expect(start).toMatchObject({
+      success: true,
+      channel: "feishu",
+      qrText: "Scan this Feishu QR",
+      login: expect.objectContaining({
+        success: false,
+        status: "running",
+      }),
+    });
+    expect(wait).toMatchObject({
+      success: true,
+      channel: "feishu",
+      linked: true,
+      connected: true,
+      status: "complete",
+    });
+    expect(mockRunContainerCommand).toHaveBeenNthCalledWith(
+      1,
+      agent,
+      expect.stringContaining('channels login --channel "$channel_id"'),
+      { timeout: 15000 },
+    );
+    expect(mockRunContainerCommand.mock.calls[0][1]).toContain("CHANNEL_ID='feishu'");
+    expect(mockRunContainerCommand.mock.calls[1][1]).toContain(
+      "/tmp/nora-openclaw-channel-login/feishu",
+    );
+  });
+
+  it("rejects CLI login for setup-only channels", async () => {
+    await expect(startOpenClawChannelLogin(agent, "telegram")).rejects.toMatchObject({
+      statusCode: 409,
+      message: expect.stringContaining("does not expose QR login"),
+    });
+    expect(mockRunContainerCommand).not.toHaveBeenCalled();
   });
 });

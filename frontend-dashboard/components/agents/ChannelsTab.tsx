@@ -45,6 +45,7 @@ const CHANNEL_GLYPHS: Record<string, string> = Object.freeze({
   twitch: "📺",
   webhook: "🌐",
   whatsapp: "📱",
+  yuanbao: "YB",
   zalo: "Z",
   zalouser: "Z",
 });
@@ -72,9 +73,15 @@ type FieldDefinition = {
   label: string;
   type: string;
   required?: boolean;
+  requiredWhen?: {
+    key?: string;
+    value?: unknown;
+    values?: unknown[];
+  };
   placeholder?: string;
   help?: string;
   itemType?: string;
+  defaultValue?: unknown;
   options?: FieldOption[];
 };
 
@@ -93,6 +100,7 @@ type ChannelTypeDefinition = {
   actions?: {
     canQrLogin?: boolean;
     canLogout?: boolean;
+    loginKind?: string | null;
   };
 };
 
@@ -140,6 +148,7 @@ type ChannelRecord = {
     canViewMessages?: boolean;
     canQrLogin?: boolean;
     canLogout?: boolean;
+    loginKind?: string | null;
   };
 };
 
@@ -266,9 +275,20 @@ function normalizeField(field: any): FieldDefinition {
     label: String(field?.label || field?.key || "Field"),
     type: String(field?.type || "text"),
     required: field?.required === true,
+    requiredWhen:
+      field?.requiredWhen && typeof field.requiredWhen === "object"
+        ? {
+            key: field.requiredWhen.key ? String(field.requiredWhen.key) : undefined,
+            value: field.requiredWhen.value,
+            values: Array.isArray(field.requiredWhen.values)
+              ? field.requiredWhen.values
+              : undefined,
+          }
+        : undefined,
     placeholder: String(field?.placeholder || ""),
     help: String(field?.help || ""),
     itemType: field?.itemType ? String(field.itemType) : undefined,
+    defaultValue: field?.defaultValue,
     options: Array.isArray(field?.options) ? field.options.map(normalizeOption) : [],
   };
 }
@@ -300,10 +320,12 @@ function normalizeTypeDefinition(raw: any): ChannelTypeDefinition {
         ? {
             canQrLogin: raw.actions.canQrLogin === true,
             canLogout: raw.actions.canLogout === true,
+            loginKind: raw.actions.loginKind ? String(raw.actions.loginKind) : null,
           }
         : {
             canQrLogin: false,
             canLogout: false,
+            loginKind: null,
           },
   };
 }
@@ -354,6 +376,7 @@ function normalizeChannel(raw: any): ChannelRecord {
             canViewMessages: raw.actions.canViewMessages === true,
             canQrLogin: raw.actions.canQrLogin === true,
             canLogout: raw.actions.canLogout === true,
+            loginKind: raw.actions.loginKind ? String(raw.actions.loginKind) : null,
           }
         : {
             canEdit: true,
@@ -363,6 +386,7 @@ function normalizeChannel(raw: any): ChannelRecord {
             canViewMessages: true,
             canQrLogin: false,
             canLogout: false,
+            loginKind: null,
           },
   };
 }
@@ -456,6 +480,7 @@ function buildChannelFromTypeDefinition(
       canViewMessages: false,
       canQrLogin: definition?.actions?.canQrLogin === true,
       canLogout: definition?.actions?.canLogout === true,
+      loginKind: definition?.actions?.loginKind || null,
     },
   };
 }
@@ -498,6 +523,7 @@ function setValueAtPath(target: Record<string, any>, path: string, value: unknow
 
 function defaultBooleanValue(field: FieldDefinition, currentValue: unknown) {
   if (typeof currentValue === "boolean") return currentValue;
+  if (typeof field.defaultValue === "boolean") return field.defaultValue;
   return /\benabled\b/i.test(field.key) || /\benabled\b/i.test(field.label);
 }
 
@@ -509,39 +535,51 @@ function buildFormValues(
 
   for (const field of definition?.configFields || []) {
     const currentValue = getValueAtPath(currentConfig, field.key);
+    const value =
+      currentValue === undefined || currentValue === null ? field.defaultValue : currentValue;
 
     if (field.type === "boolean") {
-      values[field.key] = defaultBooleanValue(field, currentValue);
+      values[field.key] = defaultBooleanValue(field, value);
       continue;
     }
 
     if (field.type === "list") {
-      values[field.key] = Array.isArray(currentValue)
-        ? currentValue.map((entry) => String(entry)).join("\n")
+      values[field.key] = Array.isArray(value)
+        ? value.map((entry) => String(entry)).join("\n")
         : "";
       continue;
     }
 
     if (field.type === "select") {
-      if (currentValue === undefined || currentValue === null || currentValue === "") {
+      if (value === undefined || value === null || value === "") {
         values[field.key] = "";
         continue;
       }
 
       const match = (field.options || []).find(
-        (option) => serializeOptionValue(option.value) === serializeOptionValue(currentValue),
+        (option) => serializeOptionValue(option.value) === serializeOptionValue(value),
       );
       values[field.key] = match ? serializeOptionValue(match.value) : "";
       continue;
     }
 
     if (field.type === "password") {
-      values[field.key] =
-        currentValue && currentValue !== REDACTED_SECRET ? String(currentValue) : "";
+      values[field.key] = value && value !== REDACTED_SECRET ? String(value) : "";
       continue;
     }
 
-    values[field.key] = currentValue == null ? "" : String(currentValue);
+    if (field.type === "json") {
+      if (value == null || value === "") {
+        values[field.key] = "";
+      } else if (typeof value === "string") {
+        values[field.key] = value;
+      } else {
+        values[field.key] = JSON.stringify(value, null, 2);
+      }
+      continue;
+    }
+
+    values[field.key] = value == null ? "" : String(value);
   }
 
   return values;
@@ -568,6 +606,26 @@ function hasRequiredValue(
     return String(rawValue || "").trim() !== "";
   }
   return String(rawValue || "").trim() !== "";
+}
+
+function requiredWhenMatches(field: FieldDefinition, formValues: FormValues) {
+  const condition = field.requiredWhen;
+  const conditionKey = condition?.key;
+  if (!conditionKey) return false;
+
+  const actualValue = formValues[conditionKey];
+  const expectedValues = Array.isArray(condition.values) ? condition.values : [condition.value];
+  return expectedValues.some((expectedValue) => {
+    if (expectedValue === undefined) return false;
+    return (
+      String(actualValue) === String(expectedValue) ||
+      String(actualValue) === serializeOptionValue(expectedValue)
+    );
+  });
+}
+
+function fieldIsRequired(field: FieldDefinition, formValues: FormValues) {
+  return field.required === true || requiredWhenMatches(field, formValues);
 }
 
 function parseListValue(value: string, itemType: string | undefined) {
@@ -603,6 +661,7 @@ function buildConfigFromForm(
   definition: ChannelTypeDefinition | null,
   formValues: FormValues,
   currentConfig: Record<string, any>,
+  options: { omitEmptyOptional?: boolean } = {},
 ) {
   const nextConfig: Record<string, any> = {};
   const missingFields: string[] = [];
@@ -610,9 +669,20 @@ function buildConfigFromForm(
   for (const field of definition?.configFields || []) {
     const currentValue = getValueAtPath(currentConfig, field.key);
     const rawValue = formValues[field.key];
+    const required = fieldIsRequired(field, formValues);
 
-    if (field.required && !hasRequiredValue(field, rawValue, currentValue)) {
+    if (required && !hasRequiredValue(field, rawValue, currentValue)) {
       missingFields.push(field.label);
+      continue;
+    }
+
+    const rawString = typeof rawValue === "boolean" ? "" : String(rawValue || "");
+    const isBlankOptional =
+      !required &&
+      field.type !== "boolean" &&
+      rawString.trim() === "" &&
+      (currentValue === undefined || currentValue === null || currentValue === "");
+    if (options.omitEmptyOptional && isBlankOptional) {
       continue;
     }
 
@@ -653,6 +723,19 @@ function buildConfigFromForm(
         parsedValue = option ? option.value : "";
         break;
       }
+      case "json": {
+        const trimmed = String(rawValue || "").trim();
+        if (!trimmed) {
+          parsedValue = "";
+        } else {
+          try {
+            parsedValue = JSON.parse(trimmed);
+          } catch {
+            throw new Error(`${field.label} must be valid JSON`);
+          }
+        }
+        break;
+      }
       case "password":
         parsedValue =
           String(rawValue || "").trim() === "" && currentValue === REDACTED_SECRET
@@ -690,6 +773,9 @@ function extractQrText(payload: any) {
     payload?.qr,
     payload?.code,
     payload?.pairingCode,
+    payload?.log,
+    payload?.stdout,
+    payload?.output,
   ];
 
   return candidates.find((value) => typeof value === "string" && value.trim()) || "";
@@ -781,14 +867,16 @@ function ChannelFieldInput({
     );
   }
 
-  if (field.type === "textarea" || field.type === "list") {
+  if (field.type === "textarea" || field.type === "list" || field.type === "json") {
     return (
       <textarea
         value={String(value || "")}
         onChange={(event) => onChange(event.target.value)}
-        rows={field.type === "list" ? 4 : 5}
+        rows={field.type === "list" ? 4 : field.type === "json" ? 8 : 5}
         placeholder={field.placeholder || ""}
-        className="min-h-[120px] w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20"
+        className={`min-h-[120px] w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20 ${
+          field.type === "json" ? "font-mono" : ""
+        }`}
       />
     );
   }
@@ -1264,7 +1352,9 @@ export default function ChannelsTab({ agentId }: { agentId: string }) {
     const currentConfig = editingChannel?.config || {};
 
     try {
-      const { config, missingFields } = buildConfigFromForm(definition, formValues, currentConfig);
+      const { config, missingFields } = buildConfigFromForm(definition, formValues, currentConfig, {
+        omitEmptyOptional: payload.runtime === "openclaw",
+      });
       if (missingFields.length > 0) {
         toast.error(`Please fill in: ${missingFields.join(", ")}`);
         return;
@@ -2299,7 +2389,7 @@ export default function ChannelsTab({ agentId }: { agentId: string }) {
                           {field.type !== "boolean" ? (
                             <label className="mb-1 block text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">
                               {field.label}
-                              {field.required ? (
+                              {fieldIsRequired(field, formValues) ? (
                                 <span className="ml-1 text-rose-500">*</span>
                               ) : null}
                             </label>
@@ -2319,6 +2409,11 @@ export default function ChannelsTab({ agentId }: { agentId: string }) {
                           {field.type === "list" ? (
                             <p className="mt-1 text-[11px] text-slate-500">
                               Enter one value per line.
+                            </p>
+                          ) : null}
+                          {field.type === "json" ? (
+                            <p className="mt-1 text-[11px] text-slate-500">
+                              Paste a valid JSON object.
                             </p>
                           ) : null}
                           {field.type === "password" ? (

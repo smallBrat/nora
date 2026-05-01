@@ -5,7 +5,12 @@ const { OPENCLAW_GATEWAY_PORT } = require("../../agent-runtime/lib/contracts");
 
 const REDACTED_SECRET = "[REDACTED]";
 const OPENCLAW_RUNTIME_READY_STATUSES = new Set(["running", "warning"]);
-const OPENCLAW_QR_LOGIN_CHANNELS = new Set(["whatsapp"]);
+const OPENCLAW_WEB_LOGIN_CHANNELS = new Set(["whatsapp"]);
+const OPENCLAW_CLI_LOGIN_CHANNELS = new Set(["feishu", "zalouser"]);
+const OPENCLAW_QR_LOGIN_CHANNELS = new Set([
+  ...OPENCLAW_WEB_LOGIN_CHANNELS,
+  ...OPENCLAW_CLI_LOGIN_CHANNELS,
+]);
 const OPENCLAW_LOGOUT_CHANNELS = new Set(["telegram", "qqbot", "whatsapp"]);
 const OPENCLAW_DEFAULT_CHANNEL_IDS = Object.freeze([
   "bluebubbles",
@@ -28,6 +33,7 @@ const OPENCLAW_DEFAULT_CHANNEL_IDS = Object.freeze([
   "tlon",
   "twitch",
   "whatsapp",
+  "yuanbao",
   "zalo",
   "zalouser",
 ]);
@@ -65,6 +71,7 @@ const OPENCLAW_SELECTION_LABELS = Object.freeze({
   telegram: "Telegram (Bot API)",
   twitch: "Twitch (Chat)",
   whatsapp: "WhatsApp (QR link)",
+  yuanbao: "Yuanbao",
 });
 const OPENCLAW_CHANNEL_SEEDS = Object.freeze({
   whatsapp: Object.freeze({
@@ -74,6 +81,375 @@ const OPENCLAW_CHANNEL_SEEDS = Object.freeze({
     }),
   }),
   zalouser: Object.freeze({ enabled: true }),
+});
+const OPENCLAW_CLI_LOGIN_STATE_ROOT = "/tmp/nora-openclaw-channel-login";
+const OPENCLAW_CLI_LOGIN_OUTPUT_MARKER = "__NORA_OPENCLAW_LOGIN_OUTPUT__";
+const OPENCLAW_CLI_LOGIN_STATUS_MARKER = "__NORA_OPENCLAW_LOGIN_STATUS__";
+const OPENCLAW_CHANNEL_SETUP_DEFINITIONS = Object.freeze({
+  bluebubbles: Object.freeze({
+    description: "Connect to a BlueBubbles macOS server.",
+    configFields: Object.freeze([
+      {
+        key: "serverUrl",
+        label: "Server URL",
+        type: "url",
+        required: true,
+        placeholder: "http://192.168.1.100:1234",
+        help: "BlueBubbles Server Web API URL.",
+      },
+      {
+        key: "password",
+        label: "API Password",
+        type: "password",
+        required: true,
+        help: "Password from BlueBubbles Server settings.",
+      },
+      {
+        key: "webhookPath",
+        label: "Webhook Path",
+        type: "text",
+        defaultValue: "/bluebubbles-webhook",
+        placeholder: "/bluebubbles-webhook",
+      },
+    ]),
+  }),
+  discord: Object.freeze({
+    description: "Create a Discord application and bot, then paste the bot token.",
+    configFields: Object.freeze([
+      {
+        key: "token",
+        label: "Bot Token",
+        type: "password",
+        required: true,
+        placeholder: "Discord bot token",
+      },
+      {
+        key: "applicationId",
+        label: "Application ID",
+        type: "text",
+        required: false,
+        help: "Optional Discord application/client ID.",
+      },
+    ]),
+  }),
+  googlechat: Object.freeze({
+    description: "Configure the Google Chat service account and webhook audience.",
+    configFields: Object.freeze([
+      {
+        key: "serviceAccount",
+        label: "Service Account JSON",
+        type: "json",
+        required: true,
+        placeholder: '{\n  "type": "service_account"\n}',
+        help: "Paste the downloaded Google service-account JSON.",
+      },
+      {
+        key: "audienceType",
+        label: "Audience Type",
+        type: "select",
+        required: true,
+        defaultValue: "app-url",
+        options: [
+          { label: "App URL", value: "app-url" },
+          { label: "Project Number", value: "project-number" },
+        ],
+      },
+      {
+        key: "audience",
+        label: "Audience",
+        type: "text",
+        required: true,
+        placeholder: "https://gateway.example.com/googlechat",
+      },
+      {
+        key: "webhookPath",
+        label: "Webhook Path",
+        type: "text",
+        defaultValue: "/googlechat",
+        placeholder: "/googlechat",
+      },
+    ]),
+  }),
+  imessage: Object.freeze({
+    description:
+      "Legacy iMessage setup through the imsg CLI. BlueBubbles is recommended for new deployments.",
+    configFields: Object.freeze([
+      {
+        key: "cliPath",
+        label: "CLI Path",
+        type: "text",
+        defaultValue: "imsg",
+        placeholder: "imsg",
+      },
+      {
+        key: "dbPath",
+        label: "Messages DB Path",
+        type: "text",
+        defaultValue: "~/Library/Messages/chat.db",
+        placeholder: "~/Library/Messages/chat.db",
+      },
+      {
+        key: "remoteHost",
+        label: "Remote Host",
+        type: "text",
+        required: false,
+        placeholder: "user@gateway-host",
+      },
+    ]),
+  }),
+  irc: Object.freeze({
+    description: "Connect an IRC bot user to one or more channels.",
+    configFields: Object.freeze([
+      { key: "host", label: "Server Host", type: "text", required: true },
+      { key: "port", label: "Port", type: "integer", required: true, defaultValue: 6697 },
+      { key: "tls", label: "Use TLS", type: "boolean", defaultValue: true },
+      { key: "nick", label: "Nickname", type: "text", required: true },
+      {
+        key: "channels",
+        label: "Channels",
+        type: "list",
+        required: true,
+        itemType: "string",
+        placeholder: "#openclaw",
+      },
+    ]),
+  }),
+  line: Object.freeze({
+    description: "Configure LINE Messaging API credentials.",
+    configFields: Object.freeze([
+      {
+        key: "channelAccessToken",
+        label: "Channel Access Token",
+        type: "password",
+        required: true,
+      },
+      { key: "channelSecret", label: "Channel Secret", type: "password", required: true },
+      {
+        key: "webhookPath",
+        label: "Webhook Path",
+        type: "text",
+        defaultValue: "/line/webhook",
+        placeholder: "/line/webhook",
+      },
+    ]),
+  }),
+  mattermost: Object.freeze({
+    description: "Configure a Mattermost bot token and server URL.",
+    configFields: Object.freeze([
+      {
+        key: "baseUrl",
+        label: "Base URL",
+        type: "url",
+        required: true,
+        placeholder: "https://chat.example.com",
+      },
+      { key: "botToken", label: "Bot Token", type: "password", required: true },
+    ]),
+  }),
+  matrix: Object.freeze({
+    description: "Configure Matrix access-token authentication.",
+    configFields: Object.freeze([
+      {
+        key: "homeserver",
+        label: "Homeserver URL",
+        type: "url",
+        required: true,
+        placeholder: "https://matrix.example.org",
+      },
+      { key: "accessToken", label: "Access Token", type: "password", required: true },
+      {
+        key: "userId",
+        label: "User ID",
+        type: "text",
+        required: false,
+        placeholder: "@bot:example.org",
+      },
+    ]),
+  }),
+  msteams: Object.freeze({
+    description: "Configure Microsoft Teams bot credentials and webhook endpoint.",
+    configFields: Object.freeze([
+      { key: "appId", label: "App ID", type: "text", required: true },
+      { key: "appPassword", label: "App Password", type: "password", required: true },
+      { key: "tenantId", label: "Tenant ID", type: "text", required: true },
+      {
+        key: "webhook.path",
+        label: "Webhook Path",
+        type: "text",
+        defaultValue: "/api/messages",
+      },
+      {
+        key: "webhook.port",
+        label: "Webhook Port",
+        type: "integer",
+        defaultValue: 3978,
+      },
+    ]),
+  }),
+  "nextcloud-talk": Object.freeze({
+    description: "Configure a Nextcloud Talk bot shared secret.",
+    configFields: Object.freeze([
+      {
+        key: "baseUrl",
+        label: "Base URL",
+        type: "url",
+        required: true,
+        placeholder: "https://cloud.example.com",
+      },
+      { key: "botSecret", label: "Bot Secret", type: "password", required: true },
+      {
+        key: "webhookPublicUrl",
+        label: "Webhook Public URL",
+        type: "url",
+        required: false,
+        placeholder: "https://gateway.example.com/nextcloud-talk",
+      },
+    ]),
+  }),
+  nostr: Object.freeze({
+    description: "Configure a Nostr private key for encrypted direct messages.",
+    configFields: Object.freeze([
+      { key: "privateKey", label: "Private Key", type: "password", required: true },
+      {
+        key: "relays",
+        label: "Relay URLs",
+        type: "list",
+        itemType: "string",
+        required: false,
+        defaultValue: ["wss://relay.damus.io", "wss://nos.lol"],
+      },
+    ]),
+  }),
+  qqbot: Object.freeze({
+    description: "Configure QQ Bot AppID and AppSecret.",
+    configFields: Object.freeze([
+      { key: "appId", label: "App ID", type: "text", required: true },
+      { key: "clientSecret", label: "App Secret", type: "password", required: true },
+    ]),
+  }),
+  signal: Object.freeze({
+    description: "Configure a signal-cli account already linked or registered on the gateway host.",
+    configFields: Object.freeze([
+      {
+        key: "account",
+        label: "Signal Account",
+        type: "text",
+        required: true,
+        placeholder: "+15551234567",
+      },
+      { key: "cliPath", label: "signal-cli Path", type: "text", defaultValue: "signal-cli" },
+    ]),
+  }),
+  slack: Object.freeze({
+    description: "Configure Slack Socket Mode or HTTP Request URL credentials.",
+    configFields: Object.freeze([
+      {
+        key: "mode",
+        label: "Mode",
+        type: "select",
+        required: true,
+        defaultValue: "socket",
+        options: [
+          { label: "Socket Mode", value: "socket" },
+          { label: "HTTP Request URLs", value: "http" },
+        ],
+      },
+      { key: "botToken", label: "Bot Token", type: "password", required: true },
+      {
+        key: "appToken",
+        label: "App-Level Token",
+        type: "password",
+        requiredWhen: { key: "mode", value: "socket" },
+        help: "Required for Socket Mode.",
+      },
+      {
+        key: "signingSecret",
+        label: "Signing Secret",
+        type: "password",
+        requiredWhen: { key: "mode", value: "http" },
+        help: "Required for HTTP Request URL mode.",
+      },
+      {
+        key: "webhookPath",
+        label: "Webhook Path",
+        type: "text",
+        defaultValue: "/slack/events",
+        requiredWhen: { key: "mode", value: "http" },
+      },
+    ]),
+  }),
+  "synology-chat": Object.freeze({
+    description: "Configure Synology Chat incoming and outgoing webhook credentials.",
+    configFields: Object.freeze([
+      { key: "token", label: "Outgoing Webhook Token", type: "password", required: true },
+      {
+        key: "incomingUrl",
+        label: "Incoming Webhook URL",
+        type: "url",
+        required: true,
+      },
+      {
+        key: "webhookPath",
+        label: "Webhook Path",
+        type: "text",
+        defaultValue: "/webhook/synology",
+      },
+    ]),
+  }),
+  telegram: Object.freeze({
+    description: "Create a Telegram bot with BotFather, then paste the bot token.",
+    configFields: Object.freeze([
+      {
+        key: "botToken",
+        label: "Bot Token",
+        type: "password",
+        required: true,
+        placeholder: "123456:ABC-DEF...",
+      },
+    ]),
+  }),
+  tlon: Object.freeze({
+    description: "Configure a Tlon ship and login code.",
+    configFields: Object.freeze([
+      { key: "ship", label: "Ship", type: "text", required: true, placeholder: "~sampel-palnet" },
+      {
+        key: "url",
+        label: "Ship URL",
+        type: "url",
+        required: true,
+        placeholder: "https://your-ship-host",
+      },
+      { key: "code", label: "Login Code", type: "password", required: true },
+      { key: "ownerShip", label: "Owner Ship", type: "text", required: false },
+    ]),
+  }),
+  twitch: Object.freeze({
+    description: "Configure a Twitch bot account and target chat channel.",
+    configFields: Object.freeze([
+      { key: "username", label: "Bot Username", type: "text", required: true },
+      { key: "accessToken", label: "Access Token", type: "password", required: true },
+      { key: "clientId", label: "Client ID", type: "text", required: true },
+      { key: "channel", label: "Twitch Channel", type: "text", required: true },
+    ]),
+  }),
+  yuanbao: Object.freeze({
+    description: "Configure Tencent Yuanbao robot credentials.",
+    configFields: Object.freeze([
+      { key: "appKey", label: "App Key", type: "text", required: true },
+      { key: "appSecret", label: "App Secret", type: "password", required: true },
+    ]),
+  }),
+  zalo: Object.freeze({
+    description: "Configure a Zalo Bot API token.",
+    configFields: Object.freeze([
+      {
+        key: "accounts.default.botToken",
+        label: "Bot Token",
+        type: "password",
+        required: true,
+      },
+    ]),
+  }),
 });
 const SECRET_LIKE_PATH_RE = /(^|\.)(token|secret|password|credential|auth|key)(\.|$)/i;
 const MAX_SCHEMA_FIELD_DEPTH = 3;
@@ -197,6 +573,11 @@ function serializeTypeMeta(channelId, meta = {}, extras = {}) {
     systemImage: meta.systemImage || null,
     actions: {
       canQrLogin: OPENCLAW_QR_LOGIN_CHANNELS.has(channelId),
+      loginKind: OPENCLAW_WEB_LOGIN_CHANNELS.has(channelId)
+        ? "web"
+        : OPENCLAW_CLI_LOGIN_CHANNELS.has(channelId)
+          ? "cli"
+          : null,
       canLogout: OPENCLAW_LOGOUT_CHANNELS.has(channelId),
     },
     ...extras,
@@ -444,6 +825,159 @@ async function startLoginWithGatewayRetry(
   throw lastError || createHttpError(502, "OpenClaw QR login did not become available.");
 }
 
+function assertSupportedCliLoginChannel(channelId) {
+  if (!OPENCLAW_CLI_LOGIN_CHANNELS.has(channelId)) {
+    throw createHttpError(409, `${buildSelectionLabel(channelId)} does not expose CLI login.`);
+  }
+}
+
+function cliLoginStateDir(channelId) {
+  return `${OPENCLAW_CLI_LOGIN_STATE_ROOT}/${channelId}`;
+}
+
+function buildOpenClawCliLoginStartCommand(channelId, options = {}) {
+  assertSupportedCliLoginChannel(channelId);
+  const { shellSingleQuote } = require("../../agent-runtime/lib/containerCommand");
+  const accountId =
+    typeof options?.accountId === "string" && options.accountId.trim()
+      ? options.accountId.trim()
+      : "default";
+  const stateDir = cliLoginStateDir(channelId);
+
+  return [
+    "set -eu",
+    `CHANNEL_ID=${shellSingleQuote(channelId)}`,
+    `ACCOUNT_ID=${shellSingleQuote(accountId)}`,
+    `STATE_DIR=${shellSingleQuote(stateDir)}`,
+    'mkdir -p "$STATE_DIR"',
+    'chmod 700 "$STATE_DIR"',
+    'printf \'%s\' "$CHANNEL_ID" > "$STATE_DIR/channel"',
+    'printf \'%s\' "$ACCOUNT_ID" > "$STATE_DIR/account"',
+    'rm -f "$STATE_DIR/output.log" "$STATE_DIR/status.json"',
+    "cat > \"$STATE_DIR/login.sh\" <<'NORA_OPENCLAW_LOGIN_SCRIPT'",
+    "#!/bin/sh",
+    "set +e",
+    'OPENCLAW_BIN="${OPENCLAW_CLI_PATH:-/usr/local/bin/openclaw}"',
+    'if [ ! -x "$OPENCLAW_BIN" ]; then OPENCLAW_BIN="$(command -v openclaw 2>/dev/null || true)"; fi',
+    'OUTPUT_FILE="$STATE_DIR/output.log"',
+    'STATUS_FILE="$STATE_DIR/status.json"',
+    'channel_id="$(cat "$STATE_DIR/channel" 2>/dev/null || true)"',
+    'account_id="$(cat "$STATE_DIR/account" 2>/dev/null || true)"',
+    'printf \'{"status":"running"}\\n\' > "$STATUS_FILE"',
+    'if [ -z "$OPENCLAW_BIN" ] || [ ! -x "$OPENCLAW_BIN" ]; then',
+    '  printf "%s\\n" "OpenClaw CLI not found" > "$OUTPUT_FILE"',
+    '  printf \'{"status":"failed","exitCode":127}\\n\' > "$STATUS_FILE"',
+    "  exit 0",
+    "fi",
+    'if [ -n "$account_id" ] && [ "$account_id" != "default" ]; then',
+    '  "$OPENCLAW_BIN" channels login --channel "$channel_id" --account "$account_id" > "$OUTPUT_FILE" 2>&1',
+    "else",
+    '  "$OPENCLAW_BIN" channels login --channel "$channel_id" > "$OUTPUT_FILE" 2>&1',
+    "fi",
+    "exit_code=$?",
+    'if [ "$exit_code" -eq 0 ]; then',
+    '  printf \'{"status":"complete","exitCode":0}\\n\' > "$STATUS_FILE"',
+    "else",
+    '  printf \'{"status":"failed","exitCode":%s}\\n\' "$exit_code" > "$STATUS_FILE"',
+    "fi",
+    "exit 0",
+    "NORA_OPENCLAW_LOGIN_SCRIPT",
+    'chmod 700 "$STATE_DIR/login.sh"',
+    'STATE_DIR="$STATE_DIR" nohup /bin/sh "$STATE_DIR/login.sh" >/dev/null 2>&1 &',
+    "sleep 2",
+    `printf '%s\\n' ${shellSingleQuote(OPENCLAW_CLI_LOGIN_OUTPUT_MARKER)}`,
+    'tail -c 12000 "$STATE_DIR/output.log" 2>/dev/null || true',
+    `printf '\\n%s\\n' ${shellSingleQuote(OPENCLAW_CLI_LOGIN_STATUS_MARKER)}`,
+    'cat "$STATE_DIR/status.json" 2>/dev/null || printf \'%s\\n\' \'{"status":"running"}\'',
+  ].join("\n");
+}
+
+function buildOpenClawCliLoginStatusCommand(channelId) {
+  assertSupportedCliLoginChannel(channelId);
+  const { shellSingleQuote } = require("../../agent-runtime/lib/containerCommand");
+  const stateDir = cliLoginStateDir(channelId);
+
+  return [
+    "set -eu",
+    `STATE_DIR=${shellSingleQuote(stateDir)}`,
+    `printf '%s\\n' ${shellSingleQuote(OPENCLAW_CLI_LOGIN_OUTPUT_MARKER)}`,
+    'tail -c 12000 "$STATE_DIR/output.log" 2>/dev/null || true',
+    `printf '\\n%s\\n' ${shellSingleQuote(OPENCLAW_CLI_LOGIN_STATUS_MARKER)}`,
+    'cat "$STATE_DIR/status.json" 2>/dev/null || printf \'%s\\n\' \'{"status":"running"}\'',
+  ].join("\n");
+}
+
+function parseMarkedCliLoginOutput(output) {
+  const raw = String(output || "");
+  const afterOutputMarker = raw.includes(OPENCLAW_CLI_LOGIN_OUTPUT_MARKER)
+    ? raw.split(OPENCLAW_CLI_LOGIN_OUTPUT_MARKER).slice(1).join(OPENCLAW_CLI_LOGIN_OUTPUT_MARKER)
+    : raw;
+  const [logBlock, statusBlock = ""] = afterOutputMarker.split(OPENCLAW_CLI_LOGIN_STATUS_MARKER);
+  let status = { status: "running" };
+  try {
+    status = JSON.parse(String(statusBlock || "").trim() || "{}");
+  } catch {
+    status = { status: "running" };
+  }
+
+  return {
+    log: String(logBlock || "").trim(),
+    status,
+  };
+}
+
+function serializeCliLoginResult(channelId, commandOutput) {
+  const { log, status } = parseMarkedCliLoginOutput(commandOutput);
+  const normalizedStatus = String(status?.status || "running")
+    .trim()
+    .toLowerCase();
+  const dataUrlMatch = log.match(/data:image\/png;base64,[A-Za-z0-9+/=]+/);
+  const message =
+    normalizedStatus === "complete"
+      ? `${buildSelectionLabel(channelId)} linked successfully.`
+      : normalizedStatus === "failed"
+        ? `${buildSelectionLabel(channelId)} login failed.`
+        : `Scan or complete the ${buildSelectionLabel(channelId)} login prompt.`;
+
+  return {
+    success: normalizedStatus === "complete",
+    channel: channelId,
+    status: normalizedStatus,
+    state: normalizedStatus,
+    message,
+    linked: normalizedStatus === "complete",
+    connected: normalizedStatus === "complete",
+    ...(Number.isInteger(status?.exitCode) ? { exitCode: status.exitCode } : {}),
+    ...(dataUrlMatch ? { qrDataUrl: dataUrlMatch[0] } : {}),
+    ...(log ? { qrText: log } : {}),
+  };
+}
+
+async function runOpenClawCliLoginCommand(agent, command, { timeout = 10000 } = {}) {
+  assertOpenClawAgentReady(agent);
+  const { runContainerCommand } = require("../authSync");
+  const result = await runContainerCommand(agent, command, { timeout });
+  return result?.output || "";
+}
+
+async function startOpenClawCliChannelLogin(agent, channelId, options = {}) {
+  const output = await runOpenClawCliLoginCommand(
+    agent,
+    buildOpenClawCliLoginStartCommand(channelId, options),
+    { timeout: 15000 },
+  );
+  return serializeCliLoginResult(channelId, output);
+}
+
+async function waitOpenClawCliChannelLogin(agent, channelId) {
+  const output = await runOpenClawCliLoginCommand(
+    agent,
+    buildOpenClawCliLoginStatusCommand(channelId),
+    { timeout: 10000 },
+  );
+  return serializeCliLoginResult(channelId, output);
+}
+
 function getConfigChannels(snapshot = {}) {
   return isPlainObject(snapshot?.config?.channels) ? snapshot.config.channels : {};
 }
@@ -640,6 +1174,11 @@ function serializeChannelEntry(channelId, meta, status = {}, configSnapshot = {}
       canTest: false,
       canViewMessages: false,
       canQrLogin: OPENCLAW_QR_LOGIN_CHANNELS.has(channelId),
+      loginKind: OPENCLAW_WEB_LOGIN_CHANNELS.has(channelId)
+        ? "web"
+        : OPENCLAW_CLI_LOGIN_CHANNELS.has(channelId)
+          ? "cli"
+          : null,
       canLogout:
         OPENCLAW_LOGOUT_CHANNELS.has(channelId) &&
         (connected || running || primaryAccount?.linked === true),
@@ -868,6 +1407,42 @@ function sortConfigFields(fields = []) {
   });
 }
 
+function docsSetupDefinitionFor(channelId) {
+  return OPENCLAW_CHANNEL_SETUP_DEFINITIONS[channelId] || null;
+}
+
+function cloneSetupFields(fields = []) {
+  return cloneJson(fields).map((field, index) => ({
+    order: Number.isInteger(field?.order) ? field.order : index,
+    ...field,
+  }));
+}
+
+function mergeDocsBackedConfigFields(channelId, schemaFields = []) {
+  const docsDefinition = docsSetupDefinitionFor(channelId);
+  if (!docsDefinition) {
+    return sortConfigFields(schemaFields);
+  }
+
+  const docsFields = cloneSetupFields(docsDefinition.configFields || []);
+  const seen = new Set(docsFields.map((field) => String(field?.key || "")));
+  const requiredSchemaExtras = schemaFields
+    .filter((field) => {
+      const key = String(field?.key || "");
+      return key && key !== "enabled" && field?.required === true && !seen.has(key);
+    })
+    .map((field, index) => ({
+      ...field,
+      order: Number.isInteger(field?.order) ? field.order : docsFields.length + index,
+    }));
+
+  return sortConfigFields([...docsFields, ...requiredSchemaExtras]);
+}
+
+function docsBackedDescription(channelId, fallback = "") {
+  return docsSetupDefinitionFor(channelId)?.description || fallback || "";
+}
+
 function requireSupportedQrChannel(channelId) {
   if (!OPENCLAW_QR_LOGIN_CHANNELS.has(channelId)) {
     throw createHttpError(
@@ -979,11 +1554,13 @@ async function getOpenClawChannelType(agent, channelId) {
   const fieldState = lookup
     ? await collectConfigFields(agent, basePath, lookup)
     : { fields: [], hasComplexFields: true };
+  const configFields = mergeDocsBackedConfigFields(channelId, fieldState.fields);
+  const hasDocsBackedFields = Boolean(docsSetupDefinitionFor(channelId));
 
   return serializeTypeMeta(channelId, meta, {
-    description: lookup?.hint?.help || "",
-    configFields: sortConfigFields(fieldState.fields),
-    hasComplexFields: fieldState.hasComplexFields,
+    description: docsBackedDescription(channelId, lookup?.hint?.help),
+    configFields,
+    hasComplexFields: fieldState.hasComplexFields && !hasDocsBackedFields,
   });
 }
 
@@ -1032,6 +1609,16 @@ async function saveOpenClawChannel(agent, channelId, input = {}, { create = fals
 }
 
 async function connectOpenClawChannel(agent, channelId, options = {}) {
+  if (OPENCLAW_CLI_LOGIN_CHANNELS.has(channelId)) {
+    const loginResult = await startOpenClawChannelLogin(agent, channelId, options);
+    return {
+      ...loginResult,
+      success: true,
+      channel: channelId,
+      login: loginResult,
+    };
+  }
+
   const saveResult = await saveOpenClawChannel(
     agent,
     channelId,
@@ -1068,6 +1655,10 @@ async function connectOpenClawChannel(agent, channelId, options = {}) {
 
 async function startOpenClawChannelLogin(agent, channelId, options = {}, retryOptions = {}) {
   requireSupportedQrChannel(channelId);
+  if (OPENCLAW_CLI_LOGIN_CHANNELS.has(channelId)) {
+    return await startOpenClawCliChannelLogin(agent, channelId, options);
+  }
+
   try {
     return await startLoginWithGatewayRetry(agent, channelId, options, {
       retryProviderUnavailable: retryOptions.retryProviderUnavailable === true,
@@ -1091,6 +1682,10 @@ async function startOpenClawChannelLogin(agent, channelId, options = {}, retryOp
 
 async function waitOpenClawChannelLogin(agent, channelId, options = {}) {
   requireSupportedQrChannel(channelId);
+  if (OPENCLAW_CLI_LOGIN_CHANNELS.has(channelId)) {
+    return await waitOpenClawCliChannelLogin(agent, channelId);
+  }
+
   return await callGateway(agent, "web.login.wait", {
     ...(typeof options?.accountId === "string" && options.accountId.trim()
       ? { accountId: options.accountId.trim() }
