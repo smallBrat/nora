@@ -363,11 +363,24 @@ python3 - <<'PY'
 import json
 from pathlib import Path
 
-from hermes_cli.config import get_config_path, load_config
+from hermes_cli.config import get_config_path, load_config, save_config
+
+def repair_surrogates(value):
+    if isinstance(value, str):
+        return value.encode("utf-16", "surrogatepass").decode("utf-16", "replace")
+    if isinstance(value, list):
+        return [repair_surrogates(item) for item in value]
+    if isinstance(value, dict):
+        return {
+            repair_surrogates(key) if isinstance(key, str) else key: repair_surrogates(item)
+            for key, item in value.items()
+        }
+    return value
 
 payload = json.loads(${JSON.stringify(payloadJson)})
-config = load_config() or {}
-model = dict(config.get("model") or {})
+config = repair_surrogates(load_config() or {})
+current_model = config.get("model")
+model = dict(current_model) if isinstance(current_model, dict) else {}
 
 default_model = str(payload.get("defaultModel") or "").strip()
 provider = str(payload.get("provider") or "").strip()
@@ -394,11 +407,7 @@ else:
     config.pop("model", None)
 
 config_path = Path(get_config_path())
-config_path.parent.mkdir(parents=True, exist_ok=True)
-
-with config_path.open("w", encoding="utf-8") as handle:
-    handle.write(json.dumps(config, indent=2))
-    handle.write("\\n")
+save_config(config)
 
 print(json.dumps({"ok": True}))
 PY`.trim();

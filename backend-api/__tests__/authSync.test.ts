@@ -345,6 +345,9 @@ describe("auth sync", () => {
     expect(configScript).toContain('\\"provider\\":\\"custom\\"');
     expect(configScript).toContain('\\"defaultModel\\":\\"gpt-5.4\\"');
     expect(configScript).toContain('\\"baseUrl\\":\\"https://api.openai.com/v1\\"');
+    expect(configScript).toContain("repair_surrogates(load_config() or {})");
+    expect(configScript).toContain("save_config(config)");
+    expect(configScript).not.toContain("json.dumps(config, indent=2)");
 
     expect(execSpy.mock.calls[1][1].cmd[2]).toContain("/opt/data/.env");
     expect(execSpy.mock.calls[1][1].cmd[2]).toContain("NORA MANAGED ENV");
@@ -411,7 +414,9 @@ describe("auth sync", () => {
     expect(configScript).toContain('\\"provider\\":\\"gemini\\"');
     expect(configScript).toContain('\\"baseUrl\\":null');
     expect(configScript).not.toContain("import yaml");
-    expect(configScript).toContain("json.dumps(config, indent=2)");
+    expect(configScript).toContain("repair_surrogates(load_config() or {})");
+    expect(configScript).toContain("save_config(config)");
+    expect(configScript).not.toContain("json.dumps(config, indent=2)");
   });
 
   it("builds a shell-parseable Hermes env rewrite command", () => {

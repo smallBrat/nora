@@ -1,6 +1,5 @@
 // @ts-nocheck
-process.env.ENCRYPTION_KEY =
-  "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+process.env.ENCRYPTION_KEY = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
 const mockDb = { query: jest.fn() };
 const mockRunContainerCommand = jest.fn();
@@ -21,10 +20,17 @@ jest.mock("../healthChecks", () => ({
 
 const {
   getPersistedHermesState,
+  persistHermesModelConfig,
   readHermesRuntimeSnapshot,
   replacePersistedHermesState,
   snapshotToPersistedHermesState,
 } = require("../hermesUi");
+
+function decodeHermesHelperScript(command) {
+  const match = String(command || "").match(/base64\.b64decode\("([^"]+)"\)\.decode\('utf-8'\)/);
+  if (!match) return "";
+  return Buffer.from(match[1], "base64").toString("utf8");
+}
 
 describe("Hermes helper execution", () => {
   beforeEach(() => {
@@ -55,16 +61,41 @@ describe("Hermes helper execution", () => {
       expect.objectContaining({
         id: "agent-hermes-1",
         container_id: "hermes-container-1",
-      })
+      }),
     );
     expect(options).toEqual({ timeout: 30000 });
     expect(command).toContain('HERMES_ROOT="/opt/hermes"');
     expect(command).toContain('HERMES_PYTHON="$HERMES_ROOT/.venv/bin/python"');
     expect(command).toContain('if [ -d "$HERMES_ROOT" ]; then cd "$HERMES_ROOT"; fi');
     expect(command).toContain(
-      'PYTHONPATH="$HERMES_ROOT${PYTHONPATH:+:$PYTHONPATH}" exec "$HERMES_PYTHON" - <<\'PY\''
+      'PYTHONPATH="$HERMES_ROOT${PYTHONPATH:+:$PYTHONPATH}" exec "$HERMES_PYTHON" - <<\'PY\'',
     );
     expect(command).not.toContain("python3 - <<'PY'");
+  });
+
+  it("persists model config through Hermes save_config and repairs surrogate pairs", async () => {
+    mockRunContainerCommand.mockResolvedValueOnce({
+      output: JSON.stringify({ ok: true }),
+    });
+
+    await persistHermesModelConfig(
+      {
+        id: "agent-hermes-1",
+        container_id: "hermes-container-1",
+      },
+      {
+        defaultModel: "gpt-5.4",
+        provider: "openai",
+        baseUrl: "https://api.openai.com/v1",
+      },
+    );
+
+    const [, command] = mockRunContainerCommand.mock.calls[0];
+    const script = decodeHermesHelperScript(command);
+    expect(script).toContain("repair_surrogates(load_config() or {})");
+    expect(script).toContain('decode("utf-16", "replace")');
+    expect(script).toContain("save_config(config)");
+    expect(script).not.toContain("json.dumps(config, indent=2)");
   });
 });
 
@@ -97,9 +128,7 @@ describe("Hermes persisted runtime state", () => {
     const storedChannelConfigs = replaceParams[2];
     const parsedStoredChannels = JSON.parse(storedChannelConfigs);
 
-    expect(parsedStoredChannels.telegram.TELEGRAM_BOT_TOKEN).not.toBe(
-      "telegram-secret"
-    );
+    expect(parsedStoredChannels.telegram.TELEGRAM_BOT_TOKEN).not.toBe("telegram-secret");
     expect(parsedStoredChannels.telegram.TELEGRAM_HOME_CHANNEL).toBe("12345");
 
     mockDb.query.mockResolvedValueOnce({
