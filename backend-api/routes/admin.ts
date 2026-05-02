@@ -10,7 +10,8 @@ const snapshots = require("../snapshots");
 const containerManager = require("../containerManager");
 const releaseUpgrade = require("../releaseUpgrade");
 const { repairHermesAgentConfig } = require("../hermesUi");
-const { addDeploymentJob, getDLQJobs, retryDLQJob } = require("../redisQueue");
+const { addBackupJob, addDeploymentJob, getDLQJobs, retryDLQJob } = require("../redisQueue");
+const backups = require("../backups");
 const { requireAdmin } = require("../middleware/auth");
 const { asyncHandler } = require("../middleware/errorHandler");
 const { reconcileAgentStatus } = require("../agentStatus");
@@ -45,9 +46,13 @@ const {
 const {
   getDeploymentDefaults,
   getAgentHubSettings,
+  getBackupPlanLimits,
+  getBackupSettings,
   getSystemBanner,
   parseRequiredDeploymentDefaults,
   updateAgentHubSettings,
+  updateBackupPlanLimits,
+  updateBackupSettings,
   updateDeploymentDefaults,
   updateSystemBanner,
 } = require("../platformSettings");
@@ -486,10 +491,14 @@ function buildSubscriptionLookup(row = {}) {
   };
 }
 
-async function buildAdminUserResponse(row, { deploymentDefaults = null, subscriptionRow } = {}) {
+async function buildAdminUserResponse(
+  row,
+  { deploymentDefaults = null, backupPlanLimits = null, subscriptionRow } = {},
+) {
   const subscription = await billing.getSubscription(row.id, {
     userRow: row,
     subscriptionRow,
+    ...(backupPlanLimits ? { backupPlanLimits } : {}),
     ...(deploymentDefaults ? { deploymentDefaults } : {}),
   });
 
@@ -507,6 +516,19 @@ async function buildAdminUserResponse(row, { deploymentDefaults = null, subscrip
     base_agent_limit: subscription.base_agent_limit,
     agent_limit_source: subscription.agent_limit_source,
     is_unlimited: subscription.is_unlimited,
+    managed_backups_enabled: subscription.managed_backups_enabled,
+    managed_backups_enabled_override: subscription.managed_backups_enabled_override,
+    managed_backups_source: subscription.managed_backups_source,
+    backup_limit_per_agent: subscription.backup_limit_per_agent,
+    backup_limit_per_agent_override: subscription.backup_limit_per_agent_override,
+    backup_limit_source: subscription.backup_limit_source,
+    backup_storage_mb: subscription.backup_storage_mb,
+    backup_storage_mb_override: subscription.backup_storage_mb_override,
+    backup_storage_source: subscription.backup_storage_source,
+    backup_retention_days: subscription.backup_retention_days,
+    backup_retention_days_override: subscription.backup_retention_days_override,
+    backup_retention_source: subscription.backup_retention_source,
+    backup_is_unlimited: subscription.backup_is_unlimited,
   };
 }
 
@@ -518,6 +540,10 @@ async function getAdminUserRow(userId) {
             u.role,
             u.created_at,
             u.agent_limit_override,
+            u.managed_backups_enabled_override,
+            u.backup_limit_per_agent_override,
+            u.backup_storage_mb_override,
+            u.backup_retention_days_override,
             COUNT(a.id)::int AS "agentCount",
             sub.plan AS "subscriptionPlan",
             sub.status AS "subscriptionStatus"
@@ -538,6 +564,10 @@ async function getAdminUserRow(userId) {
         u.role,
         u.created_at,
         u.agent_limit_override,
+        u.managed_backups_enabled_override,
+        u.backup_limit_per_agent_override,
+        u.backup_storage_mb_override,
+        u.backup_retention_days_override,
         sub.plan,
         sub.status`,
     [userId],
@@ -665,6 +695,91 @@ router.put(
 );
 
 router.get(
+  "/settings/backups",
+  asyncHandler(async (_req, res) => {
+    const settings = await getBackupSettings();
+    const schedule = await backups.syncInstallationScheduleFromSettings();
+    res.json({ ...settings, installationSchedule: schedule });
+  }),
+);
+
+router.put(
+  "/settings/backups",
+  asyncHandler(async (req, res) => {
+    const currentSettings = await getBackupSettings();
+    res.locals.auditContext = {
+      settings: {
+        kind: "backups",
+      },
+    };
+
+    const nextSettings = await updateBackupSettings(req.body || {});
+    const schedule = await backups.syncInstallationScheduleFromSettings(req.user.id);
+
+    await monitoring.logEvent(
+      "admin_backup_settings_updated",
+      `Admin updated backup storage and schedule settings`,
+      adminAuditMetadata(req, {
+        settings: {
+          kind: "backups",
+          previous: currentSettings,
+          next: nextSettings,
+          schedule,
+        },
+      }),
+    );
+
+    res.json({ ...nextSettings, installationSchedule: schedule });
+  }),
+);
+
+router.get(
+  "/settings/backup-plan-limits",
+  asyncHandler(async (_req, res) => {
+    res.json({
+      platformMode: billing.PLATFORM_MODE,
+      billingEnabled: billing.BILLING_ENABLED,
+      plans: await getBackupPlanLimits(),
+    });
+  }),
+);
+
+router.put(
+  "/settings/backup-plan-limits",
+  asyncHandler(async (req, res) => {
+    res.locals.auditContext = {
+      settings: {
+        kind: "backup_plan_limits",
+      },
+    };
+
+    // Single round-trip captures both `previous` and `next` atomically so
+    // two simultaneous admin PUTs each get a truthful audit trail — the
+    // second write's `previous` reflects the first write's `next`, not a
+    // stale pre-read.
+    const { previous, next: nextLimits } = await updateBackupPlanLimits(req.body || {});
+
+    await monitoring.logEvent(
+      "admin_backup_plan_limits_updated",
+      "Admin updated backup plan limits",
+      adminAuditMetadata(req, {
+        settings: {
+          kind: "backup_plan_limits",
+          previous,
+          next: nextLimits,
+        },
+      }),
+    );
+
+    res.json({
+      platformMode: billing.PLATFORM_MODE,
+      billingEnabled: billing.BILLING_ENABLED,
+      plans: nextLimits,
+    });
+  }),
+);
+
+router.get(
   "/release-upgrade",
   asyncHandler(async (_req, res) => {
     res.json(await releaseUpgrade.getReleaseUpgradeStatus());
@@ -703,7 +818,10 @@ router.post(
 router.get(
   "/users",
   asyncHandler(async (_req, res) => {
-    const deploymentDefaults = billing.IS_PAAS ? await getDeploymentDefaults() : null;
+    const [deploymentDefaults, backupPlanLimits] = await Promise.all([
+      billing.IS_PAAS ? getDeploymentDefaults() : null,
+      billing.IS_PAAS && billing.BILLING_ENABLED ? getBackupPlanLimits() : null,
+    ]);
     const result = await db.query(
       `SELECT u.id,
               u.email,
@@ -711,6 +829,10 @@ router.get(
               u.role,
               u.created_at,
               u.agent_limit_override,
+              u.managed_backups_enabled_override,
+              u.backup_limit_per_agent_override,
+              u.backup_storage_mb_override,
+              u.backup_retention_days_override,
               COUNT(a.id)::int AS "agentCount",
               sub.plan AS "subscriptionPlan",
               sub.status AS "subscriptionStatus"
@@ -730,6 +852,10 @@ router.get(
           u.role,
           u.created_at,
           u.agent_limit_override,
+          u.managed_backups_enabled_override,
+          u.backup_limit_per_agent_override,
+          u.backup_storage_mb_override,
+          u.backup_retention_days_override,
           sub.plan,
           sub.status
         ORDER BY u.created_at DESC`,
@@ -740,6 +866,7 @@ router.get(
         result.rows.map((row) =>
           buildAdminUserResponse(row, {
             deploymentDefaults,
+            backupPlanLimits,
             subscriptionRow: buildSubscriptionLookup(row),
           }),
         ),
@@ -817,9 +944,13 @@ router.put(
       nextOverride = requestedOverride;
     }
 
-    const deploymentDefaults = billing.IS_PAAS ? await getDeploymentDefaults() : null;
+    const [deploymentDefaults, backupPlanLimits] = await Promise.all([
+      billing.IS_PAAS ? getDeploymentDefaults() : null,
+      billing.IS_PAAS && billing.BILLING_ENABLED ? getBackupPlanLimits() : null,
+    ]);
     const previousSubscription = await billing.getSubscription(user.id, {
       userRow: user,
+      ...(backupPlanLimits ? { backupPlanLimits } : {}),
       ...(deploymentDefaults ? { deploymentDefaults } : {}),
     });
 
@@ -831,6 +962,7 @@ router.put(
     const updatedRow = await getAdminUserRow(req.params.id);
     const responseUser = await buildAdminUserResponse(updatedRow, {
       deploymentDefaults,
+      backupPlanLimits,
       subscriptionRow: buildSubscriptionLookup(updatedRow),
     });
 
@@ -849,6 +981,116 @@ router.put(
           nextAgentLimit: responseUser.agent_limit,
           nextAgentLimitSource: responseUser.agent_limit_source,
           nextIsUnlimited: responseUser.is_unlimited,
+        },
+      }),
+    );
+
+    res.json(responseUser);
+  }),
+);
+
+function parseNullableNonNegativeInteger(value, fieldName) {
+  if (value === null || value === undefined || value === "") return null;
+  if (!Number.isSafeInteger(value) || value < 0) {
+    const error = new Error(`${fieldName} must be an integer that is 0 or greater, or null`);
+    error.statusCode = 400;
+    throw error;
+  }
+  return value;
+}
+
+function parseNullableBooleanOverride(value, fieldName) {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== "boolean") {
+    const error = new Error(`${fieldName} must be a boolean or null`);
+    error.statusCode = 400;
+    throw error;
+  }
+  return value;
+}
+
+router.put(
+  "/users/:id/backup-limits",
+  asyncHandler(async (req, res) => {
+    const existing = await db.query(
+      `SELECT id,
+              email,
+              name,
+              role,
+              agent_limit_override,
+              managed_backups_enabled_override,
+              backup_limit_per_agent_override,
+              backup_storage_mb_override,
+              backup_retention_days_override
+         FROM users
+        WHERE id = $1`,
+      [req.params.id],
+    );
+    const user = existing.rows[0];
+    if (!user) return res.status(404).json({ error: "User not found" });
+    res.locals.auditContext = buildUserContext(user);
+
+    const nextEnabled = parseNullableBooleanOverride(
+      req.body?.managed_backups_enabled_override,
+      "managed_backups_enabled_override",
+    );
+    const nextCount = parseNullableNonNegativeInteger(
+      req.body?.backup_limit_per_agent_override,
+      "backup_limit_per_agent_override",
+    );
+    const nextStorage = parseNullableNonNegativeInteger(
+      req.body?.backup_storage_mb_override,
+      "backup_storage_mb_override",
+    );
+    const nextRetention = parseNullableNonNegativeInteger(
+      req.body?.backup_retention_days_override,
+      "backup_retention_days_override",
+    );
+
+    const [deploymentDefaults, backupPlanLimits] = await Promise.all([
+      billing.IS_PAAS ? getDeploymentDefaults() : null,
+      billing.IS_PAAS && billing.BILLING_ENABLED ? getBackupPlanLimits() : null,
+    ]);
+    const previousSubscription = await billing.getSubscription(user.id, {
+      userRow: user,
+      ...(backupPlanLimits ? { backupPlanLimits } : {}),
+      ...(deploymentDefaults ? { deploymentDefaults } : {}),
+    });
+
+    await db.query(
+      `UPDATE users
+          SET managed_backups_enabled_override = $2,
+              backup_limit_per_agent_override = $3,
+              backup_storage_mb_override = $4,
+              backup_retention_days_override = $5
+        WHERE id = $1`,
+      [user.id, nextEnabled, nextCount, nextStorage, nextRetention],
+    );
+
+    const updatedRow = await getAdminUserRow(req.params.id);
+    const responseUser = await buildAdminUserResponse(updatedRow, {
+      deploymentDefaults,
+      backupPlanLimits,
+      subscriptionRow: buildSubscriptionLookup(updatedRow),
+    });
+
+    await monitoring.logEvent(
+      "admin_user_backup_limits_updated",
+      `Admin updated backup limits for ${user.email}`,
+      adminUserAuditMetadata(req, responseUser, {
+        result: {
+          previous: {
+            managed_backups_enabled: previousSubscription.managed_backups_enabled,
+            backup_limit_per_agent: previousSubscription.backup_limit_per_agent,
+            backup_storage_mb: previousSubscription.backup_storage_mb,
+            backup_retention_days: previousSubscription.backup_retention_days,
+          },
+          next: {
+            managed_backups_enabled: responseUser.managed_backups_enabled,
+            backup_limit_per_agent: responseUser.backup_limit_per_agent,
+            backup_storage_mb: responseUser.backup_storage_mb,
+            backup_retention_days: responseUser.backup_retention_days,
+          },
         },
       }),
     );
@@ -881,6 +1123,86 @@ router.delete(
       }),
     );
     res.json({ success: true });
+  }),
+);
+
+router.get(
+  "/backups",
+  asyncHandler(async (_req, res) => {
+    res.json(await backups.listAdminBackups());
+  }),
+);
+
+router.post(
+  "/backups/installation",
+  asyncHandler(async (req, res) => {
+    const backup = await backups.createInstallationBackup({
+      actorId: req.user.id,
+      name: req.body?.name || "",
+    });
+    await addBackupJob({ backupId: backup.id });
+
+    await monitoring.logEvent(
+      "admin_installation_backup_queued",
+      `Admin queued installation backup "${backup.name}"`,
+      adminAuditMetadata(req, {
+        backup: {
+          id: backup.id,
+          kind: backup.kind,
+          status: backup.status,
+        },
+      }),
+    );
+
+    res.status(202).json({ backup });
+  }),
+);
+
+router.get(
+  "/backups/:id/download",
+  asyncHandler(async (req, res) => {
+    const { buffer, filename } = await backups.getBackupDownload({
+      backupId: req.params.id,
+      isAdmin: true,
+    });
+    res.setHeader("Content-Type", "application/gzip");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.send(buffer);
+  }),
+);
+
+router.delete(
+  "/backups/:id",
+  asyncHandler(async (req, res) => {
+    const result = await backups.deleteBackup({ backupId: req.params.id, isAdmin: true });
+    await monitoring.logEvent(
+      "admin_backup_deleted",
+      `Admin deleted backup ${req.params.id}`,
+      adminAuditMetadata(req, { backup: { id: req.params.id } }),
+    );
+    res.json(result);
+  }),
+);
+
+router.post(
+  "/backups/:id/restore",
+  asyncHandler(async (req, res) => {
+    const restored = await backups.restoreBackupInPlace({
+      backupId: req.params.id,
+      targetAgentId: req.body?.target_agent_id || req.body?.targetAgentId,
+      confirmAgentName: req.body?.confirm_agent_name || req.body?.confirmAgentName,
+      actor: req.user,
+    });
+    await monitoring.logEvent(
+      "admin_backup_restored_in_place",
+      `Admin restored backup ${req.params.id} into agent "${restored.name}"`,
+      adminAuditMetadata(req, {
+        backup: { id: req.params.id },
+        agent: { id: restored.id, name: restored.name, ownerUserId: restored.user_id },
+        restore: { mode: "in_place" },
+      }),
+    );
+    res.json(restored);
   }),
 );
 

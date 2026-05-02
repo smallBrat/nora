@@ -76,6 +76,10 @@ jest.mock("../billing", () => ({
     agent_limit_source: "default",
     is_unlimited: false,
   }),
+  getBackupUsage: jest.fn().mockResolvedValue({
+    backup_storage_used_bytes: 0,
+    backup_count_for_agent: 0,
+  }),
   createCheckoutSession: jest.fn(),
   createPortalSession: jest.fn(),
   handleWebhookEvent: jest.fn(),
@@ -344,6 +348,10 @@ describe("Protected auth routes", () => {
       ram_mb: 4096,
       disk_gb: 50,
     });
+    billingModule.getBackupUsage.mockResolvedValueOnce({
+      backup_storage_used_bytes: 2048,
+      backup_count_for_agent: 0,
+    });
     mockDb.query.mockResolvedValueOnce({ rows: [{ count: "4" }] });
 
     const res = await request(app)
@@ -361,6 +369,7 @@ describe("Protected auth routes", () => {
         agent_limit_source: "admin_override",
         is_unlimited: false,
         agents_used: 4,
+        backup_storage_used_bytes: 2048,
         vcpu: 4,
         ram_mb: 4096,
         disk_gb: 50,

@@ -309,7 +309,7 @@ function legacyTemplateToManifest(payload = {}, filename = "") {
   });
 }
 
-async function parseUploadedMigrationBuffer(buffer, filename = "") {
+async function parseUploadedMigrationBuffer(buffer, filename = "", options = {}) {
   if (!Buffer.isBuffer(buffer)) {
     throw new Error("Upload body is empty");
   }
@@ -320,7 +320,11 @@ async function parseUploadedMigrationBuffer(buffer, filename = "") {
   if (byteLength === 0) {
     throw new Error("Upload body is empty");
   }
-  if (byteLength > MAX_UPLOAD_BYTES) {
+  const maxBytes =
+    options.maxBytes === null || options.maxBytes === Infinity
+      ? null
+      : Number.parseInt(options.maxBytes ?? MAX_UPLOAD_BYTES, 10);
+  if (maxBytes != null && byteLength > maxBytes) {
     throw new Error("Upload is too large");
   }
 

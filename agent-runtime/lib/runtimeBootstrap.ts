@@ -191,7 +191,7 @@ function buildOpenClawInstallCommand(packages = ["openclaw@latest"]) {
     throw new Error("buildOpenClawInstallCommand requires at least one package");
   }
 
-  const invalidPackage = normalizedPackages.find((pkg) => !/^[a-zA-Z0-9@._+/\-]+$/.test(pkg));
+  const invalidPackage = normalizedPackages.find((pkg) => !/^[a-zA-Z0-9@._+/-]+$/.test(pkg));
   if (invalidPackage) {
     throw new Error(`Invalid package spec: ${invalidPackage}`);
   }

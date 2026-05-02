@@ -1,15 +1,16 @@
 // @ts-nocheck
-const crypto = require('crypto');
+const crypto = require("crypto");
 
 /**
  * Structured application error with status code and error code.
  */
 class AppError extends Error {
-  constructor(message, statusCode = 500, code = 'INTERNAL_ERROR') {
+  constructor(message, statusCode = 500, code = "INTERNAL_ERROR", options = {}) {
     super(message);
     this.statusCode = statusCode;
     this.code = code;
-    this.name = 'AppError';
+    this.expose = options.expose ?? statusCode < 500;
+    this.name = "AppError";
   }
 }
 
@@ -18,33 +19,32 @@ class AppError extends Error {
  * Clients can pass x-correlation-id to trace across services.
  */
 function correlationId(req, res, next) {
-  req.correlationId = req.headers['x-correlation-id'] || crypto.randomUUID();
-  res.setHeader('x-correlation-id', req.correlationId);
+  req.correlationId = req.headers["x-correlation-id"] || crypto.randomUUID();
+  res.setHeader("x-correlation-id", req.correlationId);
   next();
 }
 
 /**
  * Wrap async route handlers so rejected promises are forwarded to Express error handler.
  */
-const asyncHandler = (fn) => (req, res, next) =>
-  Promise.resolve(fn(req, res, next)).catch(next);
+const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
 /**
  * Central error handler — must be registered LAST (after all routes).
  * - Logs full stack for 500s with correlation ID
- * - Hides internal error details from clients
+ * - Hides internal error details from clients unless explicitly exposed
  * - Preserves explicit status codes from AppError
  */
 function errorHandler(err, req, res, _next) {
   const status = err.statusCode || 500;
-  const code = err.code || 'INTERNAL_ERROR';
-  const cid = req.correlationId || 'unknown';
+  const code = err.code || "INTERNAL_ERROR";
+  const cid = req.correlationId || "unknown";
 
   console.error(`[${cid}] ${req.method} ${req.originalUrl} -> ${status}: ${err.message}`);
   if (status >= 500) console.error(err.stack);
 
   res.locals.auditError = {
-    name: err.name || 'Error',
+    name: err.name || "Error",
     message: err.message,
     code,
     statusCode: status,
@@ -53,13 +53,12 @@ function errorHandler(err, req, res, _next) {
 
   if (res.headersSent) return;
 
-  // 4xx messages are intentionally exposed — routes set statusCode<500 only
-  // on errors whose messages are meant for the client (validation, conflict,
-  // not-found). 5xx messages are always replaced with a generic string so
-  // unexpected server-side errors (pg detail, file paths, stack info) don't
-  // leak through.
+  // 4xx messages are intentionally exposed. 5xx messages stay generic unless
+  // a route marks the error as exposed for expected operator-facing failures,
+  // such as missing backup storage configuration.
+  const expose = err.expose === true || status < 500;
   res.status(status).json({
-    error: status >= 500 ? 'Internal server error' : err.message,
+    error: expose ? err.message : "Internal server error",
     code,
     correlationId: cid,
   });

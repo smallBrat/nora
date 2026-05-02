@@ -266,6 +266,19 @@ function Test-AgentHubHashSecretPresent {
     return $false
 }
 
+function Test-BackupEncryptionKeyPresent {
+    param([string[]]$Lines)
+
+    foreach ($line in $Lines) {
+        if ($line -match '^\s*NORA_BACKUP_ENCRYPTION_KEY\s*=') {
+            if (Get-EnvAssignmentValue -Line $line) {
+                return $true
+            }
+        }
+    }
+    return $false
+}
+
 function Ensure-AgentHubHashSecretEnv {
     param([string]$EnvPath)
 
@@ -303,6 +316,53 @@ function Ensure-AgentHubHashSecretEnv {
 
     $updatedLines | Out-File -FilePath $EnvPath -Encoding utf8NoBOM
     Write-Ok "NORA_AGENT_HUB_API_KEY_HASH_SECRET generated (64-char hex)"
+}
+
+function Ensure-BackupEncryptionKeyEnv {
+    param([string]$EnvPath)
+
+    if (-not (Test-Path $EnvPath)) {
+        return
+    }
+
+    $lines = Get-Content -LiteralPath $EnvPath
+    if (Test-BackupEncryptionKeyPresent -Lines $lines) {
+        Write-Info "NORA_BACKUP_ENCRYPTION_KEY already set; preserving existing value."
+        return
+    }
+
+    $secret = New-HexSecret
+    $updatedLines = New-Object System.Collections.Generic.List[string]
+    $wroteSecret = $false
+
+    foreach ($line in $lines) {
+        if ($line -match '^\s*NORA_BACKUP_ENCRYPTION_KEY\s*=') {
+            if (-not $wroteSecret) {
+                $updatedLines.Add("NORA_BACKUP_ENCRYPTION_KEY=$secret")
+                $wroteSecret = $true
+            }
+            continue
+        }
+        if ($line -match '^\s*ENCRYPTION_KEY\s*=') {
+            $updatedLines.Add($line)
+            if (-not $wroteSecret) {
+                $updatedLines.Add("NORA_BACKUP_ENCRYPTION_KEY=$secret")
+                $wroteSecret = $true
+            }
+            continue
+        }
+        $updatedLines.Add($line)
+    }
+
+    if (-not $wroteSecret) {
+        if ($updatedLines.Count -gt 0) {
+            $updatedLines.Add("")
+        }
+        $updatedLines.Add("NORA_BACKUP_ENCRYPTION_KEY=$secret")
+    }
+
+    $updatedLines | Out-File -FilePath $EnvPath -Encoding utf8NoBOM
+    Write-Ok "NORA_BACKUP_ENCRYPTION_KEY generated (64-char hex)"
 }
 
 function Remove-LocalAgentContainers {
@@ -812,6 +872,7 @@ if ($SETUP_MODE -eq "update") {
     Update-SourceCheckout
     Refresh-ReleaseTags
     Ensure-AgentHubHashSecretEnv -EnvPath $ENV_FILE
+    Ensure-BackupEncryptionKeyEnv -EnvPath $ENV_FILE
     Update-ReleaseTrackingEnv -EnvPath $ENV_FILE
     Assert-NoraHostPortsAvailable -Checks (Get-NoraHostPortChecks -EnvPath $ENV_FILE)
     Start-NoraComposeStack
@@ -846,15 +907,17 @@ Write-Header "Generating Secrets"
 
 $JWT_SECRET      = New-HexSecret
 $ENCRYPTION_KEY  = New-HexSecret
+$NORA_BACKUP_ENCRYPTION_KEY = New-HexSecret
 $NORA_AGENT_HUB_API_KEY_HASH_SECRET = New-HexSecret
 $DB_USER         = "nora"
 $DB_NAME         = "nora"
 $DB_PASSWORD     = New-HexSecret -Bytes 24
 
-Write-Ok "JWT_SECRET      (64-char hex)"
-Write-Ok "ENCRYPTION_KEY  (64-char hex — AES-256-GCM)"
-Write-Ok "AGENT_HUB_HASH  (64-char hex)"
-Write-Ok "DB_PASSWORD     (48-char hex)"
+Write-Ok "JWT_SECRET            (64-char hex)"
+Write-Ok "ENCRYPTION_KEY        (64-char hex — AES-256-GCM)"
+Write-Ok "BACKUP_ENCRYPTION_KEY (64-char hex — managed backup archives)"
+Write-Ok "AGENT_HUB_HASH        (64-char hex)"
+Write-Ok "DB_PASSWORD           (48-char hex)"
 
 # ── Platform mode ────────────────────────────────────────────
 
@@ -1212,6 +1275,7 @@ $envContent = @"
 # ── Required (auto-generated) ────────────────────────────────
 JWT_SECRET=$JWT_SECRET
 ENCRYPTION_KEY=$ENCRYPTION_KEY
+NORA_BACKUP_ENCRYPTION_KEY=$NORA_BACKUP_ENCRYPTION_KEY
 NORA_AGENT_HUB_API_KEY_HASH_SECRET=$NORA_AGENT_HUB_API_KEY_HASH_SECRET
 
 # ── Bootstrap Admin Account (optional; seeded only when both are set securely) ──
@@ -1252,6 +1316,40 @@ MAX_VCPU=$MAX_VCPU
 MAX_RAM_MB=$MAX_RAM_MB
 MAX_DISK_GB=$MAX_DISK_GB
 MAX_AGENTS=$MAX_AGENTS
+
+# ── Managed Backups ──────────────────────────────────────────
+# Leave storage destination vars empty to use Admin Settings (default: local volume).
+NORA_BACKUP_STORAGE=
+NORA_BACKUP_DIR=
+NORA_BACKUP_LIMIT_PER_AGENT=10
+NORA_BACKUP_STORAGE_MB=51200
+NORA_BACKUP_RETENTION_DAYS=30
+BACKUP_WORKER_CONCURRENCY=2
+NORA_BACKUP_JOB_TIMEOUT_MS=1800000
+NORA_BACKUP_SCHEDULE_POLL_MS=60000
+
+# Optional S3 / Cloudflare R2 storage overrides. Admin Settings can also
+# store these in the database when ENCRYPTION_KEY is configured.
+NORA_BACKUP_S3_BUCKET=
+NORA_BACKUP_S3_REGION=
+NORA_BACKUP_S3_ENDPOINT=
+NORA_BACKUP_S3_ACCESS_KEY_ID=
+NORA_BACKUP_S3_SECRET_ACCESS_KEY=
+NORA_BACKUP_S3_SESSION_TOKEN=
+NORA_BACKUP_R2_BUCKET=
+NORA_BACKUP_R2_REGION=
+NORA_BACKUP_R2_ENDPOINT=
+NORA_BACKUP_R2_ACCESS_KEY_ID=
+NORA_BACKUP_R2_SECRET_ACCESS_KEY=
+NORA_BACKUP_R2_SESSION_TOKEN=
+
+# Optional SSH/SFTP storage overrides.
+NORA_BACKUP_SSH_HOST=
+NORA_BACKUP_SSH_PORT=
+NORA_BACKUP_SSH_USERNAME=
+NORA_BACKUP_SSH_REMOTE_PATH=
+NORA_BACKUP_SSH_PRIVATE_KEY=
+NORA_BACKUP_SSH_PASSWORD=
 
 # ── Billing (only when PLATFORM_MODE=paas) ───────────────────
 BILLING_ENABLED=false
@@ -1353,7 +1451,7 @@ if ($DEFAULT_ADMIN_EMAIL) {
     Write-Host "  Admin:        Not pre-seeded (create via signup)"
     Write-Host "  Password:     Not set"
 }
-Write-Host "  Secrets:      auto-generated (JWT, AES, Agent Hub)"
+Write-Host "  Secrets:      auto-generated (JWT, AES, backups, Agent Hub)"
 Write-Host "  Database:     PostgreSQL 15 (Docker Compose)"
 Write-Host "  DB Access:    $DB_USER / auto-generated / $DB_NAME (.env)"
 Write-Host "  Redis:        Redis 7 (Docker Compose)"

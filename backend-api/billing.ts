@@ -1,6 +1,6 @@
 // @ts-nocheck
 const db = require("./db");
-const { getDeploymentDefaults } = require("./platformSettings");
+const { getBackupPlanLimits, getDeploymentDefaults } = require("./platformSettings");
 
 // Conditionally load Stripe — if no key, functions gracefully degrade
 const stripeKey = process.env.STRIPE_SECRET_KEY;
@@ -10,9 +10,27 @@ const PLATFORM_MODE = (process.env.PLATFORM_MODE || "selfhosted").toLowerCase();
 const IS_PAAS = PLATFORM_MODE === "paas";
 
 const PLANS = {
-  free: { agent_limit: 3 },
-  pro: { agent_limit: 10 },
-  enterprise: { agent_limit: 100 },
+  free: {
+    agent_limit: 3,
+    managed_backups_enabled: false,
+    backup_limit_per_agent: 0,
+    backup_storage_mb: 0,
+    backup_retention_days: 0,
+  },
+  pro: {
+    agent_limit: 10,
+    managed_backups_enabled: true,
+    backup_limit_per_agent: 5,
+    backup_storage_mb: 5120,
+    backup_retention_days: 30,
+  },
+  enterprise: {
+    agent_limit: 100,
+    managed_backups_enabled: true,
+    backup_limit_per_agent: 30,
+    backup_storage_mb: 102400,
+    backup_retention_days: 180,
+  },
 };
 const KNOWN_PLANS = new Set(Object.keys(PLANS));
 const DEFAULT_USER_AGENT_LIMIT = 3;
@@ -22,6 +40,9 @@ const SELFHOSTED_LIMITS = {
   max_ram_mb: parseInt(process.env.MAX_RAM_MB || "32768", 10),
   max_disk_gb: parseInt(process.env.MAX_DISK_GB || "500", 10),
   max_agents: parseInt(process.env.MAX_AGENTS || "50", 10),
+  backup_limit_per_agent: parseInt(process.env.NORA_BACKUP_LIMIT_PER_AGENT || "10", 10),
+  backup_storage_mb: parseInt(process.env.NORA_BACKUP_STORAGE_MB || "51200", 10),
+  backup_retention_days: parseInt(process.env.NORA_BACKUP_RETENTION_DAYS || "30", 10),
 };
 const BILLING_ENABLED = process.env.BILLING_ENABLED === "true";
 
@@ -41,6 +62,24 @@ function normalizeAgentLimitOverride(value) {
   const parsed = parseInteger(value);
   if (parsed == null || parsed < 0) return null;
   return parsed;
+}
+
+function normalizeBackupLimitOverride(value) {
+  const parsed = parseInteger(value);
+  if (parsed == null || parsed < 0) return null;
+  return parsed;
+}
+
+function normalizeNullableBoolean(value) {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value !== 0;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (["1", "true", "yes", "on"].includes(normalized)) return true;
+    if (["0", "false", "no", "off"].includes(normalized)) return false;
+  }
+  return null;
 }
 
 function isAdminUser(user = {}) {
@@ -91,21 +130,100 @@ function applyEffectiveAgentLimit(base, user = {}, options = {}) {
   };
 }
 
-function buildPlanSubscription(plan, defaults = {}) {
+function applyBackupEntitlement(base, user = {}) {
+  const enabledOverride = normalizeNullableBoolean(user?.managed_backups_enabled_override);
+  const countOverride = normalizeBackupLimitOverride(user?.backup_limit_per_agent_override);
+  const storageOverride = normalizeBackupLimitOverride(user?.backup_storage_mb_override);
+  const retentionOverride = normalizeBackupLimitOverride(user?.backup_retention_days_override);
+  const roleDefaultIsUnlimited = isAdminUser(user);
+
+  let next = {
+    ...base,
+    managed_backups_enabled:
+      base.managed_backups_enabled === true || String(base.plan || "") === "selfhosted",
+    managed_backups_enabled_override: null,
+    backup_limit_per_agent: roleDefaultIsUnlimited ? null : base.backup_limit_per_agent,
+    backup_limit_per_agent_override: null,
+    backup_storage_mb: roleDefaultIsUnlimited ? null : base.backup_storage_mb,
+    backup_storage_mb_override: null,
+    backup_retention_days: base.backup_retention_days,
+    backup_retention_days_override: null,
+    managed_backups_source: base.managed_backups_source || "plan",
+    backup_limit_source: roleDefaultIsUnlimited
+      ? "admin_default_unlimited"
+      : base.backup_limit_source || "plan",
+    backup_storage_source: roleDefaultIsUnlimited
+      ? "admin_default_unlimited"
+      : base.backup_storage_source || "plan",
+    backup_retention_source: base.backup_retention_source || "plan",
+    backup_is_unlimited: roleDefaultIsUnlimited,
+  };
+
+  if (enabledOverride !== null) {
+    next.managed_backups_enabled = enabledOverride;
+    next.managed_backups_enabled_override = enabledOverride;
+    next.managed_backups_source = "admin_override";
+  }
+
+  if (countOverride != null) {
+    next.backup_limit_per_agent = countOverride;
+    next.backup_limit_per_agent_override = countOverride;
+    next.backup_limit_source = "admin_override";
+    next.backup_is_unlimited = false;
+  }
+
+  if (storageOverride != null) {
+    next.backup_storage_mb = storageOverride;
+    next.backup_storage_mb_override = storageOverride;
+    next.backup_storage_source = "admin_override";
+    next.backup_is_unlimited = false;
+  }
+
+  if (retentionOverride != null) {
+    next.backup_retention_days = retentionOverride;
+    next.backup_retention_days_override = retentionOverride;
+    next.backup_retention_source = "admin_override";
+  }
+
+  if (!next.managed_backups_enabled) {
+    next.backup_limit_per_agent = 0;
+    next.backup_storage_mb = 0;
+    next.backup_is_unlimited = false;
+  }
+
+  return next;
+}
+
+function buildPlanSubscription(plan, defaults = {}, backupPlanLimits = null) {
   const normalizedPlan = normalizePlanName(plan);
   const basePlan = PLANS[normalizedPlan] || PLANS.free;
+  const backupPlan = backupPlanLimits?.[normalizedPlan] || basePlan;
   return {
     plan: normalizedPlan,
     agent_limit: basePlan.agent_limit,
     vcpu: defaults.vcpu,
     ram_mb: defaults.ram_mb,
     disk_gb: defaults.disk_gb,
+    managed_backups_enabled: backupPlan.managed_backups_enabled,
+    backup_limit_per_agent: backupPlan.backup_limit_per_agent,
+    backup_storage_mb: backupPlan.backup_storage_mb,
+    backup_retention_days: backupPlan.backup_retention_days,
   };
 }
 
 async function getUserRow(userId) {
   const result = await db.query(
-    "SELECT id, email, role, name, agent_limit_override FROM users WHERE id = $1",
+    `SELECT id,
+            email,
+            role,
+            name,
+            agent_limit_override,
+            managed_backups_enabled_override,
+            backup_limit_per_agent_override,
+            backup_storage_mb_override,
+            backup_retention_days_override
+       FROM users
+      WHERE id = $1`,
     [userId],
   );
   return result.rows[0] || null;
@@ -127,27 +245,48 @@ function buildSelfHostedSubscription(user = {}) {
     vcpu: SELFHOSTED_LIMITS.max_vcpu,
     ram_mb: SELFHOSTED_LIMITS.max_ram_mb,
     disk_gb: SELFHOSTED_LIMITS.max_disk_gb,
+    managed_backups_enabled: true,
+    backup_limit_per_agent: SELFHOSTED_LIMITS.backup_limit_per_agent,
+    backup_storage_mb: SELFHOSTED_LIMITS.backup_storage_mb,
+    backup_retention_days: SELFHOSTED_LIMITS.backup_retention_days,
   };
 
-  return applyEffectiveAgentLimit(base, user, {
-    maxAgentLimit: SELFHOSTED_LIMITS.max_agents,
-  });
+  return applyBackupEntitlement(
+    applyEffectiveAgentLimit(base, user, {
+      maxAgentLimit: SELFHOSTED_LIMITS.max_agents,
+    }),
+    user,
+  );
 }
 
 function buildPaaSSubscription({
   user = {},
   subscriptionRow = null,
   deploymentDefaults = {},
+  backupPlanLimits = null,
 } = {}) {
   const basePlan = normalizePlanName(subscriptionRow?.plan);
+  const billingDisabledBackupEntitlement = BILLING_ENABLED
+    ? {}
+    : {
+        managed_backups_enabled: true,
+        backup_limit_per_agent: SELFHOSTED_LIMITS.backup_limit_per_agent,
+        backup_storage_mb: SELFHOSTED_LIMITS.backup_storage_mb,
+        backup_retention_days: SELFHOSTED_LIMITS.backup_retention_days,
+        managed_backups_source: "billing_disabled",
+        backup_limit_source: "billing_disabled",
+        backup_storage_source: "billing_disabled",
+        backup_retention_source: "billing_disabled",
+      };
   const base = {
     ...subscriptionRow,
-    ...buildPlanSubscription(basePlan, deploymentDefaults),
+    ...buildPlanSubscription(basePlan, deploymentDefaults, backupPlanLimits),
+    ...billingDisabledBackupEntitlement,
     plan: basePlan,
     status: BILLING_ENABLED ? subscriptionRow?.status || "active" : "active",
   };
 
-  return applyEffectiveAgentLimit(base, user);
+  return applyBackupEntitlement(applyEffectiveAgentLimit(base, user), user);
 }
 
 async function getSubscription(userId, options = {}) {
@@ -159,6 +298,12 @@ async function getSubscription(userId, options = {}) {
   }
 
   const deploymentDefaults = options.deploymentDefaults || (await getDeploymentDefaults());
+  const hasBackupPlanLimits = Object.prototype.hasOwnProperty.call(options, "backupPlanLimits");
+  const backupPlanLimits = hasBackupPlanLimits
+    ? options.backupPlanLimits
+    : BILLING_ENABLED
+      ? await getBackupPlanLimits()
+      : null;
   const hasSubscriptionRow = Object.prototype.hasOwnProperty.call(options, "subscriptionRow");
   const subscriptionRow = hasSubscriptionRow
     ? options.subscriptionRow
@@ -168,6 +313,7 @@ async function getSubscription(userId, options = {}) {
     user: user || {},
     subscriptionRow,
     deploymentDefaults,
+    backupPlanLimits,
   });
 }
 
@@ -201,6 +347,94 @@ async function enforceLimits(userId) {
     allowed: true,
     remaining: Number.isInteger(sub.agent_limit) ? sub.agent_limit - count : Infinity,
     subscription: sub,
+  };
+}
+
+async function getBackupUsage(userId, options = {}) {
+  const statusScope = ["queued", "running", "ready", "ready_with_warnings"];
+  const params = [userId, statusScope];
+  let agentClause = "";
+  if (options.agentId) {
+    params.push(options.agentId);
+    agentClause = `AND agent_id = $${params.length}`;
+  }
+
+  const [storageResult, countResult] = await Promise.all([
+    db.query(
+      `SELECT COALESCE(SUM(size_bytes), 0)::bigint AS used_bytes
+         FROM backups
+        WHERE user_id = $1
+          AND status = ANY($2)
+          AND kind = 'agent'`,
+      [userId, statusScope],
+    ),
+    db.query(
+      `SELECT COUNT(*)::int AS count
+         FROM backups
+        WHERE user_id = $1
+          AND status = ANY($2)
+          AND kind = 'agent'
+          ${agentClause}`,
+      params,
+    ),
+  ]);
+
+  return {
+    backup_storage_used_bytes: Number(storageResult.rows[0]?.used_bytes || 0),
+    backup_count_for_agent: Number(countResult.rows[0]?.count || 0),
+  };
+}
+
+function buildBackupLimitReachedError(count, subscription = {}) {
+  const limit = Number.isInteger(subscription?.backup_limit_per_agent)
+    ? subscription.backup_limit_per_agent
+    : 0;
+  return `Backup limit reached (${count}/${limit}). Contact your administrator.`;
+}
+
+async function enforceBackupLimits(userId, options = {}) {
+  const sub = await getSubscription(userId);
+  if (IS_PAAS && BILLING_ENABLED && sub.status !== "active") {
+    return { allowed: false, error: "Subscription is not active", subscription: sub };
+  }
+
+  if (!sub.managed_backups_enabled) {
+    return {
+      allowed: false,
+      error: "Managed backups are not available on your current plan.",
+      subscription: sub,
+    };
+  }
+
+  const usage = await getBackupUsage(userId, options);
+  if (
+    Number.isInteger(sub.backup_limit_per_agent) &&
+    usage.backup_count_for_agent >= sub.backup_limit_per_agent
+  ) {
+    return {
+      allowed: false,
+      error: buildBackupLimitReachedError(usage.backup_count_for_agent, sub),
+      subscription: sub,
+      usage,
+    };
+  }
+
+  const storageLimitBytes = Number.isInteger(sub.backup_storage_mb)
+    ? sub.backup_storage_mb * 1024 * 1024
+    : null;
+  if (storageLimitBytes != null && usage.backup_storage_used_bytes >= storageLimitBytes) {
+    return {
+      allowed: false,
+      error: "Backup storage limit reached. Delete old backups or contact your administrator.",
+      subscription: sub,
+      usage,
+    };
+  }
+
+  return {
+    allowed: true,
+    subscription: sub,
+    usage,
   };
 }
 
@@ -318,8 +552,13 @@ module.exports = {
   PLATFORM_MODE,
   IS_PAAS,
   SELFHOSTED_LIMITS,
+  buildBackupLimitReachedError,
   normalizeAgentLimitOverride,
+  normalizeBackupLimitOverride,
+  normalizeNullableBoolean,
   getSubscription,
+  getBackupUsage,
+  enforceBackupLimits,
   enforceLimits,
   createCheckoutSession,
   createPortalSession,

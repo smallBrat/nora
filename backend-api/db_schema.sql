@@ -7,6 +7,10 @@ CREATE TABLE IF NOT EXISTS users (
   role TEXT DEFAULT 'user',
   name TEXT,
   agent_limit_override INTEGER,
+  managed_backups_enabled_override BOOLEAN,
+  backup_limit_per_agent_override INTEGER,
+  backup_storage_mb_override INTEGER,
+  backup_retention_days_override INTEGER,
   provider TEXT,
   provider_id TEXT,
   stripe_customer_id TEXT,
@@ -104,6 +108,28 @@ CREATE TABLE IF NOT EXISTS platform_settings (
   agent_hub_default_share_target TEXT NOT NULL DEFAULT 'both',
   agent_hub_url TEXT NOT NULL DEFAULT 'https://nora.solomontsao.com',
   agent_hub_api_key_encrypted TEXT,
+  backup_storage_backend TEXT NOT NULL DEFAULT 'local',
+  backup_local_path TEXT NOT NULL DEFAULT '/var/lib/nora-backups',
+  backup_s3_bucket TEXT NOT NULL DEFAULT '',
+  backup_s3_region TEXT NOT NULL DEFAULT 'us-east-1',
+  backup_s3_endpoint TEXT NOT NULL DEFAULT '',
+  backup_s3_access_key_id_encrypted TEXT,
+  backup_s3_secret_access_key_encrypted TEXT,
+  backup_ssh_host TEXT NOT NULL DEFAULT '',
+  backup_ssh_port INTEGER NOT NULL DEFAULT 22,
+  backup_ssh_username TEXT NOT NULL DEFAULT '',
+  backup_ssh_remote_path TEXT NOT NULL DEFAULT '/backups/nora',
+  backup_ssh_private_key_encrypted TEXT,
+  backup_ssh_password_encrypted TEXT,
+  backup_installation_schedule_enabled BOOLEAN NOT NULL DEFAULT false,
+  backup_installation_schedule_frequency TEXT NOT NULL DEFAULT 'daily',
+  backup_installation_schedule_hour_utc INTEGER NOT NULL DEFAULT 2,
+  backup_installation_schedule_day_of_week INTEGER NOT NULL DEFAULT 0,
+  -- Per-tier defaults live in backend-api/platformSettings.ts
+  -- (DEFAULT_BACKUP_PLAN_LIMITS) and are applied per-key by
+  -- normalizeBackupPlanLimits on read. Keep the schema default empty so the
+  -- two stay in sync from a single source of truth.
+  backup_plan_limits JSONB NOT NULL DEFAULT '{}'::jsonb,
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW()
 );
@@ -315,6 +341,66 @@ CREATE TABLE IF NOT EXISTS container_stats (
 
 CREATE INDEX IF NOT EXISTS idx_container_stats_agent_time
   ON container_stats(agent_id, recorded_at DESC);
+
+CREATE TABLE IF NOT EXISTS backups (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  agent_id UUID REFERENCES agents(id) ON DELETE SET NULL,
+  kind TEXT NOT NULL DEFAULT 'agent' CHECK (kind IN ('agent', 'installation')),
+  status TEXT NOT NULL DEFAULT 'queued',
+  name TEXT NOT NULL,
+  storage_backend TEXT NOT NULL DEFAULT 'local',
+  storage_key TEXT,
+  storage_config JSONB DEFAULT '{}',
+  content_type TEXT NOT NULL DEFAULT 'application/gzip',
+  format TEXT NOT NULL DEFAULT 'nora-backup-archive/v1',
+  size_bytes BIGINT NOT NULL DEFAULT 0,
+  checksum_sha256 TEXT,
+  scope JSONB DEFAULT '{}',
+  summary JSONB DEFAULT '{}',
+  warnings JSONB DEFAULT '[]',
+  error TEXT,
+  restore_metadata JSONB DEFAULT '{}',
+  created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  expires_at TIMESTAMPTZ,
+  completed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_backups_user_agent_created
+  ON backups(user_id, agent_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_backups_kind_created
+  ON backups(kind, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_backups_expires
+  ON backups(expires_at)
+  WHERE expires_at IS NOT NULL AND status <> 'deleted';
+
+CREATE TABLE IF NOT EXISTS backup_schedules (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  schedule_key TEXT NOT NULL UNIQUE,
+  kind TEXT NOT NULL DEFAULT 'agent' CHECK (kind IN ('agent', 'installation')),
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  agent_id UUID REFERENCES agents(id) ON DELETE CASCADE,
+  enabled BOOLEAN NOT NULL DEFAULT false,
+  name TEXT,
+  frequency TEXT NOT NULL DEFAULT 'daily',
+  hour_utc INTEGER NOT NULL DEFAULT 2,
+  day_of_week INTEGER NOT NULL DEFAULT 0,
+  next_run_at TIMESTAMPTZ,
+  last_run_at TIMESTAMPTZ,
+  last_backup_id UUID REFERENCES backups(id) ON DELETE SET NULL,
+  last_error TEXT,
+  created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_backup_schedules_due
+  ON backup_schedules(enabled, next_run_at)
+  WHERE enabled = true AND next_run_at IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS events (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

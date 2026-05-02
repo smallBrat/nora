@@ -8,8 +8,18 @@ const router = express.Router();
 router.get("/subscription", async (req, res) => {
   try {
     const sub = await billing.getSubscription(req.user.id);
-    const agentCount = await db.query("SELECT COUNT(*) FROM agents WHERE user_id = $1", [req.user.id]);
-    res.json({ ...sub, agents_used: parseInt(agentCount.rows[0].count, 10) });
+    const [agentCount, backupUsage] = await Promise.all([
+      db.query("SELECT COUNT(*) FROM agents WHERE user_id = $1", [req.user.id]),
+      billing.getBackupUsage(req.user.id).catch(() => ({
+        backup_storage_used_bytes: 0,
+        backup_count_for_agent: 0,
+      })),
+    ]);
+    res.json({
+      ...sub,
+      agents_used: parseInt(agentCount.rows[0].count, 10),
+      backup_storage_used_bytes: backupUsage.backup_storage_used_bytes,
+    });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -19,7 +29,8 @@ router.post("/checkout", async (req, res) => {
   if (!billing.BILLING_ENABLED) return res.status(404).json({ error: "Billing is disabled" });
   try {
     const { plan } = req.body;
-    if (!plan || !["pro", "enterprise"].includes(plan)) return res.status(400).json({ error: "Invalid plan" });
+    if (!plan || !["pro", "enterprise"].includes(plan))
+      return res.status(400).json({ error: "Invalid plan" });
     const result = await billing.createCheckoutSession(req.user.id, plan);
     res.json(result);
   } catch (e) {

@@ -8,6 +8,7 @@ import {
   ShieldCheck,
   BarChart3,
   FolderTree,
+  Archive,
 } from "lucide-react";
 import { runtimeSupportsGateway } from "../../lib/runtime";
 
@@ -20,6 +21,7 @@ const baseTabs = [
   { id: "hermes-webui", label: "Hermes WebUI", icon: Bot, hermesOnly: true },
   { id: "nemoclaw", label: "NemoClaw", icon: ShieldCheck, needsNemoClaw: true },
   { id: "files", label: "Files", icon: FolderTree },
+  { id: "backups", label: "Backups", icon: Archive },
   { id: "settings", label: "Settings", icon: Settings },
 ];
 
@@ -40,10 +42,9 @@ export default function TabBar({
       {baseTabs
         .filter(
           (tab) =>
-            (showGatewayTabs ||
-              (tab.id !== "openclaw" && tab.id !== "nemoclaw")) &&
+            (showGatewayTabs || (tab.id !== "openclaw" && tab.id !== "nemoclaw")) &&
             (showHermesWebUi || !tab.hermesOnly) &&
-            (!tab.needsNemoClaw || activeSandboxProfile === "nemoclaw")
+            (!tab.needsNemoClaw || activeSandboxProfile === "nemoclaw"),
         )
         .map((tab) => {
           const Icon = tab.icon;

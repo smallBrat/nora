@@ -284,6 +284,69 @@ ensure_agent_hub_hash_secret_env() {
   ok "NORA_AGENT_HUB_API_KEY_HASH_SECRET generated (64-char hex)"
 }
 
+env_has_backup_encryption_key() {
+  local env_path="$1"
+
+  awk -F= '
+    /^[[:space:]]*NORA_BACKUP_ENCRYPTION_KEY[[:space:]]*=/ {
+      value = $0
+      sub(/^[^=]*=/, "", value)
+      sub(/[[:space:]]+#.*$/, "", value)
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+      if (value == "\"\"" || value == sprintf("%c%c", 39, 39)) {
+        value = ""
+      }
+      if (value != "") {
+        found = 1
+      }
+    }
+    END { exit found ? 0 : 1 }
+  ' "$env_path"
+}
+
+ensure_backup_encryption_key_env() {
+  local env_path="$1" env_dir secret tmp_file
+
+  if [ ! -f "$env_path" ]; then
+    return 0
+  fi
+
+  if env_has_backup_encryption_key "$env_path"; then
+    info "NORA_BACKUP_ENCRYPTION_KEY already set; preserving existing value."
+    return 0
+  fi
+
+  secret="$(openssl rand -hex 32)"
+  env_dir="$(dirname "$env_path")"
+  tmp_file="$(mktemp "$env_dir/.nora-env.XXXXXX")"
+  awk -v secret="$secret" '
+    /^[[:space:]]*NORA_BACKUP_ENCRYPTION_KEY[[:space:]]*=/ {
+      if (!wrote_secret) {
+        print "NORA_BACKUP_ENCRYPTION_KEY=" secret
+        wrote_secret = 1
+      }
+      next
+    }
+    /^[[:space:]]*ENCRYPTION_KEY[[:space:]]*=/ {
+      print
+      if (!wrote_secret) {
+        print "NORA_BACKUP_ENCRYPTION_KEY=" secret
+        wrote_secret = 1
+      }
+      next
+    }
+    { print }
+    END {
+      if (!wrote_secret) {
+        if (NR > 0) print ""
+        print "NORA_BACKUP_ENCRYPTION_KEY=" secret
+      }
+    }
+  ' "$env_path" > "$tmp_file"
+  mv "$tmp_file" "$env_path"
+  ok "NORA_BACKUP_ENCRYPTION_KEY generated (64-char hex)"
+}
+
 remove_local_agent_containers() {
   local containers
   containers="$(
@@ -848,6 +911,7 @@ if [ "$SETUP_MODE" = "update" ]; then
   update_source_checkout
   refresh_release_tags
   ensure_agent_hub_hash_secret_env "$ENV_FILE"
+  ensure_backup_encryption_key_env "$ENV_FILE"
   stamp_release_tracking_env "$ENV_FILE"
   assert_nora_host_ports_available "$ENV_FILE"
   start_compose_stack
@@ -883,15 +947,17 @@ header "Generating Secrets"
 
 JWT_SECRET=$(openssl rand -hex 32)
 ENCRYPTION_KEY=$(openssl rand -hex 32)
+NORA_BACKUP_ENCRYPTION_KEY=$(openssl rand -hex 32)
 NORA_AGENT_HUB_API_KEY_HASH_SECRET=$(openssl rand -hex 32)
 DB_USER="nora"
 DB_NAME="nora"
 DB_PASSWORD=$(openssl rand -hex 24)
 
-ok "JWT_SECRET      (64-char hex)"
-ok "ENCRYPTION_KEY  (64-char hex — AES-256-GCM)"
-ok "AGENT_HUB_HASH  (64-char hex)"
-ok "DB_PASSWORD     (48-char hex)"
+ok "JWT_SECRET            (64-char hex)"
+ok "ENCRYPTION_KEY        (64-char hex — AES-256-GCM)"
+ok "BACKUP_ENCRYPTION_KEY (64-char hex — managed backup archives)"
+ok "AGENT_HUB_HASH        (64-char hex)"
+ok "DB_PASSWORD           (48-char hex)"
 
 # ── Platform mode ────────────────────────────────────────────
 
@@ -1265,6 +1331,7 @@ cat > "$ENV_FILE" <<EOF
 # ── Required (auto-generated) ────────────────────────────────
 JWT_SECRET=${JWT_SECRET}
 ENCRYPTION_KEY=${ENCRYPTION_KEY}
+NORA_BACKUP_ENCRYPTION_KEY=${NORA_BACKUP_ENCRYPTION_KEY}
 NORA_AGENT_HUB_API_KEY_HASH_SECRET=${NORA_AGENT_HUB_API_KEY_HASH_SECRET}
 
 # ── Bootstrap Admin Account (optional; seeded only when both are set securely) ──
@@ -1305,6 +1372,40 @@ MAX_VCPU=${MAX_VCPU}
 MAX_RAM_MB=${MAX_RAM_MB}
 MAX_DISK_GB=${MAX_DISK_GB}
 MAX_AGENTS=${MAX_AGENTS}
+
+# ── Managed Backups ──────────────────────────────────────────
+# Leave storage destination vars empty to use Admin Settings (default: local volume).
+NORA_BACKUP_STORAGE=
+NORA_BACKUP_DIR=
+NORA_BACKUP_LIMIT_PER_AGENT=10
+NORA_BACKUP_STORAGE_MB=51200
+NORA_BACKUP_RETENTION_DAYS=30
+BACKUP_WORKER_CONCURRENCY=2
+NORA_BACKUP_JOB_TIMEOUT_MS=1800000
+NORA_BACKUP_SCHEDULE_POLL_MS=60000
+
+# Optional S3 / Cloudflare R2 storage overrides. Admin Settings can also
+# store these in the database when ENCRYPTION_KEY is configured.
+NORA_BACKUP_S3_BUCKET=
+NORA_BACKUP_S3_REGION=
+NORA_BACKUP_S3_ENDPOINT=
+NORA_BACKUP_S3_ACCESS_KEY_ID=
+NORA_BACKUP_S3_SECRET_ACCESS_KEY=
+NORA_BACKUP_S3_SESSION_TOKEN=
+NORA_BACKUP_R2_BUCKET=
+NORA_BACKUP_R2_REGION=
+NORA_BACKUP_R2_ENDPOINT=
+NORA_BACKUP_R2_ACCESS_KEY_ID=
+NORA_BACKUP_R2_SECRET_ACCESS_KEY=
+NORA_BACKUP_R2_SESSION_TOKEN=
+
+# Optional SSH/SFTP storage overrides.
+NORA_BACKUP_SSH_HOST=
+NORA_BACKUP_SSH_PORT=
+NORA_BACKUP_SSH_USERNAME=
+NORA_BACKUP_SSH_REMOTE_PATH=
+NORA_BACKUP_SSH_PRIVATE_KEY=
+NORA_BACKUP_SSH_PASSWORD=
 
 # ── Billing (only when PLATFORM_MODE=paas) ───────────────────
 BILLING_ENABLED=false
@@ -1403,7 +1504,7 @@ else
   printf "  Admin:        Not pre-seeded (create via signup)\n"
   printf "  Password:     Not set\n"
 fi
-printf "  Secrets:      auto-generated (JWT, AES, Agent Hub)\n"
+printf "  Secrets:      auto-generated (JWT, AES, backups, Agent Hub)\n"
 printf "  Database:     PostgreSQL 15 (Docker Compose)\n"
 printf "  DB Access:    %s / auto-generated / %s (.env)\n" "$DB_USER" "$DB_NAME"
 printf "  Redis:        Redis 7 (Docker Compose)\n"

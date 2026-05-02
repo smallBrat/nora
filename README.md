@@ -261,6 +261,7 @@ Then edit `.env` with at least the required secrets, database password, access U
 # Required secrets
 JWT_SECRET=<replace-with-random-secret-min-32-chars>
 ENCRYPTION_KEY=<replace-with-64-hex-chars>
+NORA_BACKUP_ENCRYPTION_KEY=<replace-with-64-hex-chars>
 NORA_AGENT_HUB_API_KEY_HASH_SECRET=<replace-with-random-secret-min-32-chars>
 DB_PASSWORD=<replace-with-db-password>
 
@@ -448,6 +449,7 @@ The canonical public architecture write-up lives in [architecture.md](architectu
 | ------------------------------------ | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `JWT_SECRET`                         | Yes      | Secret used to sign JWTs                                                                                                                                                                                                                                 |
 | `ENCRYPTION_KEY`                     | Yes      | 64-char hex key for AES-256-GCM secret storage                                                                                                                                                                                                           |
+| `NORA_BACKUP_ENCRYPTION_KEY`         | No       | 64-char hex key for encrypting managed backup archives. Required before users or admins can create stored managed backups.                                                                                                                               |
 | `NEXTAUTH_URL`                       | Yes      | Public base browser URL such as `http://localhost:8080` or `https://your-domain.example`                                                                                                                                                                 |
 | `NGINX_CONFIG_FILE`                  | No       | `nginx.conf` for local mode or `nginx.public.conf` for public-domain mode                                                                                                                                                                                |
 | `NGINX_HTTP_PORT`                    | No       | Host port for nginx in HTTP mode                                                                                                                                                                                                                         |
@@ -459,6 +461,23 @@ The canonical public architecture write-up lives in [architecture.md](architectu
 | `DEFAULT_ADMIN_EMAIL`                | No       | Bootstrap admin seeded on first boot when paired with a strong password                                                                                                                                                                                  |
 | `DEFAULT_ADMIN_PASSWORD`             | No       | Bootstrap admin password used on first boot only                                                                                                                                                                                                         |
 | `NORA_AGENT_HUB_API_KEY_HASH_SECRET` | No       | Dedicated HMAC secret for Agent Hub installation key digests. Setup and update generate it when missing or empty; existing non-empty values are preserved.                                                                                               |
+
+### Managed Backup Variables
+
+When `BILLING_ENABLED=false`, managed backups are not pay-gated; users get the self-hosted backup defaults below even if `PLATFORM_MODE=paas`. When PaaS billing is enabled, admins can configure the free, pro, and enterprise backup tier limits from the admin Backups page.
+
+| Variable                                                                                                     | Description                                                                                                                             |
+| ------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `NORA_BACKUP_STORAGE`                                                                                        | Backup storage backend: `local`, `s3`, `r2`, or `ssh`. Non-empty env values override Admin Settings storage configuration.              |
+| `NORA_BACKUP_DIR`                                                                                            | Local backup directory used by the backend and backup worker when `NORA_BACKUP_STORAGE=local`.                                          |
+| `NORA_BACKUP_LIMIT_PER_AGENT` / `NORA_BACKUP_STORAGE_MB` / `NORA_BACKUP_RETENTION_DAYS`                      | Self-hosted defaults for per-user backup count, total stored backup size, and retention. PaaS plan tiers can still be admin-overridden. |
+| `NORA_BACKUP_S3_BUCKET` / `NORA_BACKUP_S3_REGION` / `NORA_BACKUP_S3_ENDPOINT`                                | S3-compatible destination settings. Leave endpoint empty for AWS S3; set it for compatible providers.                                   |
+| `NORA_BACKUP_R2_BUCKET` / `NORA_BACKUP_R2_REGION` / `NORA_BACKUP_R2_ENDPOINT`                                | Cloudflare R2 destination settings. R2 normally uses `auto` as the region and the account R2 endpoint.                                  |
+| `NORA_BACKUP_S3_ACCESS_KEY_ID` / `NORA_BACKUP_S3_SECRET_ACCESS_KEY`                                          | S3 credentials. `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `AWS_SESSION_TOKEN` also work as fallbacks.                           |
+| `NORA_BACKUP_R2_ACCESS_KEY_ID` / `NORA_BACKUP_R2_SECRET_ACCESS_KEY`                                          | Cloudflare R2 credentials.                                                                                                              |
+| `NORA_BACKUP_SSH_HOST` / `NORA_BACKUP_SSH_PORT` / `NORA_BACKUP_SSH_USERNAME` / `NORA_BACKUP_SSH_REMOTE_PATH` | SSH/SFTP remote storage target.                                                                                                         |
+| `NORA_BACKUP_SSH_PRIVATE_KEY` / `NORA_BACKUP_SSH_PASSWORD`                                                   | SSH authentication material; provide a private key or password.                                                                         |
+| `BACKUP_WORKER_CONCURRENCY` / `NORA_BACKUP_JOB_TIMEOUT_MS` / `NORA_BACKUP_SCHEDULE_POLL_MS`                  | Backup worker concurrency, per-job timeout, and schedule polling interval.                                                              |
 
 ### Backend-Specific Variables
 

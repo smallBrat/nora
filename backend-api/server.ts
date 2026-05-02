@@ -922,6 +922,7 @@ app.use(createGatewayRouter());
 
 // ─── Protected Routes ─────────────────────────────────────────────
 app.use("/agents", require("./routes/agents"));
+app.use("/agents", require("./routes/backups"));
 app.use("/agents", require("./routes/agentFiles"));
 app.use("/agents", require("./routes/channels"));
 app.use("/agents", require("./routes/nemoclaw"));
@@ -1098,6 +1099,26 @@ async function migrateDB() {
     `DO $$ BEGIN ALTER TABLE platform_settings ADD COLUMN agent_hub_default_share_target TEXT NOT NULL DEFAULT 'both'; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
     `DO $$ BEGIN ALTER TABLE platform_settings ADD COLUMN agent_hub_url TEXT NOT NULL DEFAULT 'https://nora.solomontsao.com'; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
     `DO $$ BEGIN ALTER TABLE platform_settings ADD COLUMN agent_hub_api_key_encrypted TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
+    `DO $$ BEGIN ALTER TABLE platform_settings ADD COLUMN backup_storage_backend TEXT NOT NULL DEFAULT 'local'; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
+    `DO $$ BEGIN ALTER TABLE platform_settings ADD COLUMN backup_local_path TEXT NOT NULL DEFAULT '/var/lib/nora-backups'; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
+    `DO $$ BEGIN ALTER TABLE platform_settings ADD COLUMN backup_s3_bucket TEXT NOT NULL DEFAULT ''; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
+    `DO $$ BEGIN ALTER TABLE platform_settings ADD COLUMN backup_s3_region TEXT NOT NULL DEFAULT 'us-east-1'; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
+    `DO $$ BEGIN ALTER TABLE platform_settings ADD COLUMN backup_s3_endpoint TEXT NOT NULL DEFAULT ''; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
+    `DO $$ BEGIN ALTER TABLE platform_settings ADD COLUMN backup_s3_access_key_id_encrypted TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
+    `DO $$ BEGIN ALTER TABLE platform_settings ADD COLUMN backup_s3_secret_access_key_encrypted TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
+    `DO $$ BEGIN ALTER TABLE platform_settings ADD COLUMN backup_ssh_host TEXT NOT NULL DEFAULT ''; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
+    `DO $$ BEGIN ALTER TABLE platform_settings ADD COLUMN backup_ssh_port INTEGER NOT NULL DEFAULT 22; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
+    `DO $$ BEGIN ALTER TABLE platform_settings ADD COLUMN backup_ssh_username TEXT NOT NULL DEFAULT ''; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
+    `DO $$ BEGIN ALTER TABLE platform_settings ADD COLUMN backup_ssh_remote_path TEXT NOT NULL DEFAULT '/backups/nora'; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
+    `DO $$ BEGIN ALTER TABLE platform_settings ADD COLUMN backup_ssh_private_key_encrypted TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
+    `DO $$ BEGIN ALTER TABLE platform_settings ADD COLUMN backup_ssh_password_encrypted TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
+    `DO $$ BEGIN ALTER TABLE platform_settings ADD COLUMN backup_installation_schedule_enabled BOOLEAN NOT NULL DEFAULT false; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
+    `DO $$ BEGIN ALTER TABLE platform_settings ADD COLUMN backup_installation_schedule_frequency TEXT NOT NULL DEFAULT 'daily'; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
+    `DO $$ BEGIN ALTER TABLE platform_settings ADD COLUMN backup_installation_schedule_hour_utc INTEGER NOT NULL DEFAULT 2; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
+    `DO $$ BEGIN ALTER TABLE platform_settings ADD COLUMN backup_installation_schedule_day_of_week INTEGER NOT NULL DEFAULT 0; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
+    // Per-tier defaults live in platformSettings.ts and are applied per-key
+    // by normalizeBackupPlanLimits on read; the column default is empty.
+    `DO $$ BEGIN ALTER TABLE platform_settings ADD COLUMN backup_plan_limits JSONB NOT NULL DEFAULT '{}'::jsonb; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
     `CREATE TABLE IF NOT EXISTS snapshots (
        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
        agent_id UUID,
@@ -1153,6 +1174,10 @@ async function migrateDB() {
     `CREATE INDEX IF NOT EXISTS idx_usage_metrics_type ON usage_metrics(metric_type, recorded_at)`,
     `DO $$ BEGIN ALTER TABLE users ADD COLUMN avatar TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
     `DO $$ BEGIN ALTER TABLE users ADD COLUMN agent_limit_override INTEGER; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
+    `DO $$ BEGIN ALTER TABLE users ADD COLUMN managed_backups_enabled_override BOOLEAN; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
+    `DO $$ BEGIN ALTER TABLE users ADD COLUMN backup_limit_per_agent_override INTEGER; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
+    `DO $$ BEGIN ALTER TABLE users ADD COLUMN backup_storage_mb_override INTEGER; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
+    `DO $$ BEGIN ALTER TABLE users ADD COLUMN backup_retention_days_override INTEGER; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
     `CREATE TABLE IF NOT EXISTS container_stats (
        id BIGSERIAL PRIMARY KEY,
        agent_id UUID REFERENCES agents(id) ON DELETE CASCADE,
@@ -1172,6 +1197,61 @@ async function migrateDB() {
     `DO $$ BEGIN ALTER TABLE container_stats ADD COLUMN disk_read_rate_mbps NUMERIC NOT NULL DEFAULT 0; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
     `DO $$ BEGIN ALTER TABLE container_stats ADD COLUMN disk_write_rate_mbps NUMERIC NOT NULL DEFAULT 0; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
     `CREATE INDEX IF NOT EXISTS idx_container_stats_agent_time ON container_stats(agent_id, recorded_at DESC)`,
+    `CREATE TABLE IF NOT EXISTS backups (
+       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+       user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+       agent_id UUID REFERENCES agents(id) ON DELETE SET NULL,
+       kind TEXT NOT NULL DEFAULT 'agent',
+       status TEXT NOT NULL DEFAULT 'queued',
+       name TEXT NOT NULL,
+       storage_backend TEXT NOT NULL DEFAULT 'local',
+       storage_key TEXT,
+       storage_config JSONB DEFAULT '{}',
+       content_type TEXT NOT NULL DEFAULT 'application/gzip',
+       format TEXT NOT NULL DEFAULT 'nora-backup-archive/v1',
+       size_bytes BIGINT NOT NULL DEFAULT 0,
+       checksum_sha256 TEXT,
+       scope JSONB DEFAULT '{}',
+       summary JSONB DEFAULT '{}',
+       warnings JSONB DEFAULT '[]',
+       error TEXT,
+       restore_metadata JSONB DEFAULT '{}',
+       created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+       expires_at TIMESTAMPTZ,
+       completed_at TIMESTAMPTZ,
+       created_at TIMESTAMPTZ DEFAULT NOW(),
+       updated_at TIMESTAMPTZ DEFAULT NOW()
+     )`,
+    `DO $$ BEGIN ALTER TABLE backups ADD COLUMN storage_config JSONB DEFAULT '{}'; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
+    `CREATE INDEX IF NOT EXISTS idx_backups_user_agent_created ON backups(user_id, agent_id, created_at DESC)`,
+    `CREATE INDEX IF NOT EXISTS idx_backups_kind_created ON backups(kind, created_at DESC)`,
+    `CREATE INDEX IF NOT EXISTS idx_backups_expires ON backups(expires_at) WHERE expires_at IS NOT NULL AND status <> 'deleted'`,
+    `CREATE TABLE IF NOT EXISTS backup_schedules (
+       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+       schedule_key TEXT NOT NULL UNIQUE,
+       kind TEXT NOT NULL DEFAULT 'agent',
+       user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+       agent_id UUID REFERENCES agents(id) ON DELETE CASCADE,
+       enabled BOOLEAN NOT NULL DEFAULT false,
+       name TEXT,
+       frequency TEXT NOT NULL DEFAULT 'daily',
+       hour_utc INTEGER NOT NULL DEFAULT 2,
+       day_of_week INTEGER NOT NULL DEFAULT 0,
+       next_run_at TIMESTAMPTZ,
+       last_run_at TIMESTAMPTZ,
+       last_backup_id UUID REFERENCES backups(id) ON DELETE SET NULL,
+       last_error TEXT,
+       created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+       created_at TIMESTAMPTZ DEFAULT NOW(),
+       updated_at TIMESTAMPTZ DEFAULT NOW()
+     )`,
+    `CREATE INDEX IF NOT EXISTS idx_backup_schedules_due ON backup_schedules(enabled, next_run_at) WHERE enabled = true AND next_run_at IS NOT NULL`,
+    // Catching `check_violation` would silently leave the constraint off if
+    // existing rows had stale `kind` values — fail loudly so an operator
+    // notices and cleans up. Only `duplicate_object` (re-running migration)
+    // is safe to swallow.
+    `DO $$ BEGIN ALTER TABLE backups ADD CONSTRAINT backups_kind_check CHECK (kind IN ('agent','installation')); EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+    `DO $$ BEGIN ALTER TABLE backup_schedules ADD CONSTRAINT backup_schedules_kind_check CHECK (kind IN ('agent','installation')); EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
     `DO $$ BEGIN ALTER TABLE agents ADD COLUMN gateway_host_port INTEGER; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
     `DO $$ BEGIN ALTER TABLE agents ADD COLUMN runtime_host TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
     `DO $$ BEGIN ALTER TABLE agents ADD COLUMN runtime_port INTEGER; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import {
   ArrowUpRight,
   FileText,
+  Archive,
   LayoutDashboard,
   LogOut,
   SlidersHorizontal,
@@ -22,6 +23,7 @@ const NAV_ITEMS = [
   { name: "Queue", icon: TriangleAlert, href: "/queue" },
   { name: "Users", icon: Users, href: "/users" },
   { name: "Agent Hub", icon: ShoppingBag, href: "/agent-hub" },
+  { name: "Backups", icon: Archive, href: "/backups" },
   { name: "Audit", icon: FileText, href: "/audit" },
   { name: "Settings", icon: SlidersHorizontal, href: "/settings" },
 ];

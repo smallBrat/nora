@@ -71,6 +71,38 @@ function buildLimitDrafts(users = []) {
   );
 }
 
+function buildBackupDrafts(users = []) {
+  return Object.fromEntries(
+    users.map((user) => [
+      user.id,
+      {
+        enabled:
+          user.managed_backups_enabled_override == null
+            ? ""
+            : String(user.managed_backups_enabled_override),
+        count:
+          user.backup_limit_per_agent_override == null
+            ? ""
+            : String(user.backup_limit_per_agent_override),
+        storage:
+          user.backup_storage_mb_override == null ? "" : String(user.backup_storage_mb_override),
+        retention:
+          user.backup_retention_days_override == null
+            ? ""
+            : String(user.backup_retention_days_override),
+      },
+    ]),
+  );
+}
+
+function formatBackupCap(user) {
+  if (!user?.managed_backups_enabled) return "Disabled";
+  const count = user?.backup_limit_per_agent == null ? "Unlimited" : user.backup_limit_per_agent;
+  const storage = user?.backup_storage_mb == null ? "unlimited" : `${user.backup_storage_mb} MB`;
+  const retention = user?.backup_retention_days || 0;
+  return `${count} per agent · ${storage} · ${retention}d`;
+}
+
 export default function UsersPage() {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -79,7 +111,9 @@ export default function UsersPage() {
   const [roleLoadingId, setRoleLoadingId] = useState("");
   const [deleteLoadingId, setDeleteLoadingId] = useState("");
   const [limitDrafts, setLimitDrafts] = useState({});
+  const [backupDrafts, setBackupDrafts] = useState({});
   const [limitLoadingId, setLimitLoadingId] = useState("");
+  const [backupLoadingId, setBackupLoadingId] = useState("");
   const deferredSearch = useDeferredValue(search);
   const toast = useToast();
 
@@ -94,6 +128,7 @@ export default function UsersPage() {
       const rows = Array.isArray(data) ? data : [];
       setUsers(rows);
       setLimitDrafts(buildLimitDrafts(rows));
+      setBackupDrafts(buildBackupDrafts(rows));
     } catch (error) {
       console.error("Failed to load admin users:", error);
       toast.error(error.message || "Failed to load users");
@@ -157,6 +192,11 @@ export default function UsersPage() {
         delete next[user.id];
         return next;
       });
+      setBackupDrafts((current) => {
+        const next = { ...current };
+        delete next[user.id];
+        return next;
+      });
       toast.success("User deleted");
     } catch (error) {
       console.error("Failed to delete admin user:", error);
@@ -212,6 +252,43 @@ export default function UsersPage() {
 
   async function clearAgentLimit(user) {
     await updateAgentLimit(user, null);
+  }
+
+  function parseBackupOverride(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return null;
+    const parsed = Number(raw);
+    if (!Number.isSafeInteger(parsed) || parsed < 0) {
+      throw new Error("Backup limits must be whole numbers that are 0 or greater");
+    }
+    return parsed;
+  }
+
+  async function saveBackupLimits(user) {
+    const draft = backupDrafts[user.id] || {};
+    setBackupLoadingId(user.id);
+    try {
+      const response = await fetchWithAuth(`/api/admin/users/${user.id}/backup-limits`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          managed_backups_enabled_override: draft.enabled === "" ? null : draft.enabled === "true",
+          backup_limit_per_agent_override: parseBackupOverride(draft.count),
+          backup_storage_mb_override: parseBackupOverride(draft.storage),
+          backup_retention_days_override: parseBackupOverride(draft.retention),
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || "Failed to update backup limits");
+      setUsers((current) => current.map((entry) => (entry.id === user.id ? payload : entry)));
+      setBackupDrafts((current) => ({ ...current, ...buildBackupDrafts([payload]) }));
+      toast.success("Backup limits updated");
+    } catch (error) {
+      toast.error(error.message || "Failed to update backup limits");
+      loadUsers();
+    } finally {
+      setBackupLoadingId("");
+    }
   }
 
   const adminCount = users.filter((user) => user.role === "admin").length;
@@ -334,6 +411,9 @@ export default function UsersPage() {
                       Agent Cap
                     </th>
                     <th className="px-2 py-3 text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">
+                      Backups
+                    </th>
+                    <th className="px-2 py-3 text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">
                       Created
                     </th>
                     <th className="px-2 py-3 text-right text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">
@@ -354,6 +434,7 @@ export default function UsersPage() {
                       limitDraft.trim() !== "" &&
                       Number.isSafeInteger(parsedLimitDraft) &&
                       parsedLimitDraft >= 0;
+                    const backupDraft = backupDrafts[user.id] || {};
                     return (
                       <tr key={user.id} className="border-b border-slate-100 last:border-b-0">
                         <td className="px-2 py-4">
@@ -448,6 +529,96 @@ export default function UsersPage() {
                             <p className="mt-2 text-[11px] font-medium text-slate-500">
                               {describeDefaultAgentCap(user)}
                             </p>
+                          </div>
+                        </td>
+                        <td className="px-2 py-4">
+                          <div className="min-w-[18rem]">
+                            <p className="text-sm font-semibold text-slate-950">
+                              {formatBackupCap(user)}
+                            </p>
+                            <p className="mt-1 text-[11px] font-semibold text-slate-400">
+                              {user.managed_backups_source === "admin_override"
+                                ? "Admin override"
+                                : "Plan/default"}
+                            </p>
+                            <div className="mt-3 grid grid-cols-2 gap-2">
+                              <select
+                                value={backupDraft.enabled ?? ""}
+                                onChange={(event) =>
+                                  setBackupDrafts((current) => ({
+                                    ...current,
+                                    [user.id]: {
+                                      ...(current[user.id] || {}),
+                                      enabled: event.target.value,
+                                    },
+                                  }))
+                                }
+                                className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700 outline-none"
+                              >
+                                <option value="">Plan default</option>
+                                <option value="true">Enabled</option>
+                                <option value="false">Disabled</option>
+                              </select>
+                              <input
+                                type="number"
+                                min="0"
+                                placeholder="Count"
+                                value={backupDraft.count ?? ""}
+                                onChange={(event) =>
+                                  setBackupDrafts((current) => ({
+                                    ...current,
+                                    [user.id]: {
+                                      ...(current[user.id] || {}),
+                                      count: event.target.value,
+                                    },
+                                  }))
+                                }
+                                className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700 outline-none"
+                              />
+                              <input
+                                type="number"
+                                min="0"
+                                placeholder="Storage MB"
+                                value={backupDraft.storage ?? ""}
+                                onChange={(event) =>
+                                  setBackupDrafts((current) => ({
+                                    ...current,
+                                    [user.id]: {
+                                      ...(current[user.id] || {}),
+                                      storage: event.target.value,
+                                    },
+                                  }))
+                                }
+                                className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700 outline-none"
+                              />
+                              <input
+                                type="number"
+                                min="0"
+                                placeholder="Retention days"
+                                value={backupDraft.retention ?? ""}
+                                onChange={(event) =>
+                                  setBackupDrafts((current) => ({
+                                    ...current,
+                                    [user.id]: {
+                                      ...(current[user.id] || {}),
+                                      retention: event.target.value,
+                                    },
+                                  }))
+                                }
+                                className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700 outline-none"
+                              />
+                            </div>
+                            <button
+                              disabled={backupLoadingId === user.id}
+                              onClick={() => saveBackupLimits(user)}
+                              className="mt-2 inline-flex min-w-[4.5rem] items-center justify-center rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              {backupLoadingId === user.id ? (
+                                <Loader2 size={14} className="animate-spin" />
+                              ) : (
+                                "Save backups"
+                              )}
+                            </button>
                           </div>
                         </td>
                         <td className="px-2 py-4 text-sm font-medium text-slate-500">

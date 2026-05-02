@@ -763,6 +763,32 @@ export default function SettingsPage() {
                   </span>
                 </p>
               </div>
+              <div>
+                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+                  Managed Backups
+                </label>
+                <p className="text-sm text-slate-900 mt-1 font-semibold">
+                  {subscription?.managed_backups_enabled ? "Enabled" : "Manual export only"}
+                </p>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  {subscription?.backup_limit_per_agent == null
+                    ? "Unlimited backups per agent"
+                    : `${subscription?.backup_limit_per_agent || 0} backups per agent`}
+                </p>
+              </div>
+              <div>
+                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+                  Backup Storage
+                </label>
+                <p className="text-sm text-slate-900 mt-1 font-semibold">
+                  {subscription?.backup_storage_mb == null
+                    ? "Unlimited"
+                    : `${subscription?.backup_storage_mb || 0} MB`}
+                </p>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Retention: {subscription?.backup_retention_days || 0} days
+                </p>
+              </div>
             </div>
             {subscription?.agent_limit_source === "admin_override" &&
             ((Number.isInteger(subscription?.base_agent_limit) &&

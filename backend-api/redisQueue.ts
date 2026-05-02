@@ -18,6 +18,7 @@ const CLAWHUB_INSTALL_JOB_TIMEOUT_MS = parseTimeoutMs(
   process.env.CLAWHUB_INSTALL_TIMEOUT_MS,
   300000,
 );
+const BACKUP_JOB_TIMEOUT_MS = parseTimeoutMs(process.env.NORA_BACKUP_JOB_TIMEOUT_MS, 1800000);
 
 const connection = new IORedis({
   host: process.env.REDIS_HOST || "redis",
@@ -48,6 +49,19 @@ const clawhubInstallsQueue = new Queue("clawhub-installs", {
   },
 });
 
+// Note: BullMQ v5 deprecated `timeout` in defaultJobOptions — it's silently
+// ignored. The backup worker enforces BACKUP_JOB_TIMEOUT_MS itself via
+// Promise.race in workers/backup/worker.ts.
+const backupsQueue = new Queue("backups", {
+  connection,
+  defaultJobOptions: {
+    attempts: 2,
+    backoff: { type: "exponential", delay: 5000 },
+    removeOnComplete: { count: 200 },
+    removeOnFail: false,
+  },
+});
+
 async function addDeploymentJob(agent) {
   await deployQueue.add("deploy-agent", agent);
 }
@@ -55,6 +69,11 @@ async function addDeploymentJob(agent) {
 async function addClawhubInstallJob(payload) {
   const jobId = payload?.jobId || randomUUID();
   return clawhubInstallsQueue.add("install-skill", { ...payload, jobId }, { jobId });
+}
+
+async function addBackupJob(payload) {
+  const jobId = payload?.jobId || payload?.backupId || randomUUID();
+  return backupsQueue.add("run-backup", { ...payload, jobId }, { jobId });
 }
 
 async function findInFlightClawhubInstallJob(agentId, slug) {
@@ -141,12 +160,15 @@ async function retryDLQJob(jobId) {
 module.exports = {
   deployQueue,
   clawhubInstallsQueue,
+  backupsQueue,
   addDeploymentJob,
   addClawhubInstallJob,
+  addBackupJob,
   findInFlightClawhubInstallJob,
   getClawhubInstallJob,
   getClawhubInstallJobStatus,
   getDLQJobs,
   retryDLQJob,
   connection,
+  BACKUP_JOB_TIMEOUT_MS,
 };

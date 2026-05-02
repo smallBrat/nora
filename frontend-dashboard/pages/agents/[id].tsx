@@ -12,6 +12,7 @@ import HermesWebUITab from "../../components/agents/HermesWebUITab";
 import SettingsTab from "../../components/agents/SettingsTab";
 import NemoClawTab from "../../components/agents/NemoClawTab";
 import AgentFilesTab from "../../components/agents/AgentFilesTab";
+import BackupsTab from "../../components/agents/BackupsTab";
 import StatusBadge from "../../components/agents/StatusBadge";
 import { useToast } from "../../components/Toast";
 import { fetchWithAuth } from "../../lib/api";
@@ -680,6 +681,8 @@ export default function AgentDetail() {
               agentContainerId={agent.container_id}
             />
           )}
+
+          {activeTab === "backups" && <BackupsTab agentId={id} />}
 
           {/* Terminal — always mounted when agent is running, hidden via CSS when not active */}
           {agent.status === "running" ? (
