@@ -130,6 +130,7 @@ jest.mock("../workspaces", () => ({
 jest.mock("../integrations", () => ({
   listIntegrations: jest.fn().mockResolvedValue([]),
   connectIntegration: jest.fn(),
+  replaceIntegration: jest.fn(),
   removeIntegration: jest.fn(),
   testIntegration: jest.fn(),
   getCatalog: jest.fn().mockResolvedValue([]),
@@ -359,6 +360,7 @@ beforeEach(() => {
   delete process.env.ENABLED_SANDBOX_PROFILES;
   delete process.env.KUBECONFIG;
   delete process.env.KUBERNETES_SERVICE_HOST;
+  delete process.env.NEXTAUTH_URL;
   require("../billing").IS_PAAS = false;
   mockStats.mockReset().mockResolvedValue({
     backend_type: "docker",
@@ -1322,6 +1324,14 @@ describe("Hermes integration sync routes", () => {
       id: "int-hermes-1",
       provider: "slack",
     });
+    integrationsModule.getIntegrationsForSync.mockResolvedValueOnce([
+      {
+        id: "int-hermes-1",
+        provider: "slack",
+        name: "Slack",
+        credentialEnv: { primary: "SLACK_TOKEN" },
+      },
+    ]);
     mockSyncAuthToUserAgents.mockResolvedValueOnce([
       { agentId: "a-hermes-integration", status: "synced" },
     ]);
@@ -1345,6 +1355,8 @@ describe("Hermes integration sync routes", () => {
             user_id: "user-1",
             status: "running",
             runtime_family: "hermes",
+            backend_type: "docker",
+            container_id: "hermes-container",
           },
         ],
       })
@@ -1355,6 +1367,8 @@ describe("Hermes integration sync routes", () => {
             user_id: "user-1",
             status: "running",
             runtime_family: "hermes",
+            backend_type: "docker",
+            container_id: "hermes-container",
           },
         ],
       });
@@ -1368,6 +1382,15 @@ describe("Hermes integration sync routes", () => {
 
     expect(res.status).toBe(200);
     expect(mockSyncAuthToUserAgents).toHaveBeenCalledWith("user-1", "a-hermes-integration");
+    expect(mockRunContainerCommand).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "a-hermes-integration",
+        container_id: "hermes-container",
+      }),
+      expect.stringContaining("nora-integrations"),
+      { timeout: 30000 },
+    );
+    expect(mockRunContainerCommand.mock.calls.at(-1)[1]).toContain("nora-integration-tool");
   });
 
   it("returns a 502 when Hermes integration sync fails after disconnect", async () => {
@@ -1420,6 +1443,156 @@ describe("Hermes integration sync routes", () => {
 
     expect(res.status).toBe(502);
     expect(res.body.error).toBe("Hermes restart failed");
+  });
+});
+
+describe("Twitter/X integration OAuth routes", () => {
+  it("starts OAuth with PKCE and a per-agent redirect URI", async () => {
+    process.env.NEXTAUTH_URL = "https://nora.test";
+    mockDb.query
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: "a-twitter",
+            user_id: "user-1",
+            status: "running",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const res = await auth(
+      request(app)
+        .post("/agents/a-twitter/integrations/twitter/oauth/start")
+        .send({
+          redirectPath: "/app/agents/a-twitter",
+          config: {
+            client_id: "user-x-client-id",
+            client_secret: "user-x-client-secret",
+            default_username: "configured_user",
+          },
+        }),
+    );
+
+    expect(res.status).toBe(200);
+    const authorizationUrl = new URL(res.body.authorizationUrl);
+    expect(authorizationUrl.origin).toBe("https://x.com");
+    expect(authorizationUrl.pathname).toBe("/i/oauth2/authorize");
+    expect(authorizationUrl.searchParams.get("client_id")).toBe("user-x-client-id");
+    expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
+      "https://nora.test/api/integrations/twitter/oauth/callback",
+    );
+    expect(authorizationUrl.searchParams.get("scope")).toContain("tweet.write");
+    expect(authorizationUrl.searchParams.get("code_challenge_method")).toBe("S256");
+    expect(mockDb.query.mock.calls[1][0]).toContain("INSERT INTO integration_oauth_states");
+    expect(mockDb.query.mock.calls[1][1]).toEqual(
+      expect.arrayContaining([
+        "twitter",
+        "user-1",
+        "a-twitter",
+        "user-x-client-id",
+        "user-x-client-secret",
+        "/app/agents/a-twitter",
+      ]),
+    );
+  });
+
+  it("exchanges the callback code and stores the connected X user on that agent", async () => {
+    process.env.NEXTAUTH_URL = "https://nora.test";
+    const integrationsModule = require("../integrations");
+    integrationsModule.replaceIntegration.mockResolvedValueOnce({
+      id: "int-twitter",
+      provider: "twitter",
+    });
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce(
+        createMockFetchResponse({
+          body: {
+            access_token: "x-user-access-token",
+            refresh_token: "x-refresh-token",
+            token_type: "bearer",
+            expires_in: 7200,
+            scope: "tweet.read users.read tweet.write offline.access",
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        createMockFetchResponse({
+          body: {
+            data: {
+              id: "1773",
+              username: "solomon2773",
+              name: "Solomon",
+            },
+          },
+        }),
+      );
+    mockDb.query
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            state: "state-1",
+            provider: "twitter",
+            user_id: "user-1",
+            agent_id: "a-twitter",
+            code_verifier: "code-verifier",
+            client_id: "user-x-client-id",
+            client_secret: "user-x-client-secret",
+            config: { default_username: "configured_user" },
+            redirect_path: "/app/agents/a-twitter",
+            expires_at: new Date(Date.now() + 60_000).toISOString(),
+            agent_user_id: "user-1",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: "a-twitter",
+            user_id: "user-1",
+            status: "stopped",
+            runtime_family: "openclaw",
+          },
+        ],
+      });
+
+    const res = await auth(
+      request(app).get("/integrations/twitter/oauth/callback?state=state-1&code=code-1"),
+    );
+
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe(
+      "/app/agents/a-twitter?integration=twitter&status=connected",
+    );
+    expect(global.fetch).toHaveBeenNthCalledWith(
+      1,
+      "https://api.x.com/2/oauth2/token",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          Authorization: `Basic ${Buffer.from("user-x-client-id:user-x-client-secret").toString("base64")}`,
+        }),
+      }),
+    );
+    expect(global.fetch.mock.calls[0][1].body.toString()).toContain(
+      "redirect_uri=https%3A%2F%2Fnora.test%2Fapi%2Fintegrations%2Ftwitter%2Foauth%2Fcallback",
+    );
+    expect(integrationsModule.replaceIntegration).toHaveBeenCalledWith(
+      "a-twitter",
+      "twitter",
+      "x-user-access-token",
+      expect.objectContaining({
+        access_token: "x-user-access-token",
+        refresh_token: "x-refresh-token",
+        client_id: "user-x-client-id",
+        client_secret: "user-x-client-secret",
+        username: "solomon2773",
+        default_username: "configured_user",
+        user_id: "1773",
+      }),
+    );
   });
 });
 

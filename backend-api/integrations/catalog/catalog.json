@@ -607,14 +607,87 @@
     "name": "Twitter / X",
     "icon": "twitter",
     "category": "social",
-    "description": "Post tweets, read timelines, and manage Twitter/X accounts",
-    "authType": "api_key",
+    "description": "Post tweets and read account or user tweet data through X API v2",
+    "authType": "oauth2",
     "configFields": [
-      { "key": "bearer_token", "label": "Bearer Token", "type": "password", "required": true },
-      { "key": "api_key", "label": "API Key (optional)", "type": "text", "required": false },
-      { "key": "api_secret", "label": "API Secret (optional)", "type": "text", "required": false }
+      { "key": "client_id", "label": "X OAuth 2.0 Client ID", "type": "text", "required": true },
+      { "key": "client_secret", "label": "X OAuth 2.0 Client Secret", "type": "password", "required": true },
+      { "key": "default_username", "label": "Default Username", "type": "text", "required": false }
     ],
-    "capabilities": ["read", "write"]
+    "capabilities": ["read", "write"],
+    "toolSpecs": [
+      {
+        "name": "twitter_get_me",
+        "description": "Get the connected Twitter/X user profile.",
+        "operation": "users.me",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "user_fields": {
+              "type": "string",
+              "description": "Comma-separated user fields. Defaults to description, profile_image_url, public_metrics, and verified."
+            }
+          }
+        }
+      },
+      {
+        "name": "twitter_list_user_tweets",
+        "description": "List recent tweets for a user id, username, configured default username, or the connected user.",
+        "operation": "users.tweets.list",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "user_id": { "type": "string", "description": "Twitter/X numeric user id." },
+            "username": { "type": "string", "description": "Twitter/X handle without or with @." },
+            "max_results": {
+              "type": "integer",
+              "minimum": 5,
+              "maximum": 100,
+              "description": "Maximum tweets to return."
+            },
+            "pagination_token": { "type": "string", "description": "Pagination token from a prior response." },
+            "exclude": {
+              "type": "array",
+              "items": { "type": "string", "enum": ["retweets", "replies"] },
+              "description": "Tweet types to exclude."
+            },
+            "tweet_fields": {
+              "type": "string",
+              "description": "Comma-separated tweet fields. Defaults to author_id, conversation_id, created_at, and public_metrics."
+            }
+          }
+        }
+      },
+      {
+        "name": "twitter_post_tweet",
+        "description": "Post a tweet from the connected Twitter/X user.",
+        "operation": "tweets.create",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "text": { "type": "string", "description": "Tweet text." },
+            "reply_to_tweet_id": { "type": "string", "description": "Optional tweet id to reply to." },
+            "quote_tweet_id": { "type": "string", "description": "Optional tweet id to quote." }
+          },
+          "required": ["text"]
+        }
+      }
+    ],
+    "api": {
+      "type": "rest",
+      "baseUrl": "https://api.x.com/2",
+      "docsUrl": "https://docs.x.com/x-api",
+      "authEnv": "TWITTER_ACCESS_TOKEN"
+    },
+    "mcp": {
+      "available": false,
+      "notes": "No first-class Nora MCP bridge is wired for Twitter/X yet."
+    },
+    "usageHints": [
+      "Use an X app configured with the Nora callback URL, then authorize an X user with tweet.read, tweet.write, users.read, and offline.access scopes; do not paste the app-only Bearer Token from Keys and Tokens.",
+      "Prefer the configured default username when the operator does not specify a user.",
+      "Inside a running OpenClaw agent, use the generated nora-integrations skill and nora-integration-tool command to execute connected Twitter/X tools."
+    ]
   },
   {
     "id": "linkedin",

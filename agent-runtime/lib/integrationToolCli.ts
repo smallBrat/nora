@@ -4,6 +4,7 @@ const {
   NORA_INTEGRATION_TOOL_COMMAND,
   buildIntegrationToolExecutionMetadata,
   executeIntegrationToolInvocation,
+  getIntegrationToolSpecs,
   loadSyncedIntegrations,
   normalizeIntegrationToolInput,
 } = require("./integrationTools");
@@ -21,6 +22,7 @@ function printHelp() {
       `  ${NORA_INTEGRATION_TOOL_COMMAND} --list`,
       `  ${NORA_INTEGRATION_TOOL_COMMAND} github_list_repositories '{"owner":"openai","per_page":10}'`,
       `  ${NORA_INTEGRATION_TOOL_COMMAND} github_get_file_contents '{"owner":"openai","repo":"openai-node","path":"README.md"}'`,
+      `  ${NORA_INTEGRATION_TOOL_COMMAND} twitter_post_tweet '{"text":"Hello from Nora"}'`,
       "",
     ].join("\n")
   );
@@ -42,9 +44,7 @@ function listExecutableTools() {
   const tools = [];
 
   for (const integration of integrations) {
-    const toolSpecs = Array.isArray(integration.toolSpecs)
-      ? integration.toolSpecs
-      : [];
+    const toolSpecs = getIntegrationToolSpecs(integration);
 
     for (const spec of toolSpecs) {
       const execution = buildIntegrationToolExecutionMetadata(integration, spec);

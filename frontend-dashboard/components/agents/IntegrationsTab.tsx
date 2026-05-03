@@ -91,6 +91,34 @@ export default function IntegrationsTab({ agentId }) {
     }
   }
 
+  async function handleOAuthConnect(catalogItem, configValues = {}) {
+    try {
+      const redirectPath =
+        typeof window !== "undefined"
+          ? `${window.location.pathname}${window.location.search}`
+          : `/app/agents/${agentId}`;
+      const res = await fetchWithAuth(
+        `/api/agents/${agentId}/integrations/${catalogItem.id}/oauth/start`,
+        {
+          method: "POST",
+          body: JSON.stringify({ redirectPath, config: configValues }),
+        },
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(data.error || `Failed to connect ${catalogItem.name}`);
+        return { testResult: { success: false, message: data.error || "OAuth failed" } };
+      }
+      if (typeof window !== "undefined" && data.authorizationUrl) {
+        window.location.assign(data.authorizationUrl);
+      }
+      return { testResult: null };
+    } catch {
+      toast.error(`Failed to connect ${catalogItem.name}`);
+      return { testResult: { success: false, message: "Failed to start OAuth" } };
+    }
+  }
+
   async function handleTest(integration) {
     try {
       const res = await fetchWithAuth(`/api/agents/${agentId}/integrations/${integration.id}/test`, {
@@ -114,12 +142,13 @@ export default function IntegrationsTab({ agentId }) {
       const res = await fetchWithAuth(`/api/agents/${agentId}/integrations/${integration.id}`, {
         method: "DELETE",
       });
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
         toast.success("Integration disconnected");
-        loadData();
       } else {
-        toast.error("Failed to disconnect");
+        toast.error(data.error || "Failed to disconnect");
       }
+      loadData();
     } catch {
       toast.error("Failed to disconnect integration");
     }
@@ -200,12 +229,16 @@ export default function IntegrationsTab({ agentId }) {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {filteredCatalog.map((item) => {
             const inst = installed.find((i) => i.provider === item.id || i.catalog_id === item.id);
+            const oauthConnect = item.id === "twitter";
             return (
               <IntegrationCard
                 key={item.id}
                 item={item}
                 installed={inst || null}
-                onConnect={(configValues) => handleConnect(item, configValues)}
+                submitLabel={oauthConnect ? "Authorize with X" : undefined}
+                onConnect={(configValues) =>
+                  oauthConnect ? handleOAuthConnect(item, configValues) : handleConnect(item, configValues)
+                }
                 onDisconnect={() => {
                   if (inst) handleDisconnect(inst);
                 }}

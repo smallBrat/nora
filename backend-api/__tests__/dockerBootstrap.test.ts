@@ -46,7 +46,9 @@ describe("OpenClaw bootstrap helpers", () => {
     const cmd = buildRuntimeBootstrapCommand();
 
     expect(cmd).toContain("/opt/openclaw-runtime/lib/contracts.ts");
+    expect(cmd).toContain("/opt/openclaw-runtime/lib/containerCommand.ts");
     expect(cmd).toContain("/opt/openclaw-runtime/lib/server.ts");
+    expect(cmd).toContain("/opt/openclaw-runtime/lib/execEndpoint.ts");
     expect(cmd).toContain("/opt/openclaw-runtime/lib/agent.ts");
   });
 
@@ -129,6 +131,33 @@ describe("OpenClaw bootstrap helpers", () => {
     );
   });
 
+  it("seeds Nora integration pointers before the gateway starts", () => {
+    const files = buildTemplatePayloadBootstrapFiles({
+      files: [{ path: "TOOLS.md", content: "## Tools\n\n- Existing tool note.\n" }],
+      memoryFiles: [],
+    });
+    const workspaceTools = files.find(
+      (file) => file.name === "root/.openclaw/workspace/TOOLS.md",
+    );
+    const agentTools = files.find(
+      (file) => file.name === "root/.openclaw/agents/main/agent/TOOLS.md",
+    );
+    const skill = files.find(
+      (file) => file.name === "root/.openclaw/workspace/skills/nora-integrations/SKILL.md",
+    );
+
+    expect(files.map((file) => file.name)).toEqual(
+      expect.arrayContaining([
+        "root/.openclaw/workspace/integrations/integrations.json",
+        "root/.openclaw/workspace/integrations/NORA_INTEGRATIONS.md",
+        "root/.openclaw/workspace/skills/nora-integrations/SKILL.md",
+      ]),
+    );
+    expect(workspaceTools.content.toString("utf8")).toContain("NORA_INTEGRATIONS_BEGIN");
+    expect(agentTools.content.toString("utf8")).toContain("NORA_INTEGRATIONS_BEGIN");
+    expect(skill.content.toString("utf8")).toContain("name: nora-integrations");
+  });
+
   it("merges managed OpenClaw config without replacing runtime-owned sections", () => {
     const script = buildOpenClawConfigMergeScript({
       gateway: { bind: "lan", mode: "local" },
@@ -155,14 +184,22 @@ describe("Provisioner backends", () => {
     expect(runtimeNames).toEqual(
       expect.arrayContaining([
         "opt/openclaw-runtime/lib/contracts.ts",
+        "opt/openclaw-runtime/lib/containerCommand.ts",
         "opt/openclaw-runtime/lib/server.ts",
+        "opt/openclaw-runtime/lib/execEndpoint.ts",
         "opt/openclaw-runtime/lib/agent.ts",
         "opt/openclaw-runtime/lib/build-auth.js",
+        "usr/local/bin/nora-integration-tool",
         "opt/openclaw-runtime/start.sh",
       ]),
     );
     expect(startupScript).toBeTruthy();
     expect(startupScript.mode).toBe(0o755);
+    expect(files.find((file) => file.name === "usr/local/bin/nora-integration-tool")).toEqual(
+      expect.objectContaining({
+        mode: 0o755,
+      }),
+    );
     expect(startupScript.content).toContain(
       'DETECTED_OPENCLAW_BIN="$(command -v openclaw 2>/dev/null || true)"',
     );
@@ -209,9 +246,12 @@ describe("Provisioner backends", () => {
         "opt/openclaw-runtime",
         "opt/openclaw-runtime/lib",
         "opt/openclaw-runtime/lib/contracts.ts",
+        "opt/openclaw-runtime/lib/containerCommand.ts",
         "opt/openclaw-runtime/lib/server.ts",
+        "opt/openclaw-runtime/lib/execEndpoint.ts",
         "opt/openclaw-runtime/lib/agent.ts",
         "opt/openclaw-runtime/lib/build-auth.js",
+        "usr/local/bin/nora-integration-tool",
         "opt/openclaw-runtime/start.sh",
       ]),
     );

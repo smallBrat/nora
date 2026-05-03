@@ -805,8 +805,10 @@ async function buildLiveMigrationManifest(input = {}) {
         files: [...agentFiles, ...workspaceFiles].filter(
           (entry) =>
             entry.path !== "auth-profiles.json" &&
+            entry.path !== "NORA_INTEGRATIONS.md" &&
             entry.path !== NORA_INTEGRATIONS_CONTEXT_FILE &&
-            entry.path !== NORA_INTEGRATIONS_SKILL_FILE,
+            entry.path !== NORA_INTEGRATIONS_SKILL_FILE &&
+            !entry.path.startsWith("integrations/"),
         ),
         memoryFiles: sessionFiles.map((entry) => ({
           ...entry,
@@ -847,8 +849,10 @@ async function buildLiveMigrationManifest(input = {}) {
       files: [...agentFiles, ...workspaceFiles].filter(
         (entry) =>
           entry.path !== "auth-profiles.json" &&
+          entry.path !== "NORA_INTEGRATIONS.md" &&
           entry.path !== NORA_INTEGRATIONS_CONTEXT_FILE &&
-          entry.path !== NORA_INTEGRATIONS_SKILL_FILE,
+          entry.path !== NORA_INTEGRATIONS_SKILL_FILE &&
+          !entry.path.startsWith("integrations/"),
       ),
       memoryFiles: sessionFiles.map((entry) => ({
         ...entry,

@@ -20,6 +20,19 @@ const {
   applyPersistedHermesState,
   getPersistedHermesState,
 } = require("../../backend-api/hermesUi");
+const {
+  buildIntegrationSyncEntry,
+  decryptSensitiveConfig,
+} = require("../../backend-api/integrations");
+const {
+  HERMES_INTEGRATIONS_CONFIG_FILE,
+  HERMES_INTEGRATIONS_DIR,
+  buildHermesIntegrationInstallCommand,
+} = require("../../backend-api/integrationRuntimeFiles");
+const {
+  NORA_SYNC_INTEGRATIONS_CATALOG_FILE,
+  NORA_SYNC_INTEGRATIONS_DIR,
+} = require("../../agent-runtime/lib/integrationTools");
 const { waitForAgentReadiness } = require("./healthChecks");
 const { buildReadinessWarningDetail, persistReadinessWarning } = require("./readinessWarning");
 const { shellSingleQuote } = require("../../agent-runtime/lib/containerCommand");
@@ -763,26 +776,6 @@ async function reconcileRuntimeLlmAuth({
   return { status: "synced" };
 }
 
-function buildIntegrationSyncEntry(row = {}) {
-  let config = row.config || {};
-  if (typeof config === "string") {
-    try {
-      config = JSON.parse(config);
-    } catch {
-      config = {};
-    }
-  }
-
-  return {
-    id: row.id,
-    provider: row.provider || row.catalog_id || row.id,
-    name: row.catalog_name || row.provider || row.catalog_id || row.id,
-    category: row.catalog_category || "unknown",
-    config,
-    status: row.status || "active",
-  };
-}
-
 async function markDeploymentLifecycle(db, agentId, status) {
   await db.query("UPDATE agents SET status = $2 WHERE id = $1", [agentId, status]);
   await db.query("UPDATE deployments SET status = $2 WHERE agent_id = $1", [agentId, status]);
@@ -1127,7 +1120,7 @@ const worker = new Worker(
           shopify: "SHOPIFY_ACCESS_TOKEN",
           linkedin: "LINKEDIN_ACCESS_TOKEN",
           salesforce: "SALESFORCE_ACCESS_TOKEN",
-          twitter: "TWITTER_BEARER_TOKEN",
+          twitter: "TWITTER_ACCESS_TOKEN",
           digitalocean: "DIGITALOCEAN_TOKEN",
           algolia: "ALGOLIA_API_KEY",
           clickup: "CLICKUP_API_KEY",
@@ -1240,6 +1233,7 @@ const worker = new Worker(
           "stripe.webhook_secret": "STRIPE_WEBHOOK_SECRET",
           "twitter.api_key": "TWITTER_API_KEY",
           "twitter.api_secret": "TWITTER_API_SECRET",
+          "twitter.default_username": "TWITTER_DEFAULT_USERNAME",
           "facebook.page_id": "FACEBOOK_PAGE_ID",
           "mixpanel.project_token": "MIXPANEL_PROJECT_TOKEN",
           "google-analytics.service_account_json": "GOOGLE_ANALYTICS_SA_JSON",
@@ -1271,7 +1265,7 @@ const worker = new Worker(
             }
           }
           // Config fields (URLs, usernames, IDs, secondary secrets)
-          const cfg = typeof row.config === "string" ? JSON.parse(row.config) : row.config || {};
+          const cfg = decryptSensitiveConfig(row.provider, row.config);
           for (const [cfgKey, cfgValue] of Object.entries(cfg)) {
             if (!cfgValue) continue;
             const cfgEnvName = INTEGRATION_CONFIG_ENV_MAP[`${row.provider}.${cfgKey}`];
@@ -1341,6 +1335,14 @@ const worker = new Worker(
           env: {
             AGENT_ID: String(id),
             AGENT_NAME: name || "",
+            NORA_INTEGRATIONS_CONFIG:
+              resolvedRuntimeFields.runtime_family === "hermes"
+                ? HERMES_INTEGRATIONS_CONFIG_FILE
+                : NORA_SYNC_INTEGRATIONS_CATALOG_FILE,
+            NORA_INTEGRATIONS_DIR:
+              resolvedRuntimeFields.runtime_family === "hermes"
+                ? HERMES_INTEGRATIONS_DIR
+                : NORA_SYNC_INTEGRATIONS_DIR,
             ...(resolvedRuntimeFields.sandbox_profile === "nemoclaw" && model
               ? { NEMOCLAW_MODEL: model }
               : {}),
@@ -1625,8 +1627,8 @@ const worker = new Worker(
          WHERE i.agent_id = $1 AND i.status = 'active'`,
             [id],
           );
-          if (intResult.rows.length > 0 && resolvedRuntimeFields.runtime_family === "openclaw") {
-            const syncData = intResult.rows.map(buildIntegrationSyncEntry);
+          const syncData = intResult.rows.map(buildIntegrationSyncEntry);
+          if (resolvedRuntimeFields.runtime_family === "openclaw") {
             const runtimeUrl = runtimeUrlForAgent(
               {
                 host,
@@ -1641,6 +1643,16 @@ const worker = new Worker(
               body: JSON.stringify({ integrations: syncData }),
             });
             console.log(`[provisioner] Synced ${syncData.length} integration(s) to agent ${id}`);
+          } else if (resolvedRuntimeFields.runtime_family === "hermes" && containerId) {
+            await runProvisionerExecCommand(
+              provisioner,
+              containerId,
+              buildHermesIntegrationInstallCommand(syncData),
+              { timeout: 30000 },
+            );
+            console.log(
+              `[provisioner] Installed Nora integration skill with ${syncData.length} integration(s) to Hermes agent ${id}`,
+            );
           }
         } catch (e) {
           console.warn(`[provisioner] Failed to sync integrations for agent ${id}:`, e.message);

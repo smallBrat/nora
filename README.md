@@ -299,6 +299,10 @@ STRIPE_PRICE_ENTERPRISE=
 
 Leave the Docker Compose defaults from `.env.example` for `DB_HOST`, `DB_USER`, `DB_NAME`, `DB_PORT`, `REDIS_HOST`, `REDIS_PORT`, and `PORT` unless you are wiring Nora to external services.
 
+Twitter/X integrations are configured per agent from the Integration tab, not through global env vars. In the X Developer Portal, set the callback URL to `https://your-domain.example/api/integrations/twitter/oauth/callback` for public installs or `http://localhost:8080/api/integrations/twitter/oauth/callback` for local mode, then enter that X app's OAuth 2.0 Client ID and Client Secret in the Nora integration modal.
+
+OpenClaw and Hermes runtimes receive only the active integrations for that specific agent. Nora writes a generated `integrations/` folder with a safe catalog at `integrations.json`, a human-readable `NORA_INTEGRATIONS.md` context file, and one private detail file per provider, such as `integrations.twitter.json`. OpenClaw uses `/root/.openclaw/workspace/integrations/`; Hermes uses `/opt/data/workspace/integrations/`. Nora also installs the `nora-integrations` skill and `nora-integration-tool` so agents can inspect any connected provider's credential env vars and synced defaults immediately after deploy.
+
 If you are self-hosting on a public domain, switch to the public nginx path and your own hostname:
 
 ```env

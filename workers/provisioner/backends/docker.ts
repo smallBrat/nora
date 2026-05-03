@@ -6,6 +6,7 @@ const path = require("path");
 const {
   buildOpenClawInstallCommand,
   buildOpenClawConfigMergeScript,
+  buildIntegrationToolWrapperScript,
   buildRuntimeBootstrapFiles,
   buildTemplatePayloadBootstrapFiles,
   buildRuntimeEnv,
@@ -223,6 +224,11 @@ class DockerBackend extends ProvisionerBackend {
     return [
       ...runtimeFiles,
       ...templateFiles,
+      {
+        name: "usr/local/bin/nora-integration-tool",
+        content: buildIntegrationToolWrapperScript(),
+        mode: 0o755,
+      },
       {
         name: "opt/openclaw-runtime/lib/build-auth.js",
         content: buildAuthScript,

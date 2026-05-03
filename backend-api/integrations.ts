@@ -7,7 +7,11 @@ const path = require("path");
 const fs = require("fs");
 const {
   buildIntegrationToolExecutionMetadata,
+  getIntegrationToolSpecs,
 } = require("../agent-runtime/lib/integrationTools");
+
+const TWITTER_OAUTH_TOKEN_URL = "https://api.x.com/2/oauth2/token";
+const OAUTH_TOKEN_REFRESH_SKEW_MS = 5 * 60 * 1000;
 
 // ── Integration → Env Var Name Map ───────────────────────
 // Maps provider ID → the env var for the primary credential (the access_token column).
@@ -42,7 +46,7 @@ const INTEGRATION_ENV_MAP = {
   linkedin:             'LINKEDIN_ACCESS_TOKEN',
   instagram:            'INSTAGRAM_ACCESS_TOKEN',
   salesforce:           'SALESFORCE_ACCESS_TOKEN',
-  twitter:              'TWITTER_BEARER_TOKEN',
+  twitter:              'TWITTER_ACCESS_TOKEN',
   digitalocean:         'DIGITALOCEAN_TOKEN',
   algolia:              'ALGOLIA_API_KEY',
   clickup:              'CLICKUP_API_KEY',
@@ -181,6 +185,7 @@ const INTEGRATION_CONFIG_ENV_MAP = {
   // Social
   'twitter.api_key':                  'TWITTER_API_KEY',
   'twitter.api_secret':               'TWITTER_API_SECRET',
+  'twitter.default_username':         'TWITTER_DEFAULT_USERNAME',
   'facebook.page_id':                 'FACEBOOK_PAGE_ID',
   'instagram.business_account_id':    'INSTAGRAM_BUSINESS_ACCOUNT_ID',
   'instagram.page_id':                'INSTAGRAM_PAGE_ID',
@@ -371,6 +376,95 @@ function decryptSensitiveConfig(provider, config = {}) {
   return revealed;
 }
 
+function stringValue(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function tokenExpiresAt(tokenData = {}) {
+  const expiresIn = Number.parseInt(tokenData.expires_in, 10);
+  if (!Number.isFinite(expiresIn) || expiresIn <= 0) return null;
+  return new Date(Date.now() + expiresIn * 1000).toISOString();
+}
+
+function shouldRefreshOAuthToken(config = {}) {
+  const expiresAt = Date.parse(stringValue(config.expires_at || config.expiresAt));
+  if (!Number.isFinite(expiresAt)) return false;
+  return expiresAt <= Date.now() + OAUTH_TOKEN_REFRESH_SKEW_MS;
+}
+
+async function refreshTwitterOAuthRowIfNeeded(row = {}) {
+  const provider = row.provider || row.catalog_id;
+  if (provider !== "twitter" || !row.id) return row;
+
+  const config = decryptSensitiveConfig(provider, row.config);
+  if (!shouldRefreshOAuthToken(config)) return row;
+
+  const refreshToken = stringValue(config.refresh_token);
+  const clientId = stringValue(config.client_id);
+  if (!refreshToken || !clientId) return row;
+
+  const clientSecret = stringValue(config.client_secret);
+  const body = new URLSearchParams({
+    grant_type: "refresh_token",
+    refresh_token: refreshToken,
+    client_id: clientId,
+  });
+  const headers = {
+    "Content-Type": "application/x-www-form-urlencoded",
+  };
+  if (clientSecret) {
+    headers.Authorization = `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString("base64")}`;
+  }
+
+  let tokenData = null;
+  try {
+    const response = await fetch(TWITTER_OAUTH_TOKEN_URL, {
+      method: "POST",
+      headers,
+      body,
+    });
+    tokenData = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const message =
+        stringValue(tokenData?.error_description) ||
+        stringValue(tokenData?.error) ||
+        `HTTP ${response.status}`;
+      throw new Error(message);
+    }
+  } catch (error) {
+    console.warn(
+      `[integrations] Failed to refresh Twitter/X OAuth token for integration ${row.id}: ${error.message}`,
+    );
+    return row;
+  }
+
+  const accessToken = stringValue(tokenData.access_token);
+  if (!accessToken) return row;
+
+  ensureEncryptionConfigured("Twitter/X OAuth token refresh");
+  const nextConfig = {
+    ...config,
+    access_token: accessToken,
+    refresh_token: stringValue(tokenData.refresh_token) || refreshToken,
+    token_type: stringValue(tokenData.token_type) || config.token_type || "bearer",
+    scope: stringValue(tokenData.scope) || config.scope || "",
+    expires_at: tokenExpiresAt(tokenData) || config.expires_at || null,
+  };
+  const { secured: securedConfig } = encryptSensitiveConfig(provider, nextConfig);
+  const encryptedToken = encrypt(accessToken);
+
+  await db.query(
+    "UPDATE integrations SET access_token = $1, config = $2 WHERE id = $3",
+    [encryptedToken, JSON.stringify(securedConfig), row.id],
+  );
+
+  return {
+    ...row,
+    access_token: encryptedToken,
+    config: securedConfig,
+  };
+}
+
 function redactSensitiveConfig(provider, config = {}) {
   const parsed = parseConfig(config);
   const sensitiveKeys = getSensitiveConfigKeys(provider);
@@ -401,6 +495,39 @@ function stripSensitiveConfig(provider, config = {}) {
   return { config: stripped, removedSensitive };
 }
 
+async function readProviderErrorResponse(res) {
+  const rawText = await res.text().catch(() => "");
+  if (!rawText) return { rawText: "", data: null };
+
+  try {
+    return { rawText, data: JSON.parse(rawText) };
+  } catch {
+    return { rawText, data: null };
+  }
+}
+
+function providerErrorMessage(data, rawText) {
+  const firstError = Array.isArray(data?.errors) ? data.errors[0] : null;
+  return (
+    firstError?.detail ||
+    firstError?.message ||
+    data?.detail ||
+    data?.message ||
+    data?.title ||
+    rawText ||
+    ""
+  );
+}
+
+function buildTwitterApiError(status, data, rawText) {
+  const detail = providerErrorMessage(data, rawText);
+  const hint =
+    status === 401 || status === 403
+      ? "Use an OAuth 2.0 user access token with tweet.read, users.read, and tweet.write scopes. The app-only Bearer Token and read-only OAuth 1.0 Access Token from Keys and Tokens are not valid for Nora's user-context Twitter/X integration."
+      : "";
+  return ["Twitter/X API returned " + status, detail, hint].filter(Boolean).join(": ");
+}
+
 function buildCloneableIntegration(row = {}) {
   const { config, removedSensitive } = stripSensitiveConfig(
     row.provider,
@@ -422,7 +549,20 @@ function buildCloneableIntegration(row = {}) {
 function buildIntegrationSyncEntry(row = {}) {
   const hydrated = hydrateRow(row);
   const provider = row.provider || row.catalog_id || row.id;
-  const config = decryptSensitiveConfig(provider, row.config);
+  const decryptedConfig = decryptSensitiveConfig(provider, row.config);
+  const config =
+    provider === "twitter"
+      ? Object.fromEntries(
+          Object.entries(decryptedConfig).filter(
+            ([key]) => !["client_id", "client_secret", "refresh_token"].includes(key)
+          )
+        )
+      : decryptedConfig;
+  const configEnv = {};
+  for (const key of Object.keys(config)) {
+    const envName = INTEGRATION_CONFIG_ENV_MAP[`${provider}.${key}`];
+    if (envName) configEnv[key] = envName;
+  }
 
   return {
     id: row.id,
@@ -430,6 +570,8 @@ function buildIntegrationSyncEntry(row = {}) {
     name: row.catalog_name || hydrated.name || provider,
     category: row.catalog_category || hydrated.category || "unknown",
     authType: hydrated.authType || null,
+    activatedAt: row.created_at || row.createdAt || null,
+    expiresAt: config.expires_at || config.expiresAt || null,
     config,
     redactedConfig: redactSensitiveConfig(provider, config),
     status: row.status || "active",
@@ -438,6 +580,10 @@ function buildIntegrationSyncEntry(row = {}) {
     mcp: hydrated.mcp || null,
     api: hydrated.api || null,
     usageHints: Array.isArray(hydrated.usageHints) ? hydrated.usageHints : [],
+    credentialEnv: {
+      primary: INTEGRATION_ENV_MAP[provider] || null,
+      config: configEnv,
+    },
   };
 }
 
@@ -475,9 +621,7 @@ function buildIntegrationToolCatalogEntries(integrations = [], options = {}) {
   const tools = [];
 
   for (const integration of Array.isArray(integrations) ? integrations : []) {
-    const toolSpecs = Array.isArray(integration.toolSpecs)
-      ? integration.toolSpecs
-      : [];
+    const toolSpecs = getIntegrationToolSpecs(integration);
 
     for (let index = 0; index < toolSpecs.length; index += 1) {
       const spec = toolSpecs[index] || {};
@@ -559,6 +703,17 @@ async function connectIntegration(agentId, provider, token, config = {}) {
     ...safeRow,
     config: redactSensitiveConfig(provider, securedConfig),
   };
+}
+
+async function replaceIntegration(agentId, provider, token, config = {}) {
+  const result = await connectIntegration(agentId, provider, token, config);
+  if (result?.id) {
+    await db.query(
+      "DELETE FROM integrations WHERE agent_id = $1 AND provider = $2 AND id <> $3",
+      [agentId, provider, result.id]
+    );
+  }
+  return result;
 }
 
 async function listIntegrations(agentId) {
@@ -1030,11 +1185,11 @@ async function testIntegration(integrationId, agentId) {
       return { success: true, message: "Connected to Salesforce" };
     },
     twitter: async () => {
-      const res = await fetch("https://api.twitter.com/2/users/me", {
+      const res = await fetch("https://api.x.com/2/users/me", {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!res.ok) throw new Error(`Twitter/X API returned ${res.status}`);
-      const data = await res.json();
+      const { rawText, data } = await readProviderErrorResponse(res);
+      if (!res.ok) throw new Error(buildTwitterApiError(res.status, data, rawText));
       return { success: true, message: `Connected as @${data.data?.username || "verified"}` };
     },
   };
@@ -1057,7 +1212,7 @@ async function testIntegration(integrationId, agentId) {
  */
 async function getIntegrationsForSync(agentId) {
   const result = await db.query(
-    `SELECT i.id, i.provider, i.catalog_id, i.config, i.status,
+    `SELECT i.id, i.provider, i.catalog_id, i.config, i.status, i.created_at,
             ic.name as catalog_name, ic.category as catalog_category,
             ic.auth_type, ic.config_schema
      FROM integrations i
@@ -1065,7 +1220,11 @@ async function getIntegrationsForSync(agentId) {
      WHERE i.agent_id = $1 AND i.status = 'active'`,
     [agentId]
   );
-  return result.rows.map(buildIntegrationSyncEntry);
+  const refreshedRows = [];
+  for (const row of result.rows) {
+    refreshedRows.push(await refreshTwitterOAuthRowIfNeeded(row));
+  }
+  return refreshedRows.map(buildIntegrationSyncEntry);
 }
 
 /**
@@ -1076,11 +1235,12 @@ async function getIntegrationsForSync(agentId) {
  */
 async function getIntegrationEnvVars(agentId) {
   const result = await db.query(
-    "SELECT provider, access_token, config FROM integrations WHERE agent_id = $1 AND status = 'active'",
+    "SELECT id, provider, catalog_id, access_token, config FROM integrations WHERE agent_id = $1 AND status = 'active'",
     [agentId]
   );
   const envVars = {};
-  for (const row of result.rows) {
+  for (const rawRow of result.rows) {
+    const row = await refreshTwitterOAuthRowIfNeeded(rawRow);
     // 1. Primary credential stored in access_token column
     const envName = INTEGRATION_ENV_MAP[row.provider];
     if (envName && row.access_token) {
@@ -1108,6 +1268,7 @@ module.exports = {
   getCatalog,
   getCatalogItem,
   connectIntegration,
+  replaceIntegration,
   decryptSensitiveConfig,
   listIntegrations,
   removeIntegration,

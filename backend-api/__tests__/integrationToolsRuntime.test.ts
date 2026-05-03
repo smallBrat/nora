@@ -1,8 +1,16 @@
 // @ts-nocheck
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
+
 const {
+  NORA_SYNC_INTEGRATIONS_CATALOG_FILE,
+  NORA_SYNC_INTEGRATIONS_CONFIG_FILE,
+  buildSplitIntegrationManifest,
   buildIntegrationSkillMarkdown,
   buildIntegrationToolExecutionMetadata,
   executeIntegrationToolInvocation,
+  loadSyncedIntegrations,
 } = require("../../agent-runtime/lib/integrationTools");
 
 describe("runtime integration tool execution", () => {
@@ -29,6 +37,135 @@ describe("runtime integration tool execution", () => {
       runtimeToolName: "github_list_repositories",
     });
     expect(execution.invokeCommand).toContain("nora-integration-tool github_list_repositories");
+  });
+
+  it("marks supported Twitter/X tools as executable via runtime skill", () => {
+    const execution = buildIntegrationToolExecutionMetadata(
+      { provider: "twitter" },
+      {
+        name: "twitter_post_tweet",
+        operation: "tweets.create",
+        inputSchema: {
+          type: "object",
+          properties: {
+            text: { type: "string" },
+          },
+          required: ["text"],
+        },
+      }
+    );
+
+    expect(execution).toMatchObject({
+      executable: true,
+      executionState: "runtime_skill",
+      executionSurface: "exec",
+      runtimeToolName: "twitter_post_tweet",
+    });
+    expect(execution.invokeCommand).toContain("nora-integration-tool twitter_post_tweet");
+  });
+
+  it("loads synced integrations from the split runtime catalog and details files", () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "nora-integrations-"));
+    const catalog = buildSplitIntegrationManifest([
+      {
+        provider: "twitter",
+        name: "Twitter / X",
+        config: {
+          access_token: "secret-token",
+        },
+      },
+    ]);
+
+    fs.writeFileSync(
+      path.join(tempDir, "integrations.json"),
+      JSON.stringify(catalog.catalog),
+    );
+    for (const { fileName, integration } of catalog.details) {
+      fs.writeFileSync(path.join(tempDir, fileName), JSON.stringify(integration));
+    }
+
+    expect(loadSyncedIntegrations(tempDir)).toEqual([
+      expect.objectContaining({
+        provider: "twitter",
+        name: "Twitter / X",
+        config: {
+          access_token: "secret-token",
+        },
+      }),
+    ]);
+    expect(NORA_SYNC_INTEGRATIONS_CONFIG_FILE).toBe(
+      "/root/.openclaw/workspace/integrations/integrations.json",
+    );
+    expect(NORA_SYNC_INTEGRATIONS_CATALOG_FILE).toBe(NORA_SYNC_INTEGRATIONS_CONFIG_FILE);
+  });
+
+  it("keeps reading legacy single-file integration manifests", () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "nora-integrations-"));
+    const configAlias = path.join(tempDir, "integrations.config.json");
+    fs.writeFileSync(
+      configAlias,
+      JSON.stringify({
+        integrations: [
+          {
+            provider: "twitter",
+            name: "Twitter / X",
+          },
+        ],
+      }),
+    );
+
+    expect(loadSyncedIntegrations(configAlias)).toEqual([
+      expect.objectContaining({
+        provider: "twitter",
+        name: "Twitter / X",
+      }),
+    ]);
+  });
+
+  it("exposes an executable manifest tool for any connected provider", async () => {
+    const result = await executeIntegrationToolInvocation({
+      toolName: "nora_slack_integration",
+      integrations: [
+        {
+          id: "int-slack",
+          provider: "slack",
+          name: "Slack",
+          category: "communication",
+          credentialEnv: {
+            primary: "SLACK_TOKEN",
+            config: { default_channel: "SLACK_DEFAULT_CHANNEL" },
+          },
+          config: {
+            bot_token: "xoxb-secret",
+            default_channel: "#ops",
+          },
+          redactedConfig: {
+            bot_token: "[REDACTED]",
+            default_channel: "#ops",
+          },
+          toolSpecs: [],
+        },
+      ],
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      provider: "slack",
+      operation: "manifest.inspect",
+      result: {
+        integration: {
+          provider: "slack",
+          credentialEnv: {
+            primary: "SLACK_TOKEN",
+          },
+          config: {
+            bot_token: "[REDACTED]",
+            default_channel: "#ops",
+          },
+        },
+      },
+    });
+    expect(JSON.stringify(result)).not.toContain("xoxb-secret");
   });
 
   it("lists repositories for the configured GitHub org", async () => {
@@ -157,13 +294,154 @@ describe("runtime integration tool execution", () => {
     );
   });
 
-  it("builds a generated skill that references executable tools", () => {
+  it("posts a tweet through the connected Twitter/X token", async () => {
+    const fetchImpl = jest.fn().mockResolvedValueOnce({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          data: {
+            id: "1900000000000000000",
+            text: "Hello from Nora",
+            edit_history_tweet_ids: ["1900000000000000000"],
+          },
+        }),
+    });
+
+    const result = await executeIntegrationToolInvocation({
+      toolName: "twitter_post_tweet",
+      input: { text: "Hello from Nora", reply_to_tweet_id: "1899999999999999999" },
+      integrations: [
+        {
+          provider: "twitter",
+          name: "Twitter / X",
+          config: {
+            access_token: "x-user-token",
+          },
+          toolSpecs: [
+            {
+              name: "twitter_post_tweet",
+              operation: "tweets.create",
+            },
+          ],
+        },
+      ],
+      fetchImpl,
+    });
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "https://api.x.com/2/tweets",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          Authorization: "Bearer x-user-token",
+          "Content-Type": "application/json",
+        }),
+        body: JSON.stringify({
+          text: "Hello from Nora",
+          reply: { in_reply_to_tweet_id: "1899999999999999999" },
+        }),
+      })
+    );
+    expect(result.result.tweet).toEqual(
+      expect.objectContaining({
+        id: "1900000000000000000",
+        text: "Hello from Nora",
+      })
+    );
+  });
+
+  it("lists tweets for the configured Twitter/X username", async () => {
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        text: async () =>
+          JSON.stringify({
+            data: {
+              id: "2244994945",
+              username: "openai",
+              name: "OpenAI",
+            },
+          }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        text: async () =>
+          JSON.stringify({
+            data: [
+              {
+                id: "1900000000000000001",
+                text: "Research update",
+                author_id: "2244994945",
+                created_at: "2026-04-10T00:00:00Z",
+              },
+            ],
+            meta: {
+              result_count: 1,
+            },
+          }),
+      });
+
+    const result = await executeIntegrationToolInvocation({
+      toolName: "twitter_list_user_tweets",
+      input: { max_results: 5, exclude: ["retweets", "replies"] },
+      integrations: [
+        {
+          provider: "twitter",
+          name: "Twitter / X",
+          config: {
+            access_token: "x-user-token",
+            default_username: "openai",
+          },
+          toolSpecs: [
+            {
+              name: "twitter_list_user_tweets",
+              operation: "users.tweets.list",
+            },
+          ],
+        },
+      ],
+      fetchImpl,
+    });
+
+    const lookupUrl = new URL(fetchImpl.mock.calls[0][0]);
+    expect(lookupUrl.pathname).toBe("/2/users/by/username/openai");
+    expect(lookupUrl.searchParams.get("user.fields")).toBe(
+      "description,profile_image_url,public_metrics,verified"
+    );
+
+    const tweetsUrl = new URL(fetchImpl.mock.calls[1][0]);
+    expect(tweetsUrl.pathname).toBe("/2/users/2244994945/tweets");
+    expect(tweetsUrl.searchParams.get("max_results")).toBe("5");
+    expect(tweetsUrl.searchParams.get("exclude")).toBe("retweets,replies");
+    expect(tweetsUrl.searchParams.get("tweet.fields")).toBe(
+      "author_id,conversation_id,created_at,public_metrics"
+    );
+    expect(result.result.tweets).toEqual([
+      expect.objectContaining({
+        id: "1900000000000000001",
+        text: "Research update",
+      }),
+    ]);
+  });
+
+  it("builds a generated skill that references credentials and executable tools", () => {
     const markdown = buildIntegrationSkillMarkdown([
       {
         provider: "github",
         name: "GitHub",
+        capabilities: ["read", "write"],
+        credentialEnv: {
+          primary: "GITHUB_TOKEN",
+          config: { org: "GITHUB_ORG" },
+        },
         config: {
           personal_access_token: "ghp_test",
+          org: "openai",
+        },
+        redactedConfig: {
+          personal_access_token: "[REDACTED]",
+          org: "openai",
         },
         toolSpecs: [
           {
@@ -180,9 +458,37 @@ describe("runtime integration tool execution", () => {
           },
         ],
       },
+      {
+        provider: "slack",
+        name: "Slack",
+        credentialEnv: {
+          primary: "SLACK_TOKEN",
+          config: { default_channel: "SLACK_DEFAULT_CHANNEL" },
+        },
+        config: {
+          bot_token: "xoxb-secret",
+          default_channel: "#ops",
+        },
+        redactedConfig: {
+          bot_token: "[REDACTED]",
+          default_channel: "#ops",
+        },
+        api: {
+          type: "rest",
+          baseUrl: "https://slack.com/api",
+        },
+        toolSpecs: [],
+      },
     ]);
 
     expect(markdown).toContain("nora-integration-tool");
+    expect(markdown).toContain("/root/.openclaw/workspace/integrations/integrations.json");
     expect(markdown).toContain("github_list_repositories");
+    expect(markdown).toContain("nora_slack_integration");
+    expect(markdown).toContain("GITHUB_TOKEN");
+    expect(markdown).toContain("SLACK_TOKEN");
+    expect(markdown).toContain("default_channel: #ops");
+    expect(markdown).not.toContain("ghp_test");
+    expect(markdown).not.toContain("xoxb-secret");
   });
 });

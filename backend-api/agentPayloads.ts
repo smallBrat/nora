@@ -467,9 +467,10 @@ async function fetchTemplateExportViaExec(agent, includeMemory) {
     throw new Error("runtime exec unavailable");
   }
 
-  const exportScript = `
+const exportScript = `
 const fs = require("fs");
-const generatedExcludes = new Set(["auth-profiles.json", ${JSON.stringify(NORA_INTEGRATIONS_CONTEXT_FILE)}, ${JSON.stringify(NORA_INTEGRATIONS_SKILL_FILE)}]);
+const generatedExcludes = new Set(["auth-profiles.json", "NORA_INTEGRATIONS.md", ${JSON.stringify(NORA_INTEGRATIONS_CONTEXT_FILE)}, ${JSON.stringify(NORA_INTEGRATIONS_SKILL_FILE)}]);
+const generatedDirExcludes = new Set(["integrations"]);
 function collectFiles(root, prefix = "", exclude = new Set()) {
   const files = [];
   function walk(currentRoot, currentPrefix = "") {
@@ -478,6 +479,7 @@ function collectFiles(root, prefix = "", exclude = new Set()) {
       const abs = currentRoot + "/" + entry.name;
       const rel = currentPrefix ? currentPrefix + "/" + entry.name : entry.name;
       if (entry.isDirectory()) {
+        if (generatedDirExcludes.has(entry.name) || generatedDirExcludes.has(rel)) continue;
         walk(abs, rel);
         continue;
       }
@@ -494,7 +496,7 @@ function collectFiles(root, prefix = "", exclude = new Set()) {
   return files;
 }
 const mergedFiles = new Map();
-for (const entry of collectFiles(${JSON.stringify(OPENCLAW_LEGACY_AGENT_TEMPLATE_ROOT)}, "", new Set(["auth-profiles.json", ${JSON.stringify(NORA_INTEGRATIONS_CONTEXT_FILE)}, ${JSON.stringify(NORA_INTEGRATIONS_SKILL_FILE)}]))) {
+for (const entry of collectFiles(${JSON.stringify(OPENCLAW_LEGACY_AGENT_TEMPLATE_ROOT)}, "", new Set(["auth-profiles.json", "NORA_INTEGRATIONS.md", ${JSON.stringify(NORA_INTEGRATIONS_CONTEXT_FILE)}, ${JSON.stringify(NORA_INTEGRATIONS_SKILL_FILE)}]))) {
   mergedFiles.set(entry.path, entry);
 }
 for (const entry of collectFiles(${JSON.stringify(OPENCLAW_WORKSPACE_ROOT)})) {
