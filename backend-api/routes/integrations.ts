@@ -39,12 +39,16 @@ function sha256Base64Url(value) {
 }
 
 function requestProtocol(req) {
-  const forwarded = String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim();
+  const forwarded = String(req.headers["x-forwarded-proto"] || "")
+    .split(",")[0]
+    .trim();
   return forwarded || req.protocol || "http";
 }
 
 function requestHost(req) {
-  return String(req.headers["x-forwarded-host"] || req.headers.host || "").split(",")[0].trim();
+  return String(req.headers["x-forwarded-host"] || req.headers.host || "")
+    .split(",")[0]
+    .trim();
 }
 
 function publicBaseUrl(req) {
@@ -115,11 +119,19 @@ function normalizeTwitterOAuthConfig(config = {}) {
   return {
     clientId: String(source.client_id || source.clientId || "").trim(),
     clientSecret: String(source.client_secret || source.clientSecret || "").trim(),
-    defaultUsername: String(source.default_username || source.username || "").trim().replace(/^@+/, ""),
+    defaultUsername: String(source.default_username || source.username || "")
+      .trim()
+      .replace(/^@+/, ""),
   };
 }
 
-async function exchangeTwitterOAuthCode({ code, codeVerifier, redirectUri, clientId, clientSecret }) {
+async function exchangeTwitterOAuthCode({
+  code,
+  codeVerifier,
+  redirectUri,
+  clientId,
+  clientSecret,
+}) {
   if (!clientId) {
     const error = new Error("Twitter/X OAuth Client ID is required.");
     error.statusCode = 400;
@@ -197,11 +209,9 @@ async function syncIntegrationsToAgent(agentId, { strict = false, strictHermes =
     let manifestError = null;
     if (agent.container_id && ["running", "warning"].includes(agent.status)) {
       try {
-        await runContainerCommand(
-          agent,
-          buildHermesIntegrationInstallCommand(syncData),
-          { timeout: 30000 },
-        );
+        await runContainerCommand(agent, buildHermesIntegrationInstallCommand(syncData), {
+          timeout: 30000,
+        });
         manifestStatus = "synced";
       } catch (error) {
         manifestStatus = "failed";
@@ -354,10 +364,7 @@ router.post("/agents/:id/integrations/twitter/oauth/start", async (req, res) => 
     const codeVerifier = randomToken(64);
     const codeChallenge = sha256Base64Url(codeVerifier);
     const redirectUri = twitterOAuthCallbackUrl(req);
-    const redirectPath = normalizeRedirectPath(
-      req.body?.redirectPath,
-      req.params.id,
-    );
+    const redirectPath = normalizeRedirectPath(req.body?.redirectPath, req.params.id);
     const expiresAt = new Date(Date.now() + TWITTER_OAUTH_STATE_TTL_MS);
 
     await db.query(
@@ -522,7 +529,9 @@ router.get("/integrations/twitter/oauth/callback", async (req, res) => {
       }
     }
     const defaultUsername =
-      String(stateConfig.default_username || "").trim().replace(/^@+/, "") || username;
+      String(stateConfig.default_username || "")
+        .trim()
+        .replace(/^@+/, "") || username;
     const config = {
       access_token: accessToken,
       refresh_token: tokenData.refresh_token || "",

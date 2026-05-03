@@ -11,8 +11,7 @@ const HERMES_INTEGRATIONS_LEGACY_CONFIG_FILE = "/opt/data/integrations.json";
 const HERMES_INTEGRATIONS_LEGACY_CONFIG_JSON_FILE = "/opt/data/integrations.config.json";
 const HERMES_INTEGRATIONS_WORKSPACE_CONFIG_FILE = "/opt/data/workspace/integrations.config.json";
 const HERMES_INTEGRATIONS_CONTEXT_FILE = `${HERMES_INTEGRATIONS_DIR}/NORA_INTEGRATIONS.md`;
-const HERMES_INTEGRATIONS_SKILL_FILE =
-  "/opt/data/home/.hermes/skills/nora-integrations/SKILL.md";
+const HERMES_INTEGRATIONS_SKILL_FILE = "/opt/data/home/.hermes/skills/nora-integrations/SKILL.md";
 const HERMES_INTEGRATION_TOOL_COMMAND = "/usr/local/bin/nora-integration-tool";
 
 function writeBase64FileCommand(filePath, content, mode = "0644") {
@@ -234,14 +233,16 @@ function buildHermesIntegrationInstallCommand(integrations = []) {
       HERMES_INTEGRATIONS_LEGACY_CONFIG_JSON_FILE,
       HERMES_INTEGRATIONS_WORKSPACE_CONFIG_FILE,
       "/opt/data/workspace/NORA_INTEGRATIONS.md",
-    ].map((filePath) => shellSingleQuote(filePath)).join(" ")}`,
+    ]
+      .map((filePath) => shellSingleQuote(filePath))
+      .join(" ")}`,
     writeBase64FileCommand(HERMES_INTEGRATIONS_CONFIG_FILE, catalogJson, "0644"),
     ...manifest.details.map(({ fileName, integration }) =>
       writeBase64FileCommand(
         `${HERMES_INTEGRATIONS_DIR}/${fileName}`,
         `${JSON.stringify(integration, null, 2)}\n`,
         "0600",
-      )
+      ),
     ),
     writeBase64FileCommand(HERMES_INTEGRATIONS_CONTEXT_FILE, contextMarkdown, "0644"),
     writeBase64FileCommand(HERMES_INTEGRATIONS_SKILL_FILE, skillMarkdown, "0644"),

@@ -136,9 +136,7 @@ describe("OpenClaw bootstrap helpers", () => {
       files: [{ path: "TOOLS.md", content: "## Tools\n\n- Existing tool note.\n" }],
       memoryFiles: [],
     });
-    const workspaceTools = files.find(
-      (file) => file.name === "root/.openclaw/workspace/TOOLS.md",
-    );
+    const workspaceTools = files.find((file) => file.name === "root/.openclaw/workspace/TOOLS.md");
     const agentTools = files.find(
       (file) => file.name === "root/.openclaw/agents/main/agent/TOOLS.md",
     );

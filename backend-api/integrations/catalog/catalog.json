@@ -7,7 +7,13 @@
     "description": "Access repos, issues, PRs, and GitHub Actions workflows",
     "authType": "api_key",
     "configFields": [
-      { "key": "personal_access_token", "label": "Personal Access Token", "type": "password", "required": true, "placeholder": "ghp_..." },
+      {
+        "key": "personal_access_token",
+        "label": "Personal Access Token",
+        "type": "password",
+        "required": true,
+        "placeholder": "ghp_..."
+      },
       { "key": "org", "label": "Organization", "type": "text", "required": false },
       { "key": "repo", "label": "Default Repository", "type": "text", "required": false }
     ],
@@ -114,8 +120,20 @@
     "description": "Manage GitLab repos, merge requests, pipelines, and issues",
     "authType": "api_key",
     "configFields": [
-      { "key": "personal_access_token", "label": "Personal Access Token", "type": "password", "required": true, "placeholder": "glpat-..." },
-      { "key": "base_url", "label": "GitLab URL", "type": "url", "required": false, "placeholder": "https://gitlab.com" },
+      {
+        "key": "personal_access_token",
+        "label": "Personal Access Token",
+        "type": "password",
+        "required": true,
+        "placeholder": "glpat-..."
+      },
+      {
+        "key": "base_url",
+        "label": "GitLab URL",
+        "type": "url",
+        "required": false,
+        "placeholder": "https://gitlab.com"
+      },
       { "key": "group", "label": "Group/Namespace", "type": "text", "required": false }
     ],
     "capabilities": ["read", "write", "webhook"]
@@ -144,7 +162,13 @@
     "configFields": [
       { "key": "api_token", "label": "API Token", "type": "password", "required": true },
       { "key": "email", "label": "Email", "type": "email", "required": true },
-      { "key": "site_url", "label": "Jira Site URL", "type": "url", "required": true, "placeholder": "https://your-domain.atlassian.net" },
+      {
+        "key": "site_url",
+        "label": "Jira Site URL",
+        "type": "url",
+        "required": true,
+        "placeholder": "https://your-domain.atlassian.net"
+      },
       { "key": "project_key", "label": "Default Project Key", "type": "text", "required": false }
     ],
     "capabilities": ["read", "write", "webhook"]
@@ -278,7 +302,12 @@
     "authType": "credentials",
     "configFields": [
       { "key": "access_key_id", "label": "Access Key ID", "type": "text", "required": true },
-      { "key": "secret_access_key", "label": "Secret Access Key", "type": "password", "required": true },
+      {
+        "key": "secret_access_key",
+        "label": "Secret Access Key",
+        "type": "password",
+        "required": true
+      },
       { "key": "region", "label": "Default Region", "type": "text", "required": false }
     ],
     "capabilities": ["read", "write"]
@@ -291,7 +320,12 @@
     "description": "Access GCP services — Compute, Storage, BigQuery, and more",
     "authType": "service_account",
     "configFields": [
-      { "key": "service_account_json", "label": "Service Account JSON", "type": "textarea", "required": true },
+      {
+        "key": "service_account_json",
+        "label": "Service Account JSON",
+        "type": "textarea",
+        "required": true
+      },
       { "key": "project_id", "label": "Project ID", "type": "text", "required": true }
     ],
     "capabilities": ["read", "write"]
@@ -346,7 +380,12 @@
     "description": "Connect to MongoDB for document storage and querying",
     "authType": "credentials",
     "configFields": [
-      { "key": "connection_string", "label": "Connection String", "type": "password", "required": true },
+      {
+        "key": "connection_string",
+        "label": "Connection String",
+        "type": "password",
+        "required": true
+      },
       { "key": "database", "label": "Database", "type": "text", "required": false }
     ],
     "capabilities": ["read", "write"]
@@ -388,7 +427,12 @@
     "authType": "api_key",
     "configFields": [
       { "key": "api_key", "label": "API Key", "type": "password", "required": true },
-      { "key": "routing_key", "label": "Integration/Routing Key", "type": "text", "required": false }
+      {
+        "key": "routing_key",
+        "label": "Integration/Routing Key",
+        "type": "text",
+        "required": false
+      }
     ],
     "capabilities": ["read", "write"]
   },
@@ -426,8 +470,18 @@
     "description": "Read from and write to Google Sheets spreadsheets",
     "authType": "service_account",
     "configFields": [
-      { "key": "service_account_json", "label": "Service Account JSON", "type": "textarea", "required": true },
-      { "key": "spreadsheet_id", "label": "Default Spreadsheet ID", "type": "text", "required": false }
+      {
+        "key": "service_account_json",
+        "label": "Service Account JSON",
+        "type": "textarea",
+        "required": true
+      },
+      {
+        "key": "spreadsheet_id",
+        "label": "Default Spreadsheet ID",
+        "type": "text",
+        "required": false
+      }
     ],
     "capabilities": ["read", "write"]
   },
@@ -453,7 +507,12 @@
     "description": "Create and manage Asana tasks, projects, and workspaces",
     "authType": "api_key",
     "configFields": [
-      { "key": "access_token", "label": "Personal Access Token", "type": "password", "required": true },
+      {
+        "key": "access_token",
+        "label": "Personal Access Token",
+        "type": "password",
+        "required": true
+      },
       { "key": "workspace_gid", "label": "Workspace GID", "type": "text", "required": false }
     ],
     "capabilities": ["read", "write"]
@@ -492,7 +551,13 @@
     "authType": "api_key",
     "configFields": [
       { "key": "access_token", "label": "Access Token", "type": "password", "required": true },
-      { "key": "instance_url", "label": "Instance URL", "type": "url", "required": true, "placeholder": "https://your-instance.salesforce.com" }
+      {
+        "key": "instance_url",
+        "label": "Instance URL",
+        "type": "url",
+        "required": true,
+        "placeholder": "https://your-instance.salesforce.com"
+      }
     ],
     "capabilities": ["read", "write"]
   },
@@ -504,7 +569,12 @@
     "description": "Manage HubSpot contacts, deals, tickets, and marketing campaigns",
     "authType": "api_key",
     "configFields": [
-      { "key": "access_token", "label": "Private App Access Token", "type": "password", "required": true }
+      {
+        "key": "access_token",
+        "label": "Private App Access Token",
+        "type": "password",
+        "required": true
+      }
     ],
     "capabilities": ["read", "write"]
   },
@@ -543,7 +613,12 @@
     "description": "Access, upload, and manage files in Google Drive",
     "authType": "service_account",
     "configFields": [
-      { "key": "service_account_json", "label": "Service Account JSON", "type": "textarea", "required": true },
+      {
+        "key": "service_account_json",
+        "label": "Service Account JSON",
+        "type": "textarea",
+        "required": true
+      },
       { "key": "folder_id", "label": "Default Folder ID", "type": "text", "required": false }
     ],
     "capabilities": ["read", "write"]
@@ -569,7 +644,12 @@
     "authType": "credentials",
     "configFields": [
       { "key": "access_key_id", "label": "Access Key ID", "type": "text", "required": true },
-      { "key": "secret_access_key", "label": "Secret Access Key", "type": "password", "required": true },
+      {
+        "key": "secret_access_key",
+        "label": "Secret Access Key",
+        "type": "password",
+        "required": true
+      },
       { "key": "bucket", "label": "Default Bucket", "type": "text", "required": false },
       { "key": "region", "label": "Region", "type": "text", "required": false }
     ],
@@ -584,7 +664,12 @@
     "authType": "api_key",
     "configFields": [
       { "key": "secret_key", "label": "Secret Key", "type": "password", "required": true },
-      { "key": "webhook_secret", "label": "Webhook Signing Secret", "type": "password", "required": false }
+      {
+        "key": "webhook_secret",
+        "label": "Webhook Signing Secret",
+        "type": "password",
+        "required": false
+      }
     ],
     "capabilities": ["read", "write", "webhook"]
   },
@@ -611,7 +696,12 @@
     "authType": "oauth2",
     "configFields": [
       { "key": "client_id", "label": "X OAuth 2.0 Client ID", "type": "text", "required": true },
-      { "key": "client_secret", "label": "X OAuth 2.0 Client Secret", "type": "password", "required": true },
+      {
+        "key": "client_secret",
+        "label": "X OAuth 2.0 Client Secret",
+        "type": "password",
+        "required": true
+      },
       { "key": "default_username", "label": "Default Username", "type": "text", "required": false }
     ],
     "capabilities": ["read", "write"],
@@ -645,7 +735,10 @@
               "maximum": 100,
               "description": "Maximum tweets to return."
             },
-            "pagination_token": { "type": "string", "description": "Pagination token from a prior response." },
+            "pagination_token": {
+              "type": "string",
+              "description": "Pagination token from a prior response."
+            },
             "exclude": {
               "type": "array",
               "items": { "type": "string", "enum": ["retweets", "replies"] },
@@ -666,7 +759,10 @@
           "type": "object",
           "properties": {
             "text": { "type": "string", "description": "Tweet text." },
-            "reply_to_tweet_id": { "type": "string", "description": "Optional tweet id to reply to." },
+            "reply_to_tweet_id": {
+              "type": "string",
+              "description": "Optional tweet id to reply to."
+            },
             "quote_tweet_id": { "type": "string", "description": "Optional tweet id to quote." }
           },
           "required": ["text"]
@@ -709,7 +805,12 @@
     "description": "Manage Facebook pages, post updates, and read insights",
     "authType": "api_key",
     "configFields": [
-      { "key": "page_access_token", "label": "Page Access Token", "type": "password", "required": true },
+      {
+        "key": "page_access_token",
+        "label": "Page Access Token",
+        "type": "password",
+        "required": true
+      },
       { "key": "page_id", "label": "Page ID", "type": "text", "required": true }
     ],
     "capabilities": ["read", "write", "webhook"]
@@ -723,7 +824,12 @@
     "authType": "api_key",
     "configFields": [
       { "key": "access_token", "label": "Access Token", "type": "password", "required": true },
-      { "key": "business_account_id", "label": "Business Account ID", "type": "text", "required": true },
+      {
+        "key": "business_account_id",
+        "label": "Business Account ID",
+        "type": "text",
+        "required": true
+      },
       { "key": "page_id", "label": "Facebook Page ID", "type": "text", "required": false }
     ],
     "capabilities": ["read"]
@@ -736,7 +842,12 @@
     "description": "Read Google Analytics data — pageviews, sessions, conversions",
     "authType": "service_account",
     "configFields": [
-      { "key": "service_account_json", "label": "Service Account JSON", "type": "textarea", "required": true },
+      {
+        "key": "service_account_json",
+        "label": "Service Account JSON",
+        "type": "textarea",
+        "required": true
+      },
       { "key": "property_id", "label": "GA4 Property ID", "type": "text", "required": true }
     ],
     "capabilities": ["read"]
@@ -829,7 +940,12 @@
     "description": "Access Firebase Realtime DB, Firestore, Auth, and Cloud Functions",
     "authType": "service_account",
     "configFields": [
-      { "key": "service_account_json", "label": "Service Account JSON", "type": "textarea", "required": true },
+      {
+        "key": "service_account_json",
+        "label": "Service Account JSON",
+        "type": "textarea",
+        "required": true
+      },
       { "key": "database_url", "label": "Database URL", "type": "url", "required": false }
     ],
     "capabilities": ["read", "write"]
@@ -986,7 +1102,12 @@
     "authType": "api_key",
     "configFields": [
       { "key": "shop_domain", "label": "Shop Domain", "type": "text", "required": true },
-      { "key": "access_token", "label": "Admin API Access Token", "type": "password", "required": true }
+      {
+        "key": "access_token",
+        "label": "Admin API Access Token",
+        "type": "password",
+        "required": true
+      }
     ],
     "capabilities": ["read", "write", "webhook"]
   },
@@ -1012,7 +1133,12 @@
     "description": "Create, read, and manage Google Calendar events",
     "authType": "service_account",
     "configFields": [
-      { "key": "service_account_json", "label": "Service Account JSON", "type": "textarea", "required": true },
+      {
+        "key": "service_account_json",
+        "label": "Service Account JSON",
+        "type": "textarea",
+        "required": true
+      },
       { "key": "calendar_id", "label": "Calendar ID", "type": "text", "required": false }
     ],
     "capabilities": ["read", "write"]

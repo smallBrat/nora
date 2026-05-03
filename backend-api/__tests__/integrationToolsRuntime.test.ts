@@ -27,7 +27,7 @@ describe("runtime integration tool execution", () => {
           },
           required: ["owner"],
         },
-      }
+      },
     );
 
     expect(execution).toMatchObject({
@@ -52,7 +52,7 @@ describe("runtime integration tool execution", () => {
           },
           required: ["text"],
         },
-      }
+      },
     );
 
     expect(execution).toMatchObject({
@@ -76,10 +76,7 @@ describe("runtime integration tool execution", () => {
       },
     ]);
 
-    fs.writeFileSync(
-      path.join(tempDir, "integrations.json"),
-      JSON.stringify(catalog.catalog),
-    );
+    fs.writeFileSync(path.join(tempDir, "integrations.json"), JSON.stringify(catalog.catalog));
     for (const { fileName, integration } of catalog.details) {
       fs.writeFileSync(path.join(tempDir, fileName), JSON.stringify(integration));
     }
@@ -222,14 +219,14 @@ describe("runtime integration tool execution", () => {
       "https://api.github.com/users/openai",
       expect.objectContaining({
         method: "GET",
-      })
+      }),
     );
     expect(fetchImpl).toHaveBeenNthCalledWith(
       2,
       "https://api.github.com/orgs/openai/repos?per_page=5&sort=updated",
       expect.objectContaining({
         method: "GET",
-      })
+      }),
     );
     expect(result.result.repositories).toEqual([
       expect.objectContaining({
@@ -284,13 +281,13 @@ describe("runtime integration tool execution", () => {
           title: "Investigate bug",
           body: "Details here",
         }),
-      })
+      }),
     );
     expect(result.result.issue).toEqual(
       expect.objectContaining({
         number: 42,
         title: "Investigate bug",
-      })
+      }),
     );
   });
 
@@ -340,13 +337,13 @@ describe("runtime integration tool execution", () => {
           text: "Hello from Nora",
           reply: { in_reply_to_tweet_id: "1899999999999999999" },
         }),
-      })
+      }),
     );
     expect(result.result.tweet).toEqual(
       expect.objectContaining({
         id: "1900000000000000000",
         text: "Hello from Nora",
-      })
+      }),
     );
   });
 
@@ -407,7 +404,7 @@ describe("runtime integration tool execution", () => {
     const lookupUrl = new URL(fetchImpl.mock.calls[0][0]);
     expect(lookupUrl.pathname).toBe("/2/users/by/username/openai");
     expect(lookupUrl.searchParams.get("user.fields")).toBe(
-      "description,profile_image_url,public_metrics,verified"
+      "description,profile_image_url,public_metrics,verified",
     );
 
     const tweetsUrl = new URL(fetchImpl.mock.calls[1][0]);
@@ -415,7 +412,7 @@ describe("runtime integration tool execution", () => {
     expect(tweetsUrl.searchParams.get("max_results")).toBe("5");
     expect(tweetsUrl.searchParams.get("exclude")).toBe("retweets,replies");
     expect(tweetsUrl.searchParams.get("tweet.fields")).toBe(
-      "author_id,conversation_id,created_at,public_metrics"
+      "author_id,conversation_id,created_at,public_metrics",
     );
     expect(result.result.tweets).toEqual([
       expect.objectContaining({

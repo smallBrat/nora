@@ -70,9 +70,12 @@ export default function IntegrationsTab({ agentId }) {
         // Auto-test after connecting
         let testResult = null;
         try {
-          const testRes = await fetchWithAuth(`/api/agents/${agentId}/integrations/${newIntegration.id}/test`, {
-            method: "POST",
-          });
+          const testRes = await fetchWithAuth(
+            `/api/agents/${agentId}/integrations/${newIntegration.id}/test`,
+            {
+              method: "POST",
+            },
+          );
           testResult = await testRes.json();
         } catch {
           testResult = { success: false, message: "Test could not be completed" };
@@ -121,9 +124,12 @@ export default function IntegrationsTab({ agentId }) {
 
   async function handleTest(integration) {
     try {
-      const res = await fetchWithAuth(`/api/agents/${agentId}/integrations/${integration.id}/test`, {
-        method: "POST",
-      });
+      const res = await fetchWithAuth(
+        `/api/agents/${agentId}/integrations/${integration.id}/test`,
+        {
+          method: "POST",
+        },
+      );
       const result = await res.json();
       if (result.success) {
         toast.success(result.message || "Connection verified");
@@ -154,9 +160,11 @@ export default function IntegrationsTab({ agentId }) {
     }
   }
 
-
   const filteredCatalog = catalog.filter((item) => {
-    const matchesSearch = !search || item.name?.toLowerCase().includes(search.toLowerCase()) || item.description?.toLowerCase().includes(search.toLowerCase());
+    const matchesSearch =
+      !search ||
+      item.name?.toLowerCase().includes(search.toLowerCase()) ||
+      item.description?.toLowerCase().includes(search.toLowerCase());
     const matchesCategory = activeCategory === "all" || item.category === activeCategory;
     return matchesSearch && matchesCategory;
   });
@@ -174,7 +182,9 @@ export default function IntegrationsTab({ agentId }) {
       {/* Active Integrations */}
       {installed.length > 0 && (
         <div className="space-y-3">
-          <h3 className="text-sm font-bold text-slate-700">Active Integrations ({installed.length})</h3>
+          <h3 className="text-sm font-bold text-slate-700">
+            Active Integrations ({installed.length})
+          </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {installed.map((item) => (
               <IntegrationCard
@@ -237,7 +247,9 @@ export default function IntegrationsTab({ agentId }) {
                 installed={inst || null}
                 submitLabel={oauthConnect ? "Authorize with X" : undefined}
                 onConnect={(configValues) =>
-                  oauthConnect ? handleOAuthConnect(item, configValues) : handleConnect(item, configValues)
+                  oauthConnect
+                    ? handleOAuthConnect(item, configValues)
+                    : handleConnect(item, configValues)
                 }
                 onDisconnect={() => {
                   if (inst) handleDisconnect(inst);

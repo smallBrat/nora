@@ -467,7 +467,7 @@ async function fetchTemplateExportViaExec(agent, includeMemory) {
     throw new Error("runtime exec unavailable");
   }
 
-const exportScript = `
+  const exportScript = `
 const fs = require("fs");
 const generatedExcludes = new Set(["auth-profiles.json", "NORA_INTEGRATIONS.md", ${JSON.stringify(NORA_INTEGRATIONS_CONTEXT_FILE)}, ${JSON.stringify(NORA_INTEGRATIONS_SKILL_FILE)}]);
 const generatedDirExcludes = new Set(["integrations"]);

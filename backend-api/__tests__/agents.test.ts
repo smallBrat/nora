@@ -1563,9 +1563,7 @@ describe("Twitter/X integration OAuth routes", () => {
     );
 
     expect(res.status).toBe(302);
-    expect(res.headers.location).toBe(
-      "/app/agents/a-twitter?integration=twitter&status=connected",
-    );
+    expect(res.headers.location).toBe("/app/agents/a-twitter?integration=twitter&status=connected");
     expect(global.fetch).toHaveBeenNthCalledWith(
       1,
       "https://api.x.com/2/oauth2/token",
