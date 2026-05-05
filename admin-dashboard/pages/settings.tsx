@@ -6,6 +6,7 @@ import {
   Cpu,
   HardDrive,
   Loader2,
+  Globe2,
   MemoryStick,
   RefreshCw,
   Rocket,
@@ -18,6 +19,7 @@ import AdminLayout from "../components/AdminLayout";
 import { useToast } from "../components/Toast";
 import { fetchWithAuth } from "../lib/api";
 import { formatDateTime } from "../lib/format";
+import { LOCALE_LABELS, LOCALES } from "../lib/i18n";
 
 const DEFAULT_FORM = {
   vcpu: "1",
@@ -35,6 +37,9 @@ const DEFAULT_AGENT_HUB_FORM = {
   url: "https://nora.solomontsao.com",
   sourceApiKey: "",
   clearSourceApiKey: false,
+};
+const DEFAULT_LANGUAGE_FORM = {
+  defaultLocale: "en",
 };
 
 function buildForm(defaults) {
@@ -60,6 +65,12 @@ function buildAgentHubForm(settings) {
     url: settings?.url || DEFAULT_AGENT_HUB_FORM.url,
     sourceApiKey: "",
     clearSourceApiKey: false,
+  };
+}
+
+function buildLanguageForm(settings) {
+  return {
+    defaultLocale: settings?.defaultLocale || DEFAULT_LANGUAGE_FORM.defaultLocale,
   };
 }
 
@@ -188,6 +199,8 @@ export default function AdminSettingsPage() {
   const [defaults, setDefaults] = useState(null);
   const [systemBanner, setSystemBanner] = useState(null);
   const [bannerForm, setBannerForm] = useState(DEFAULT_BANNER_FORM);
+  const [languageSettings, setLanguageSettings] = useState(null);
+  const [languageForm, setLanguageForm] = useState(DEFAULT_LANGUAGE_FORM);
   const [agentHubSettings, setAgentHubSettings] = useState(null);
   const [agentHubForm, setAgentHubForm] = useState(DEFAULT_AGENT_HUB_FORM);
   const [platformConfig, setPlatformConfig] = useState(null);
@@ -195,6 +208,7 @@ export default function AdminSettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [bannerSaving, setBannerSaving] = useState(false);
+  const [languageSaving, setLanguageSaving] = useState(false);
   const [agentHubSaving, setAgentHubSaving] = useState(false);
   const [upgradeStarting, setUpgradeStarting] = useState(false);
 
@@ -223,13 +237,15 @@ export default function AdminSettingsPage() {
   const loadSettings = useCallback(async () => {
     setLoading(true);
     try {
-      const [defaultsRes, platformRes, bannerRes, agentHubRes, upgradeRes] = await Promise.all([
-        fetchWithAuth("/api/admin/settings/deployment-defaults"),
-        fetch("/api/config/platform"),
-        fetchWithAuth("/api/admin/settings/system-banner"),
-        fetchWithAuth("/api/admin/settings/agent-hub"),
-        fetchWithAuth("/api/admin/release-upgrade"),
-      ]);
+      const [defaultsRes, platformRes, bannerRes, languageRes, agentHubRes, upgradeRes] =
+        await Promise.all([
+          fetchWithAuth("/api/admin/settings/deployment-defaults"),
+          fetch("/api/config/platform"),
+          fetchWithAuth("/api/admin/settings/system-banner"),
+          fetchWithAuth("/api/admin/settings/language"),
+          fetchWithAuth("/api/admin/settings/agent-hub"),
+          fetchWithAuth("/api/admin/release-upgrade"),
+        ]);
 
       const defaultsPayload = await defaultsRes.json().catch(() => ({}));
       if (!defaultsRes.ok) {
@@ -246,6 +262,14 @@ export default function AdminSettingsPage() {
 
       setSystemBanner(bannerPayload);
       setBannerForm(buildBannerForm(bannerPayload));
+
+      const languagePayload = await languageRes.json().catch(() => ({}));
+      if (!languageRes.ok) {
+        throw new Error(languagePayload.error || "Failed to load language settings");
+      }
+
+      setLanguageSettings(languagePayload);
+      setLanguageForm(buildLanguageForm(languagePayload));
 
       const agentHubPayload = await agentHubRes.json().catch(() => ({}));
       if (!agentHubRes.ok) {
@@ -269,6 +293,7 @@ export default function AdminSettingsPage() {
       toast.error(error.message || "Failed to load platform settings");
       setDefaults(null);
       setSystemBanner(null);
+      setLanguageSettings(null);
       setAgentHubSettings(null);
       setUpgradeStatus(null);
     } finally {
@@ -296,6 +321,10 @@ export default function AdminSettingsPage() {
 
   function updateBannerField(field, value) {
     setBannerForm((current) => ({ ...current, [field]: value }));
+  }
+
+  function updateLanguageField(field, value) {
+    setLanguageForm((current) => ({ ...current, [field]: value }));
   }
 
   function updateAgentHubField(field, value) {
@@ -356,6 +385,32 @@ export default function AdminSettingsPage() {
       toast.error(error.message || "Failed to save system banner");
     } finally {
       setBannerSaving(false);
+    }
+  }
+
+  async function handleSaveLanguage() {
+    setLanguageSaving(true);
+    try {
+      const response = await fetchWithAuth("/api/admin/settings/language", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          defaultLocale: languageForm.defaultLocale,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.error || "Failed to save language settings");
+      }
+
+      setLanguageSettings(payload);
+      setLanguageForm(buildLanguageForm(payload));
+      toast.success("Default language updated");
+    } catch (error) {
+      console.error("Failed to save default language:", error);
+      toast.error(error.message || "Failed to save language settings");
+    } finally {
+      setLanguageSaving(false);
     }
   }
 
@@ -499,6 +554,66 @@ export default function AdminSettingsPage() {
           </div>
         ) : (
           <div className="flex flex-col gap-6">
+            <section
+              id="language-default"
+              className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm"
+            >
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">
+                    Language
+                  </p>
+                  <h2 className="mt-2 flex items-center gap-3 text-xl font-black tracking-tight text-slate-950">
+                    <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-50 text-blue-700">
+                      <Globe2 size={20} />
+                    </span>
+                    Default language for all accounts
+                  </h2>
+                  <p className="mt-2 max-w-3xl text-sm font-medium leading-relaxed text-slate-500">
+                    Choose the platform fallback language. Users without their own setting follow
+                    this value, while user-level language overrides stay intact.
+                  </p>
+                </div>
+
+                <div className="inline-flex items-center gap-2 self-start rounded-full bg-blue-50 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-blue-700">
+                  <Globe2 size={14} />
+                  {LOCALE_LABELS[languageSettings?.defaultLocale || "en"]}
+                </div>
+              </div>
+
+              <div className="mt-6 flex flex-col gap-4 rounded-[1.5rem] border border-slate-200 bg-slate-50 px-5 py-5 sm:flex-row sm:items-end sm:justify-between">
+                <label className="w-full sm:max-w-sm">
+                  <span className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">
+                    Platform default
+                  </span>
+                  <select
+                    value={languageForm.defaultLocale}
+                    onChange={(event) => updateLanguageField("defaultLocale", event.target.value)}
+                    className="mt-3 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900 outline-none focus:border-blue-300"
+                  >
+                    {LOCALES.map((item) => (
+                      <option key={item} value={item}>
+                        {LOCALE_LABELS[item]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <button
+                  onClick={handleSaveLanguage}
+                  disabled={languageSaving || loading}
+                  className="inline-flex items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-600/20 transition-all hover:-translate-y-0.5 hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {languageSaving ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : (
+                    <Save size={16} />
+                  )}
+                  Save language
+                </button>
+              </div>
+            </section>
+
             <section
               id="platform-upgrades"
               className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm"

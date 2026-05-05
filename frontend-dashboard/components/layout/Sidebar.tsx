@@ -13,6 +13,7 @@ import {
   X,
 } from "lucide-react";
 import { clsx } from "clsx";
+import { useI18n } from "../../lib/i18n";
 
 type SidebarProps = {
   collapsed?: boolean;
@@ -22,6 +23,7 @@ type SidebarProps = {
 
 export default function Sidebar({ collapsed = false, onToggleCollapse, onClose }: SidebarProps) {
   const router = useRouter();
+  const { localizePath, t } = useI18n();
 
   const navItems = [
     { name: "Dashboard", icon: LayoutDashboard, href: "/app/dashboard" },
@@ -33,7 +35,10 @@ export default function Sidebar({ collapsed = false, onToggleCollapse, onClose }
     { name: "Logs", icon: ScrollText, href: "/app/logs" },
   ];
 
-  const isActive = (path) => router.pathname === path;
+  const isActive = (path) => {
+    const normalized = path.replace(/^\/app/, "") || "/";
+    return router.pathname === normalized;
+  };
 
   return (
     <div
@@ -56,7 +61,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse, onClose }
           <div className="flex flex-col min-w-0">
             <span className="text-xl font-bold tracking-tight leading-none text-white">Nora</span>
             <span className="text-[10px] text-slate-500 uppercase font-black tracking-widest mt-1 opacity-80">
-              Deploy intelligence anywhere.
+              {t("Deploy intelligence anywhere.")}
             </span>
           </div>
         )}
@@ -75,7 +80,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse, onClose }
       <div className={clsx("flex-1 space-y-1", collapsed ? "px-2" : "px-4")}>
         {!collapsed && (
           <div className="text-[10px] text-slate-500 font-bold px-4 mb-4 uppercase tracking-[0.2em] opacity-60 flex items-center gap-2">
-            Main Operations
+            {t("Main Operations")}
             <div className="flex-1 h-[1px] bg-white/5 ml-2"></div>
           </div>
         )}
@@ -83,9 +88,9 @@ export default function Sidebar({ collapsed = false, onToggleCollapse, onClose }
         {navItems.map((item) => (
           <a
             key={item.name}
-            href={item.href}
+            href={localizePath(item.href)}
             className="block"
-            title={collapsed ? item.name : undefined}
+            title={collapsed ? t(item.name) : undefined}
           >
             <div
               className={clsx(
@@ -103,7 +108,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse, onClose }
                   isActive(item.href) ? "text-white" : "text-slate-500 group-hover:text-blue-400",
                 )}
               />
-              {!collapsed && item.name}
+              {!collapsed && t(item.name)}
 
               {isActive(item.href) && (
                 <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-white rounded-r-full"></div>
@@ -115,7 +120,11 @@ export default function Sidebar({ collapsed = false, onToggleCollapse, onClose }
 
       {/* Footer */}
       <div className={clsx("mt-auto border-t border-white/5 space-y-1", collapsed ? "p-2" : "p-4")}>
-        <a href="/app/settings" className="block" title={collapsed ? "Settings" : undefined}>
+        <a
+          href={localizePath("/app/settings")}
+          className="block"
+          title={collapsed ? t("Settings") : undefined}
+        >
           <div
             className={clsx(
               "flex items-center gap-3 rounded-xl text-sm font-medium transition-all group",
@@ -126,7 +135,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse, onClose }
             )}
           >
             <Settings size={18} className="shrink-0" />
-            {!collapsed && "Settings"}
+            {!collapsed && t("Settings")}
           </div>
         </a>
 
@@ -138,10 +147,10 @@ export default function Sidebar({ collapsed = false, onToggleCollapse, onClose }
               "flex items-center gap-3 rounded-xl text-sm font-medium transition-all w-full text-slate-500 hover:text-white hover:bg-white/5",
               collapsed ? "justify-center px-2 py-3" : "px-4 py-3",
             )}
-            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            title={collapsed ? t("Expand sidebar") : t("Collapse sidebar")}
           >
             {collapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
-            {!collapsed && "Collapse"}
+            {!collapsed && t("Collapse")}
           </button>
         )}
       </div>

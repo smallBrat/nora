@@ -22,8 +22,11 @@ import {
   Copy,
   X,
   Camera,
+  Globe2,
 } from "lucide-react";
+import { useRouter } from "next/router";
 import { fetchWithAuth } from "../../lib/api";
+import { LOCALE_LABELS, LOCALES, normalizeLocale, useI18n } from "../../lib/i18n";
 import { useToast } from "../../components/Toast";
 import ActivationChecklist from "../../components/onboarding/ActivationChecklist";
 
@@ -61,6 +64,8 @@ function formatDefaultAgentCap(role, baseAgentLimit) {
 }
 
 export default function SettingsPage() {
+  const router = useRouter();
+  const { defaultLocale } = useI18n();
   const [profile, setProfile] = useState(null);
   const [subscription, setSubscription] = useState(null);
   const [platformConfig, setPlatformConfig] = useState(null);
@@ -73,6 +78,7 @@ export default function SettingsPage() {
   const [nameInput, setNameInput] = useState("");
   const [savingName, setSavingName] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [languageSaving, setLanguageSaving] = useState(false);
   const [agentHubKeys, setAgentHubKeys] = useState([]);
   const [agentHubKeyLabel, setAgentHubKeyLabel] = useState("Nora installation");
   const [agentHubKeyLoading, setAgentHubKeyLoading] = useState(false);
@@ -185,6 +191,34 @@ export default function SettingsPage() {
     }
     setSavingName(false);
     setEditingName(false);
+  }
+
+  async function handleLanguageChange(value) {
+    setLanguageSaving(true);
+    try {
+      const preferredLocale = value === "default" ? null : normalizeLocale(value);
+      const res = await fetchWithAuth("/api/auth/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ preferredLocale }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to update language");
+
+      const nextLocale = normalizeLocale(data.effectiveLocale || data.defaultLocale || value);
+      setProfile((current) => ({
+        ...current,
+        preferredLocale: data.preferredLocale || null,
+        defaultLocale: data.defaultLocale || current?.defaultLocale,
+        effectiveLocale: nextLocale,
+      }));
+      toast.success("Language updated");
+      await router.push(router.pathname, router.asPath, { locale: nextLocale });
+    } catch (error) {
+      toast.error(error.message || "Failed to update language");
+    } finally {
+      setLanguageSaving(false);
+    }
   }
 
   async function loadAgentHubKeys() {
@@ -316,6 +350,8 @@ export default function SettingsPage() {
         day: "numeric",
       })
     : "—";
+  const profileDefaultLocale = normalizeLocale(profile?.defaultLocale || defaultLocale);
+  const languageValue = profile?.preferredLocale || "default";
 
   return (
     <Layout>
@@ -479,6 +515,50 @@ export default function SettingsPage() {
               </div>
             </div>
           </div>
+        </section>
+
+        <section className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+          <div className="flex items-center gap-3 mb-4">
+            <Globe2 size={20} className="text-blue-600" />
+            <div>
+              <h2 className="text-lg font-bold text-slate-900">Language</h2>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Choose the language used across Nora when you sign in.
+              </p>
+            </div>
+          </div>
+          <label className="block">
+            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+              Display Language
+            </span>
+            <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center">
+              <select
+                value={languageValue}
+                onChange={(event) => handleLanguageChange(event.target.value)}
+                disabled={languageSaving}
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-900 outline-none focus:border-blue-500/40 focus:ring-2 focus:ring-blue-500/20 sm:max-w-xs"
+              >
+                <option value="default">
+                  Use platform default ({LOCALE_LABELS[profileDefaultLocale]})
+                </option>
+                {LOCALES.map((item) => (
+                  <option key={item} value={item}>
+                    {LOCALE_LABELS[item]}
+                  </option>
+                ))}
+              </select>
+              {languageSaving ? (
+                <span className="inline-flex items-center gap-2 text-sm font-semibold text-slate-500">
+                  <Loader2 size={15} className="animate-spin" />
+                  Saving
+                </span>
+              ) : (
+                <span className="text-sm font-medium text-slate-500">
+                  Current language: {LOCALE_LABELS[normalizeLocale(profile?.effectiveLocale)]}
+                </span>
+              )}
+            </div>
+          </label>
         </section>
 
         {/* Connected Accounts */}

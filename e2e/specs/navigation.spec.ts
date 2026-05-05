@@ -7,7 +7,7 @@ test.describe("Public marketing pages", () => {
     await expect(
       page.getByRole("heading", {
         name: /deploy intelligence anywhere\./i,
-      })
+      }),
     ).toBeVisible();
     await expect(page.locator("#platform")).toBeVisible();
     await expect(page.locator("#workflow")).toBeVisible();
@@ -16,9 +16,9 @@ test.describe("Public marketing pages", () => {
     const pricingLink = page.locator('a[href="/pricing"]').first();
     await expect(pricingLink).toBeVisible();
 
-    const docsLink = page.locator(
-      'a[href="https://github.com/solomon2773/nora#quick-start"]'
-    ).first();
+    const docsLink = page
+      .locator('a[href="https://github.com/solomon2773/nora#quick-start"]')
+      .first();
     await expect(docsLink).toBeVisible();
 
     await page.locator('a[href="#platform"]').first().click();
@@ -27,26 +27,61 @@ test.describe("Public marketing pages", () => {
 
   test("pricing, login, and signup entry points are reachable", async ({ page }) => {
     await page.goto("/pricing");
+    await expect(page.getByRole("heading", { name: /open source first/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /what apache 2\.0 means here/i })).toBeVisible();
     await expect(
-      page.getByRole("heading", { name: /open source first/i })
-    ).toBeVisible();
-    await expect(
-      page.getByRole("heading", { name: /what apache 2\.0 means here/i })
-    ).toBeVisible();
-    await expect(
-      page.locator(
-        'a[href="https://raw.githubusercontent.com/solomon2773/nora/master/setup.sh"]'
-      ).first()
+      page
+        .locator('a[href="https://raw.githubusercontent.com/solomon2773/nora/master/setup.sh"]')
+        .first(),
     ).toBeVisible();
 
     await page.goto("/login");
     await expect(
-      page.getByRole("heading", { name: /log in to your operator account/i })
+      page.getByRole("heading", { name: /log in to your operator account/i }),
     ).toBeVisible();
 
     await page.goto("/signup");
+    await expect(page.getByRole("heading", { name: /create operator account/i })).toBeVisible();
+  });
+
+  test("Spanish and French public routes render localized copy", async ({ page }) => {
+    await page.goto("/es");
     await expect(
-      page.getByRole("heading", { name: /create operator account/i })
+      page.getByRole("heading", {
+        name: /implementa inteligencia en cualquier lugar/i,
+      }),
     ).toBeVisible();
+    await expect(page.locator('a[href="/es/pricing"]').first()).toBeVisible();
+
+    await page.goto("/fr/pricing");
+    await expect(
+      page.getByRole("heading", {
+        name: /nora est d'abord open source/i,
+      }),
+    ).toBeVisible();
+    await expect(page.getByRole("link", { name: /creer un compte/i }).first()).toBeVisible();
+  });
+
+  test("localized auth entry points are reachable", async ({ page }) => {
+    await page.goto("/es/login");
+    await expect(
+      page.getByRole("heading", { name: /inicia sesion en tu cuenta de operador/i }),
+    ).toBeVisible();
+
+    await page.goto("/fr/signup");
+    await expect(page.getByRole("heading", { name: /creer un compte operateur/i })).toBeVisible();
+  });
+
+  test("Simplified and Traditional Chinese routes render localized copy", async ({ page }) => {
+    await page.goto("/zh-Hans");
+    await expect(
+      page.getByRole("heading", {
+        name: /在任何地方部署智能/i,
+      }),
+    ).toBeVisible();
+    await expect(page.locator('a[href="/zh-Hans/pricing"]').first()).toBeVisible();
+
+    await page.goto("/zh-Hant/login");
+    await expect(page.getByRole("heading", { name: /登入您的操作員帳戶/i })).toBeVisible();
   });
 });

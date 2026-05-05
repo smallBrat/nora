@@ -1,7 +1,7 @@
 import Document, { Head, Html, Main, NextScript, type DocumentContext } from "next/document";
 import { DEFAULT_LOCALE, normalizeLocale } from "../lib/i18n";
 
-export default class MarketingDocument extends Document {
+export default class AdminDocument extends Document {
   static async getInitialProps(ctx: DocumentContext) {
     return Document.getInitialProps(ctx);
   }

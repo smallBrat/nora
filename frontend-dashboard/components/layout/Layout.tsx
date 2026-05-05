@@ -2,8 +2,10 @@ import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
 import { TriangleAlert } from "lucide-react";
 import { useState, useEffect } from "react";
+import { useI18n } from "../../lib/i18n";
 
 export default function Layout({ children }) {
+  const { loginPath, t } = useI18n();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
@@ -23,16 +25,16 @@ export default function Layout({ children }) {
           setAuthChecked(true);
         } else {
           localStorage.removeItem("token");
-          window.location.href = "/login";
+          window.location.href = loginPath;
         }
       })
       .catch(() => {
-        window.location.href = "/login";
+        window.location.href = loginPath;
       });
     // Restore collapsed state
     const saved = localStorage.getItem("sidebar-collapsed");
     if (saved === "true") setSidebarCollapsed(true);
-  }, []);
+  }, [loginPath]);
 
   useEffect(() => {
     if (!authChecked) return undefined;
@@ -68,7 +70,7 @@ export default function Layout({ children }) {
     localStorage.setItem("sidebar-collapsed", String(next));
   };
   const showSystemBanner = Boolean(
-    systemBanner?.active && systemBanner?.title && systemBanner?.message
+    systemBanner?.active && systemBanner?.title && systemBanner?.message,
   );
   const systemBannerCritical = systemBanner?.severity === "critical";
 
@@ -84,7 +86,10 @@ export default function Layout({ children }) {
       {/* Sidebar - Mobile/Tablet Overlay */}
       {sidebarOpen && (
         <div className="fixed inset-0 z-50 flex lg:hidden">
-          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setSidebarOpen(false)}></div>
+          <div
+            className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm"
+            onClick={() => setSidebarOpen(false)}
+          ></div>
           <div className="relative flex flex-col w-64 bg-slate-950 animate-in slide-in-from-left duration-300">
             <Sidebar collapsed={false} onClose={() => setSidebarOpen(false)} />
           </div>
@@ -100,17 +105,13 @@ export default function Layout({ children }) {
           {showSystemBanner ? (
             <section
               className={`shrink-0 border-b px-3 py-3 sm:px-4 md:px-6 lg:px-8 ${
-                systemBannerCritical
-                  ? "border-red-200 bg-red-50"
-                  : "border-amber-200 bg-amber-50"
+                systemBannerCritical ? "border-red-200 bg-red-50" : "border-amber-200 bg-amber-50"
               }`}
             >
               <div className="mx-auto flex w-full max-w-7xl items-start gap-3">
                 <span
                   className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl ${
-                    systemBannerCritical
-                      ? "bg-red-100 text-red-700"
-                      : "bg-amber-100 text-amber-700"
+                    systemBannerCritical ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"
                   }`}
                 >
                   <TriangleAlert size={18} />
@@ -121,7 +122,7 @@ export default function Layout({ children }) {
                       systemBannerCritical ? "text-red-700" : "text-amber-800"
                     }`}
                   >
-                    {systemBannerCritical ? "System Critical" : "System Warning"}
+                    {systemBannerCritical ? t("System Critical") : t("System Warning")}
                   </p>
                   <p className="mt-1 text-sm font-black text-slate-950 sm:text-base">
                     {systemBanner.title}

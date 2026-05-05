@@ -49,11 +49,13 @@ const {
   getBackupPlanLimits,
   getBackupSettings,
   getSystemBanner,
+  getLanguageSettings,
   parseRequiredDeploymentDefaults,
   updateAgentHubSettings,
   updateBackupPlanLimits,
   updateBackupSettings,
   updateDeploymentDefaults,
+  updateLanguageSettings,
   updateSystemBanner,
 } = require("../platformSettings");
 const { resolveAuditSource } = require("../auditSource");
@@ -619,6 +621,41 @@ router.put(
     );
 
     res.json(nextDefaults);
+  }),
+);
+
+router.get(
+  "/settings/language",
+  asyncHandler(async (_req, res) => {
+    res.json(await getLanguageSettings());
+  }),
+);
+
+router.put(
+  "/settings/language",
+  asyncHandler(async (req, res) => {
+    const currentSettings = await getLanguageSettings();
+    res.locals.auditContext = {
+      settings: {
+        kind: "language",
+      },
+    };
+
+    const nextSettings = await updateLanguageSettings(req.body || {});
+
+    await monitoring.logEvent(
+      "admin_language_settings_updated",
+      `Admin updated the default language to ${nextSettings.defaultLocale}`,
+      adminAuditMetadata(req, {
+        settings: {
+          kind: "language",
+          previous: currentSettings,
+          next: nextSettings,
+        },
+      }),
+    );
+
+    res.json(nextSettings);
   }),
 );
 

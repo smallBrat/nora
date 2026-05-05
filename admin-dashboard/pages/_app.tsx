@@ -2,8 +2,10 @@ import "../styles/globals.css";
 import { useEffect, useState } from "react";
 import { Loader2, ShieldAlert } from "lucide-react";
 import { ToastProvider } from "../components/Toast";
+import { I18nProvider, useI18n } from "../lib/i18n";
 
 function AdminAccessGate({ children }) {
+  const { dashboardPath, loginPath, t } = useI18n();
   const [status, setStatus] = useState("checking");
   const [error, setError] = useState("");
 
@@ -26,7 +28,7 @@ function AdminAccessGate({ children }) {
 
         if (response.status === 401) {
           window.localStorage.removeItem("token");
-          window.location.replace("/login");
+          window.location.replace(loginPath);
           return;
         }
 
@@ -36,7 +38,7 @@ function AdminAccessGate({ children }) {
 
         const user = await response.json();
         if (user.role !== "admin") {
-          window.location.replace("/app/dashboard");
+          window.location.replace(dashboardPath);
           return;
         }
 
@@ -46,7 +48,7 @@ function AdminAccessGate({ children }) {
       } catch (accessError) {
         if (active) {
           setStatus("error");
-          setError(accessError.message || "Cannot verify admin access");
+          setError(accessError.message || t("Cannot verify admin access"));
         }
       }
     }
@@ -56,7 +58,7 @@ function AdminAccessGate({ children }) {
     return () => {
       active = false;
     };
-  }, []);
+  }, [dashboardPath, loginPath, t]);
 
   if (status === "allowed") {
     return children;
@@ -69,7 +71,7 @@ function AdminAccessGate({ children }) {
           <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-red-500/15 text-red-300">
             <ShieldAlert size={24} />
           </div>
-          <h1 className="text-xl font-black">Admin access check failed</h1>
+          <h1 className="text-xl font-black">{t("Admin access check failed")}</h1>
           <p className="mt-3 text-sm text-slate-300">{error}</p>
         </div>
       </div>
@@ -80,7 +82,7 @@ function AdminAccessGate({ children }) {
     <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center">
       <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-5 py-4 text-sm font-bold">
         <Loader2 size={18} className="animate-spin" />
-        Checking admin access...
+        {t("Checking admin access...")}
       </div>
     </div>
   );
@@ -88,11 +90,13 @@ function AdminAccessGate({ children }) {
 
 function MyApp({ Component, pageProps }) {
   return (
-    <ToastProvider>
-      <AdminAccessGate>
-        <Component {...pageProps} />
-      </AdminAccessGate>
-    </ToastProvider>
+    <I18nProvider>
+      <ToastProvider>
+        <AdminAccessGate>
+          <Component {...pageProps} />
+        </AdminAccessGate>
+      </ToastProvider>
+    </I18nProvider>
   );
 }
 

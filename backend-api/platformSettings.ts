@@ -13,6 +13,10 @@ const DEFAULT_SYSTEM_BANNER = Object.freeze({
   title: "",
   message: "",
 });
+const SUPPORTED_LOCALES = Object.freeze(["en", "es", "fr", "zh-Hans", "zh-Hant"]);
+const DEFAULT_LANGUAGE_SETTINGS = Object.freeze({
+  defaultLocale: "en",
+});
 const DEFAULT_AGENT_HUB_SETTINGS = Object.freeze({
   defaultShareTarget: "both",
   url: "https://nora.solomontsao.com",
@@ -59,6 +63,7 @@ const DEFAULT_BACKUP_PLAN_LIMITS = Object.freeze({
   }),
 });
 const SYSTEM_BANNER_SEVERITIES = new Set(["warning", "critical"]);
+const SUPPORTED_LOCALE_SET = new Set(SUPPORTED_LOCALES);
 const AGENT_HUB_SHARE_TARGETS = new Set(["internal", "community", "both"]);
 const BACKUP_STORAGE_BACKENDS = new Set(["local", "s3", "r2", "ssh"]);
 const BACKUP_SCHEDULE_FREQUENCIES = new Set(["hourly", "daily", "weekly"]);
@@ -85,6 +90,22 @@ function clampInteger(value, min, max = Number.MAX_SAFE_INTEGER) {
 
 function normalizeText(value) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeLocale(value, fallback = DEFAULT_LANGUAGE_SETTINGS.defaultLocale) {
+  const normalized = normalizeText(value);
+  return SUPPORTED_LOCALE_SET.has(normalized) ? normalized : fallback;
+}
+
+function parseRequiredLocale(value, fieldName = "locale", { allowNull = false } = {}) {
+  if (value === null && allowNull) return null;
+  const normalized = normalizeText(value);
+  if (!SUPPORTED_LOCALE_SET.has(normalized)) {
+    const error = new Error(`${fieldName} must be one of ${SUPPORTED_LOCALES.join(", ")}`);
+    error.statusCode = 400;
+    throw error;
+  }
+  return normalized;
 }
 
 function normalizeSecretEnv(value) {
@@ -264,6 +285,30 @@ function normalizeDeploymentDefaults(input = {}, fallback = DEFAULT_DEPLOYMENT_D
   };
 }
 
+function normalizeLanguageSettings(input = {}, fallback = DEFAULT_LANGUAGE_SETTINGS) {
+  return {
+    defaultLocale: normalizeLocale(
+      input.default_locale ?? input.defaultLocale,
+      fallback.defaultLocale,
+    ),
+  };
+}
+
+function resolveLanguageSettingsPayload(input = {}) {
+  const settings = normalizeLanguageSettings(input);
+  return {
+    defaultLocale: settings.defaultLocale,
+    supportedLocales: [...SUPPORTED_LOCALES],
+  };
+}
+
+function resolvePreferredLocale(
+  preferredLocale,
+  defaultLocale = DEFAULT_LANGUAGE_SETTINGS.defaultLocale,
+) {
+  return normalizeLocale(preferredLocale, normalizeLocale(defaultLocale));
+}
+
 function clampDeploymentDefaults(defaults = {}, limits = {}) {
   const normalized = normalizeDeploymentDefaults(defaults);
   return {
@@ -285,6 +330,21 @@ function parseRequiredDeploymentDefaults(input = {}) {
     next[key] = value;
   }
   return next;
+}
+
+function parseRequiredLanguageSettings(input = {}) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    const error = new Error("language settings payload must be an object");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  return {
+    defaultLocale: parseRequiredLocale(
+      input.defaultLocale ?? input.default_locale,
+      "defaultLocale",
+    ),
+  };
 }
 
 function isSystemBannerFeatureEnabled() {
@@ -688,6 +748,16 @@ async function getDeploymentDefaults() {
   return clampDeploymentDefaults(result.rows[0] || DEFAULT_DEPLOYMENT_DEFAULTS);
 }
 
+async function getLanguageSettings() {
+  const result = await db.query(
+    `SELECT default_locale
+       FROM platform_settings
+      WHERE singleton = TRUE
+      LIMIT 1`,
+  );
+  return resolveLanguageSettingsPayload(result.rows[0] || DEFAULT_LANGUAGE_SETTINGS);
+}
+
 async function getSystemBanner() {
   const result = await db.query(
     `SELECT system_banner_enabled,
@@ -1021,6 +1091,25 @@ async function updateDeploymentDefaults(defaults = {}, limits = {}) {
   return clampDeploymentDefaults(result.rows[0] || clamped, limits);
 }
 
+async function updateLanguageSettings(settings = {}) {
+  const next = parseRequiredLanguageSettings(settings);
+  const result = await db.query(
+    `INSERT INTO platform_settings(
+       singleton,
+       default_locale,
+       updated_at
+     )
+     VALUES(TRUE, $1, NOW())
+     ON CONFLICT (singleton) DO UPDATE SET
+       default_locale = EXCLUDED.default_locale,
+       updated_at = NOW()
+     RETURNING default_locale`,
+    [next.defaultLocale],
+  );
+
+  return resolveLanguageSettingsPayload(result.rows[0] || next);
+}
+
 async function updateSystemBanner(banner = {}) {
   const next = parseRequiredSystemBanner(banner);
   const result = await db.query(
@@ -1097,12 +1186,14 @@ module.exports = {
   DEFAULT_AGENT_HUB_SETTINGS,
   DEFAULT_BACKUP_PLAN_LIMITS,
   DEFAULT_BACKUP_SETTINGS,
+  DEFAULT_LANGUAGE_SETTINGS,
   DEFAULT_SYSTEM_BANNER,
   AGENT_HUB_SHARE_TARGETS,
   BACKUP_PLAN_KEYS,
   BACKUP_SCHEDULE_FREQUENCIES,
   BACKUP_STORAGE_BACKENDS,
   SYSTEM_BANNER_SEVERITIES,
+  SUPPORTED_LOCALES,
   clampDeploymentDefaults,
   getAgentHubSettings,
   getAgentHubSourceApiKey,
@@ -1110,23 +1201,31 @@ module.exports = {
   getBackupSettings,
   getBackupStorageConfig,
   getDeploymentDefaults,
+  getLanguageSettings,
   getSystemBanner,
   isSystemBannerFeatureEnabled,
   normalizeAgentHubSettings,
   normalizeBackupPlanLimits,
   normalizeBackupSettings,
   normalizeDeploymentDefaults,
+  normalizeLanguageSettings,
+  normalizeLocale,
   normalizeSystemBanner,
   parseRequiredAgentHubSettings,
   parseRequiredBackupPlanLimits,
   parseRequiredBackupSettings,
   parseRequiredDeploymentDefaults,
+  parseRequiredLanguageSettings,
+  parseRequiredLocale,
   parseRequiredSystemBanner,
   resolveBackupSettingsPayload,
+  resolveLanguageSettingsPayload,
+  resolvePreferredLocale,
   resolveSystemBannerPayload,
   updateAgentHubSettings,
   updateBackupPlanLimits,
   updateBackupSettings,
   updateDeploymentDefaults,
+  updateLanguageSettings,
   updateSystemBanner,
 };

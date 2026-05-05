@@ -16,11 +16,11 @@ import {
   Zap,
 } from "lucide-react";
 import { useState } from "react";
+import LanguageSwitcher from "../components/LanguageSwitcher";
 
 const OSS_REPO_URL = "https://github.com/solomon2773/nora";
 const QUICKSTART_URL = `${OSS_REPO_URL}#quick-start`;
-const RAW_REPO_BASE_URL =
-  "https://raw.githubusercontent.com/solomon2773/nora/master";
+const RAW_REPO_BASE_URL = "https://raw.githubusercontent.com/solomon2773/nora/master";
 const SETUP_SH_URL = `${RAW_REPO_BASE_URL}/setup.sh`;
 const SETUP_PS1_URL = `${RAW_REPO_BASE_URL}/setup.ps1`;
 
@@ -146,7 +146,9 @@ export default function Home() {
                 N
               </div>
               <div>
-                <div className="text-sm font-black uppercase tracking-[0.28em] text-slate-300">Nora</div>
+                <div className="text-sm font-black uppercase tracking-[0.28em] text-slate-300">
+                  Nora
+                </div>
                 <div className="text-xs text-slate-500">Deploy intelligence anywhere.</div>
               </div>
             </Link>
@@ -167,6 +169,7 @@ export default function Home() {
             </nav>
 
             <div className="hidden items-center gap-3 md:flex">
+              <LanguageSwitcher />
               <a
                 href={OSS_REPO_URL}
                 target="_blank"
@@ -247,11 +250,12 @@ export default function Home() {
               </h1>
 
               <p className="mt-6 max-w-xl text-base leading-7 text-slate-300 sm:text-lg">
-                Nora gives operator teams one place to deploy OpenClaw and Hermes runtimes, manage provider keys, inspect
-                logs, open terminals, and monitor activity. OpenClaw is the broadest operator path today, while Hermes is
-                supported as a Docker-managed runtime with its own WebUI. The product is fully open source, self-hostable,
-                and commercially usable under Apache 2.0, whether you are running it for your own team or operating Nora in
-                PaaS mode for your own business.
+                Nora gives operator teams one place to deploy OpenClaw and Hermes runtimes, manage
+                provider keys, inspect logs, open terminals, and monitor activity. OpenClaw is the
+                broadest operator path today, while Hermes is supported as a Docker-managed runtime
+                with its own WebUI. The product is fully open source, self-hostable, and
+                commercially usable under Apache 2.0, whether you are running it for your own team
+                or operating Nora in PaaS mode for your own business.
               </p>
 
               <div className="mt-10 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
@@ -278,10 +282,20 @@ export default function Home() {
               </div>
 
               <div className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-3 text-sm text-slate-400">
-                <a href={QUICKSTART_URL} target="_blank" rel="noopener noreferrer" className="hover:text-white">
+                <a
+                  href={QUICKSTART_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:text-white"
+                >
                   Open self-host quick start
                 </a>
-                <a href={SETUP_SH_URL} target="_blank" rel="noopener noreferrer" className="hover:text-white">
+                <a
+                  href={SETUP_SH_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:text-white"
+                >
                   Install from bash
                 </a>
                 <Link href="/pricing" className="hover:text-white">
@@ -305,7 +319,9 @@ export default function Home() {
                     </h2>
                   </div>
                   <div className="hidden text-right sm:block">
-                    <div className="text-[0.62rem] font-black uppercase tracking-[0.28em] text-slate-500">Path</div>
+                    <div className="text-[0.62rem] font-black uppercase tracking-[0.28em] text-slate-500">
+                      Path
+                    </div>
                     <div className="mt-2 text-sm font-semibold text-slate-200">/app/dashboard</div>
                   </div>
                 </div>
@@ -318,13 +334,16 @@ export default function Home() {
                         index !== CONTROL_LANES.length - 1 ? "border-b border-white/8" : ""
                       }`}
                     >
-                      <div className="text-xs font-black uppercase tracking-[0.28em] text-[#f2d7a1]">{lane.label}</div>
-                      <div className="text-base font-semibold leading-7 text-white">{lane.title}</div>
+                      <div className="text-xs font-black uppercase tracking-[0.28em] text-[#f2d7a1]">
+                        {lane.label}
+                      </div>
+                      <div className="text-base font-semibold leading-7 text-white">
+                        {lane.title}
+                      </div>
                       <div className="text-sm text-slate-400 sm:text-right">{lane.detail}</div>
                     </div>
                   ))}
                 </div>
-
               </div>
             </div>
           </section>
@@ -337,7 +356,9 @@ export default function Home() {
                     key={item.label}
                     className={`${index !== TRUST_ITEMS.length - 1 ? "xl:border-r xl:border-white/10 xl:pr-6" : ""}`}
                   >
-                    <div className="text-xs font-black uppercase tracking-[0.28em] text-[#f2d7a1]">{item.label}</div>
+                    <div className="text-xs font-black uppercase tracking-[0.28em] text-[#f2d7a1]">
+                      {item.label}
+                    </div>
                     <p className="mt-3 text-sm leading-7 text-slate-300">{item.text}</p>
                   </div>
                 ))}
@@ -356,20 +377,27 @@ export default function Home() {
                   Nora is the working surface, not a wrapper around missing infrastructure.
                 </h2>
                 <p className="mt-5 max-w-lg text-base leading-8 text-slate-300">
-                  The public product story is simple: teams can create an account quickly, inspect the repo, and move from
-                  first deploy to live OpenClaw or Hermes operations without hiding the operational details.
+                  The public product story is simple: teams can create an account quickly, inspect
+                  the repo, and move from first deploy to live OpenClaw or Hermes operations without
+                  hiding the operational details.
                 </p>
                 <div className="mt-8 grid gap-3 sm:grid-cols-3">
                   <div className="rounded-[24px] border border-white/10 bg-white/[0.03] px-4 py-4">
-                    <div className="text-xs font-black uppercase tracking-[0.24em] text-slate-500">Surface</div>
+                    <div className="text-xs font-black uppercase tracking-[0.24em] text-slate-500">
+                      Surface
+                    </div>
                     <div className="mt-2 text-lg font-black text-white">Deploy</div>
                   </div>
                   <div className="rounded-[24px] border border-white/10 bg-white/[0.03] px-4 py-4">
-                    <div className="text-xs font-black uppercase tracking-[0.24em] text-slate-500">Surface</div>
+                    <div className="text-xs font-black uppercase tracking-[0.24em] text-slate-500">
+                      Surface
+                    </div>
                     <div className="mt-2 text-lg font-black text-white">Observe</div>
                   </div>
                   <div className="rounded-[24px] border border-white/10 bg-white/[0.03] px-4 py-4">
-                    <div className="text-xs font-black uppercase tracking-[0.24em] text-slate-500">Surface</div>
+                    <div className="text-xs font-black uppercase tracking-[0.24em] text-slate-500">
+                      Surface
+                    </div>
                     <div className="mt-2 text-lg font-black text-white">Control</div>
                   </div>
                 </div>
@@ -419,7 +447,9 @@ export default function Home() {
                       index === 1 ? "lg:translate-y-6" : ""
                     }`}
                   >
-                    <div className="text-sm font-black uppercase tracking-[0.28em] text-[#f2d7a1]">{item.step}</div>
+                    <div className="text-sm font-black uppercase tracking-[0.28em] text-[#f2d7a1]">
+                      {item.step}
+                    </div>
                     <h3 className="mt-3 text-2xl font-black text-white">{item.title}</h3>
                     <p className="mt-4 text-sm leading-7 text-slate-400">{item.body}</p>
                   </div>
@@ -439,8 +469,8 @@ export default function Home() {
                   The public repo should answer the first trust questions without extra gatekeeping.
                 </h2>
                 <p className="mt-5 max-w-lg text-base leading-8 text-slate-300">
-                  Nora’s strongest public claim is simple: operators can read the code, run the product, and bring the self-host
-                  path online before making a bigger commitment.
+                  Nora’s strongest public claim is simple: operators can read the code, run the
+                  product, and bring the self-host path online before making a bigger commitment.
                 </p>
               </div>
 
@@ -458,7 +488,9 @@ export default function Home() {
                     <div className="flex items-start justify-between gap-4">
                       <div>
                         <div className="text-lg font-black text-white">{item.title}</div>
-                        <p className="mt-2 max-w-xl text-sm leading-7 text-slate-400">{item.copy}</p>
+                        <p className="mt-2 max-w-xl text-sm leading-7 text-slate-400">
+                          {item.copy}
+                        </p>
                       </div>
                       <ArrowUpRight size={18} className="mt-1 shrink-0 text-[#8ae6ff]" />
                     </div>
@@ -480,8 +512,9 @@ export default function Home() {
                     Keep the public path simple: inspect the code, then log in or self-host.
                   </h2>
                   <p className="mt-5 max-w-xl text-base leading-8 text-slate-700">
-                    Nora should feel straightforward to adopt. The product is fully open source. Self-hosting is allowed.
-                    Commercial use is allowed. The GitHub repo stays public and the account flow stays easy.
+                    Nora should feel straightforward to adopt. The product is fully open source.
+                    Self-hosting is allowed. Commercial use is allowed. The GitHub repo stays public
+                    and the account flow stays easy.
                   </p>
                 </div>
 
@@ -515,17 +548,30 @@ export default function Home() {
         <footer className="px-4 pb-10 pt-16 sm:px-6">
           <div className="mx-auto flex max-w-7xl flex-col gap-8 border-t border-white/8 pt-8 md:flex-row md:items-end md:justify-between">
             <div className="max-w-lg">
-              <div className="text-xs font-black uppercase tracking-[0.32em] text-slate-500">Nora</div>
+              <div className="text-xs font-black uppercase tracking-[0.32em] text-slate-500">
+                Nora
+              </div>
               <p className="mt-3 text-sm leading-7 text-slate-400">
-                Deploy intelligence anywhere. Open source, self-hostable, and commercially usable under Apache 2.0.
+                Deploy intelligence anywhere. Open source, self-hostable, and commercially usable
+                under Apache 2.0.
               </p>
             </div>
 
             <div className="flex flex-col gap-3 text-sm text-slate-400 sm:flex-row sm:flex-wrap sm:items-center sm:gap-6">
-              <a href={OSS_REPO_URL} target="_blank" rel="noopener noreferrer" className="hover:text-white">
+              <a
+                href={OSS_REPO_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-white"
+              >
                 GitHub
               </a>
-              <a href={QUICKSTART_URL} target="_blank" rel="noopener noreferrer" className="hover:text-white">
+              <a
+                href={QUICKSTART_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-white"
+              >
                 Quick Start
               </a>
               <Link href="/pricing" className="hover:text-white">

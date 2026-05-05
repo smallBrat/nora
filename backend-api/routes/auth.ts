@@ -7,6 +7,11 @@ const db = require("../db");
 const { authenticateToken } = require("../middleware/auth");
 const { setAuthCookie, clearAuthCookie } = require("../authCookie");
 const { normalizeEmail, normalizeProvider, verifyOAuthIdentity } = require("../oauthProviders");
+const {
+  getLanguageSettings,
+  parseRequiredLocale,
+  resolvePreferredLocale,
+} = require("../platformSettings");
 
 const router = express.Router();
 const FIRST_USER_ADMIN_LOCK_KEY = 20260408;
@@ -91,7 +96,7 @@ router.post("/signup", authLimiter, async (req, res) => {
     });
     res.json(user);
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.status(e.statusCode || 500).json({ error: e.message });
   }
 });
 
@@ -123,7 +128,7 @@ router.post("/login", authLimiter, async (req, res) => {
     setAuthCookie(res, token, req);
     res.json({ token });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.status(e.statusCode || 500).json({ error: e.message });
   }
 });
 
@@ -267,12 +272,29 @@ router.patch("/password", authenticateToken, async (req, res) => {
 
 router.get("/me", authenticateToken, async (req, res) => {
   try {
-    const result = await db.query(
-      "SELECT id, email, name, role, provider, avatar, created_at FROM users WHERE id = $1",
-      [req.user.id],
-    );
-    if (!result.rows[0]) return res.status(404).json({ error: "User not found" });
-    res.json(result.rows[0]);
+    const [result, languageSettings] = await Promise.all([
+      db.query(
+        "SELECT id, email, name, role, provider, avatar, preferred_locale, created_at FROM users WHERE id = $1",
+        [req.user.id],
+      ),
+      getLanguageSettings(),
+    ]);
+    const user = result.rows[0];
+    if (!user) return res.status(404).json({ error: "User not found" });
+    const preferredLocale = user.preferred_locale || null;
+    const defaultLocale = languageSettings.defaultLocale;
+    res.json({
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      provider: user.provider,
+      avatar: user.avatar,
+      preferredLocale,
+      defaultLocale,
+      effectiveLocale: resolvePreferredLocale(preferredLocale, defaultLocale),
+      created_at: user.created_at,
+    });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -280,7 +302,8 @@ router.get("/me", authenticateToken, async (req, res) => {
 
 router.patch("/profile", authenticateToken, async (req, res) => {
   try {
-    const { name, avatar } = req.body;
+    const body = req.body || {};
+    const { name, avatar } = body;
     const updates = [];
     const values = [];
     let idx = 1;
@@ -310,18 +333,37 @@ router.patch("/profile", authenticateToken, async (req, res) => {
       }
     }
 
+    if (Object.prototype.hasOwnProperty.call(body, "preferredLocale")) {
+      if (body.preferredLocale === null) {
+        updates.push(`preferred_locale = $${idx++}`);
+        values.push(null);
+      } else {
+        updates.push(`preferred_locale = $${idx++}`);
+        values.push(parseRequiredLocale(body.preferredLocale, "preferredLocale"));
+      }
+    }
+
     if (updates.length === 0) {
       return res.status(400).json({ error: "No fields to update" });
     }
 
     values.push(req.user.id);
     const result = await db.query(
-      `UPDATE users SET ${updates.join(", ")} WHERE id = $${idx} RETURNING name, avatar`,
+      `UPDATE users SET ${updates.join(", ")} WHERE id = $${idx} RETURNING name, avatar, preferred_locale`,
       values,
     );
-    res.json(result.rows[0]);
+    const updated = result.rows[0] || {};
+    const languageSettings = await getLanguageSettings();
+    const preferredLocale = updated.preferred_locale || null;
+    res.json({
+      name: updated.name,
+      avatar: updated.avatar,
+      preferredLocale,
+      defaultLocale: languageSettings.defaultLocale,
+      effectiveLocale: resolvePreferredLocale(preferredLocale, languageSettings.defaultLocale),
+    });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.status(e.statusCode || 500).json({ error: e.message });
   }
 });
 

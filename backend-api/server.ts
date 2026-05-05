@@ -11,7 +11,11 @@ const channels = require("./channels");
 const agentHubStore = require("./agentHubStore");
 const integrations = require("./integrations");
 const snapshots = require("./snapshots");
-const { getDeploymentDefaults, getSystemBanner } = require("./platformSettings");
+const {
+  getDeploymentDefaults,
+  getLanguageSettings,
+  getSystemBanner,
+} = require("./platformSettings");
 const { buildReleaseInfo } = require("./releaseInfo");
 const { collectAgentTelemetrySample } = require("./agentTelemetry");
 const {
@@ -560,6 +564,12 @@ app.get("/config/platform", async (_req, res) => {
     const sandboxProfiles = getSandboxProfileCatalog(process.env, {
       runtimeFamily: defaultRuntimeFamily,
     });
+    const [deploymentDefaults, systemBanner, language, release] = await Promise.all([
+      getDeploymentDefaults(),
+      getSystemBanner(),
+      getLanguageSettings(),
+      buildReleaseInfo(),
+    ]);
     res.json({
       mode: billing.PLATFORM_MODE,
       selfhosted: billing.PLATFORM_MODE !== "paas" ? billing.SELFHOSTED_LIMITS : null,
@@ -574,9 +584,10 @@ app.get("/config/platform", async (_req, res) => {
       executionTargets,
       sandboxProfiles,
       defaultRuntimeFamily,
-      deploymentDefaults: await getDeploymentDefaults(),
-      systemBanner: await getSystemBanner(),
-      release: await buildReleaseInfo(),
+      deploymentDefaults,
+      systemBanner,
+      language,
+      release,
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -1106,6 +1117,7 @@ async function migrateDB() {
        default_vcpu INTEGER NOT NULL DEFAULT 1,
        default_ram_mb INTEGER NOT NULL DEFAULT 1024,
        default_disk_gb INTEGER NOT NULL DEFAULT 10,
+       default_locale TEXT NOT NULL DEFAULT 'en',
        system_banner_enabled BOOLEAN NOT NULL DEFAULT false,
        system_banner_severity TEXT NOT NULL DEFAULT 'warning',
        system_banner_title TEXT NOT NULL DEFAULT '',
@@ -1119,6 +1131,7 @@ async function migrateDB() {
     `INSERT INTO platform_settings(singleton, default_vcpu, default_ram_mb, default_disk_gb)
        VALUES(TRUE, 1, 1024, 10)
        ON CONFLICT (singleton) DO NOTHING`,
+    `DO $$ BEGIN ALTER TABLE platform_settings ADD COLUMN default_locale TEXT NOT NULL DEFAULT 'en'; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
     `DO $$ BEGIN ALTER TABLE platform_settings ADD COLUMN system_banner_enabled BOOLEAN NOT NULL DEFAULT false; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
     `DO $$ BEGIN ALTER TABLE platform_settings ADD COLUMN system_banner_severity TEXT NOT NULL DEFAULT 'warning'; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
     `DO $$ BEGIN ALTER TABLE platform_settings ADD COLUMN system_banner_title TEXT NOT NULL DEFAULT ''; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
@@ -1200,6 +1213,7 @@ async function migrateDB() {
     `CREATE INDEX IF NOT EXISTS idx_usage_metrics_user ON usage_metrics(user_id, recorded_at)`,
     `CREATE INDEX IF NOT EXISTS idx_usage_metrics_type ON usage_metrics(metric_type, recorded_at)`,
     `DO $$ BEGIN ALTER TABLE users ADD COLUMN avatar TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
+    `DO $$ BEGIN ALTER TABLE users ADD COLUMN preferred_locale TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
     `DO $$ BEGIN ALTER TABLE users ADD COLUMN agent_limit_override INTEGER; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
     `DO $$ BEGIN ALTER TABLE users ADD COLUMN managed_backups_enabled_override BOOLEAN; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
     `DO $$ BEGIN ALTER TABLE users ADD COLUMN backup_limit_per_agent_override INTEGER; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,

@@ -40,6 +40,14 @@ const mockUpdateSystemBanner = jest.fn().mockResolvedValue({
   featureEnabled: false,
   active: false,
 });
+const mockGetLanguageSettings = jest.fn().mockResolvedValue({
+  defaultLocale: "en",
+  supportedLocales: ["en", "es", "fr", "zh-Hans", "zh-Hant"],
+});
+const mockUpdateLanguageSettings = jest.fn().mockResolvedValue({
+  defaultLocale: "es",
+  supportedLocales: ["en", "es", "fr", "zh-Hans", "zh-Hant"],
+});
 const mockGetAgentHubSettings = jest.fn().mockResolvedValue({
   defaultShareTarget: "both",
   url: "https://nora.test",
@@ -218,9 +226,11 @@ jest.mock("../platformSettings", () => {
     ...actual,
     getDeploymentDefaults: mockGetDeploymentDefaults,
     getSystemBanner: mockGetSystemBanner,
+    getLanguageSettings: mockGetLanguageSettings,
     getAgentHubSettings: mockGetAgentHubSettings,
     updateDeploymentDefaults: mockUpdateDeploymentDefaults,
     updateSystemBanner: mockUpdateSystemBanner,
+    updateLanguageSettings: mockUpdateLanguageSettings,
     updateAgentHubSettings: mockUpdateAgentHubSettings,
   };
 });
@@ -319,6 +329,14 @@ beforeEach(() => {
     message: "",
     featureEnabled: false,
     active: false,
+  });
+  mockGetLanguageSettings.mockReset().mockResolvedValue({
+    defaultLocale: "en",
+    supportedLocales: ["en", "es", "fr", "zh-Hans", "zh-Hant"],
+  });
+  mockUpdateLanguageSettings.mockReset().mockResolvedValue({
+    defaultLocale: "es",
+    supportedLocales: ["en", "es", "fr", "zh-Hans", "zh-Hant"],
   });
   mockGetAgentHubSettings.mockReset().mockResolvedValue({
     defaultShareTarget: "both",
@@ -485,6 +503,54 @@ describe("admin routes", () => {
     expect(monitoringModule.logEvent).toHaveBeenCalledWith(
       "admin_system_banner_updated",
       expect.stringContaining("system banner"),
+      expect.any(Object),
+    );
+  });
+
+  it("returns the platform language settings for admins", async () => {
+    mockGetLanguageSettings.mockResolvedValueOnce({
+      defaultLocale: "fr",
+      supportedLocales: ["en", "es", "fr", "zh-Hans", "zh-Hant"],
+    });
+
+    const res = await withToken(request(app).get("/admin/settings/language"), adminToken);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      defaultLocale: "fr",
+      supportedLocales: ["en", "es", "fr", "zh-Hans", "zh-Hant"],
+    });
+  });
+
+  it("updates the platform language settings for admins", async () => {
+    const monitoringModule = require("../monitoring");
+    mockGetLanguageSettings.mockResolvedValueOnce({
+      defaultLocale: "en",
+      supportedLocales: ["en", "es", "fr", "zh-Hans", "zh-Hant"],
+    });
+    mockUpdateLanguageSettings.mockResolvedValueOnce({
+      defaultLocale: "es",
+      supportedLocales: ["en", "es", "fr", "zh-Hans", "zh-Hant"],
+    });
+
+    const res = await withToken(
+      request(app).put("/admin/settings/language").send({
+        defaultLocale: "es",
+      }),
+      adminToken,
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockUpdateLanguageSettings).toHaveBeenCalledWith({
+      defaultLocale: "es",
+    });
+    expect(res.body).toEqual({
+      defaultLocale: "es",
+      supportedLocales: ["en", "es", "fr", "zh-Hans", "zh-Hant"],
+    });
+    expect(monitoringModule.logEvent).toHaveBeenCalledWith(
+      "admin_language_settings_updated",
+      expect.stringContaining("default language"),
       expect.any(Object),
     );
   });

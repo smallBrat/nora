@@ -8,14 +8,25 @@ function hasHeader(headers: FetchHeaders | undefined, name: string) {
   return Object.keys(headers || {}).some((key) => key.toLowerCase() === needle);
 }
 
+function currentMarketingPath(path: string) {
+  if (typeof window === "undefined") return path;
+  const match = window.location.pathname.match(/^\/admin\/(es|fr|zh-Hans|zh-Hant)(?=\/|$)/);
+  return match ? `/${match[1]}${path}` : path;
+}
+
+function currentOperatorPath(path: string) {
+  if (typeof window === "undefined") return path;
+  const match = window.location.pathname.match(/^\/admin\/(es|fr|zh-Hans|zh-Hant)(?=\/|$)/);
+  return match ? `/app/${match[1]}${path.replace(/^\/app/, "")}` : path;
+}
+
 // Session auth primarily rides on the HttpOnly `nora_auth` cookie that the
 // backend sets at /auth/login. credentials:"include" makes the browser attach
 // the cookie on every API call. The Authorization header is still sent when
 // a legacy localStorage token exists, so sessions from before the cookie
 // migration keep working until they expire or the user logs in again.
 export async function fetchWithAuth(url: string, options: FetchOptions = {}) {
-  const legacyToken =
-    typeof window !== "undefined" ? localStorage.getItem("token") : null;
+  const legacyToken = typeof window !== "undefined" ? localStorage.getItem("token") : null;
   const headers: FetchHeaders = { ...(options.headers || {}) };
   if (legacyToken && !hasHeader(headers, "authorization")) {
     headers["Authorization"] = `Bearer ${legacyToken}`;
@@ -34,11 +45,11 @@ export async function fetchWithAuth(url: string, options: FetchOptions = {}) {
   });
   if (res.status === 401 && typeof window !== "undefined") {
     localStorage.removeItem("token");
-    window.location.href = "/login";
+    window.location.href = currentMarketingPath("/login");
     throw new Error("Unauthorized");
   }
   if (res.status === 403 && typeof window !== "undefined") {
-    window.location.href = "/app/dashboard";
+    window.location.href = currentOperatorPath("/app/dashboard");
     throw new Error("Forbidden");
   }
   return res;

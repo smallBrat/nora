@@ -5,6 +5,11 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   output: "standalone",
   basePath: "/app",
+  i18n: {
+    locales: ["en", "es", "fr", "zh-Hans", "zh-Hant"],
+    defaultLocale: "en",
+    localeDetection: false,
+  },
   turbopack: {
     root: path.resolve(process.cwd(), ".."),
   },

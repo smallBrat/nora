@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import {
   DEFAULT_PASSWORD,
+  apiJson,
   authenticatePage,
   createUserSession,
   extractIdFromUrl,
@@ -347,6 +348,31 @@ test.describe("Complete platform journey", () => {
 
     await page.goto("/admin/settings", { waitUntil: "domcontentloaded" });
     await expect(page.getByRole("heading", { name: /^platform settings$/i })).toBeVisible();
+
+    await page.getByLabel(/platform default/i).selectOption("es");
+    await page.getByRole("button", { name: /save language/i }).click();
+    await expect(page.getByText(/default language updated/i)).toBeVisible();
+
+    await authenticatePage(page, secondaryUser.token, "/app/settings");
+    await page.waitForURL(/\/app\/es\/settings$/, { waitUntil: "domcontentloaded" });
+    await expect(page.getByRole("heading", { name: /configuracion/i })).toBeVisible();
+
+    await page.getByLabel(/display language/i).selectOption("fr");
+    await page.waitForURL(/\/app\/fr\/settings$/, { waitUntil: "domcontentloaded" });
+    const localizedProfile = await getCurrentUser(request, secondaryUser.token);
+    expect(localizedProfile.preferredLocale).toBe("fr");
+    expect(localizedProfile.effectiveLocale).toBe("fr");
+
+    await apiJson(request, "/api/admin/settings/language", {
+      method: "PUT",
+      token: admin.token,
+      data: { defaultLocale: "en" },
+    });
+    await apiJson(request, "/api/auth/profile", {
+      method: "PATCH",
+      token: secondaryUser.token,
+      data: { preferredLocale: null },
+    });
   });
 
   test("a standard user can install the approved listing and is blocked from admin", async ({

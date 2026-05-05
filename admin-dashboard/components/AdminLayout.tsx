@@ -16,6 +16,8 @@ import {
 } from "lucide-react";
 import { clsx } from "clsx";
 import { formatDateTime } from "../lib/format";
+import LanguageSwitcher from "./LanguageSwitcher";
+import { useI18n } from "../lib/i18n";
 
 const NAV_ITEMS = [
   { name: "Overview", icon: LayoutDashboard, href: "/" },
@@ -49,6 +51,7 @@ function formatShortCommit(commit) {
 
 export default function AdminLayout({ children }) {
   const router = useRouter();
+  const { loginPath, t } = useI18n();
   const [release, setRelease] = useState(null);
   const [systemBanner, setSystemBanner] = useState(null);
 
@@ -86,7 +89,7 @@ export default function AdminLayout({ children }) {
     fetch("/api/auth/logout", { method: "POST", credentials: "include" })
       .catch(() => {})
       .finally(() => {
-        window.location.href = "/login";
+        window.location.href = loginPath;
       });
   }
 
@@ -107,9 +110,9 @@ export default function AdminLayout({ children }) {
                 <Shield size={22} />
               </div>
               <div>
-                <p className="text-lg font-black tracking-tight">Nora Admin</p>
+                <p className="text-lg font-black tracking-tight">{t("Nora Admin")}</p>
                 <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">
-                  Full platform control
+                  {t("Full platform control")}
                 </p>
               </div>
             </div>
@@ -130,7 +133,7 @@ export default function AdminLayout({ children }) {
                   )}
                 >
                   <item.icon size={18} />
-                  {item.name}
+                  {t(item.name)}
                 </Link>
               );
             })}
@@ -139,22 +142,24 @@ export default function AdminLayout({ children }) {
           <div className="hidden px-4 pb-4 md:block">
             <div className="rounded-[1.5rem] border border-white/10 bg-white/5 p-4">
               <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">
-                Guardrail
+                {t("Guardrail")}
               </p>
               <p className="mt-2 text-sm font-medium leading-relaxed text-slate-300">
-                This surface is for admins only. Prefer inspect-first workflows, then use lifecycle
-                and delete actions deliberately.
+                {t(
+                  "This surface is for admins only. Prefer inspect-first workflows, then use lifecycle and delete actions deliberately.",
+                )}
               </p>
             </div>
           </div>
 
           <div className="border-t border-white/10 p-3 md:mt-auto md:p-4">
+            <LanguageSwitcher className="mb-3 w-full justify-center" />
             <button
               onClick={handleLogout}
               className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-white/10 px-4 py-3 text-sm font-semibold text-slate-300 transition-colors hover:bg-white/5 hover:text-white"
             >
               <LogOut size={18} />
-              Log Out
+              {t("Log Out")}
             </button>
           </div>
         </aside>
@@ -188,7 +193,7 @@ export default function AdminLayout({ children }) {
                         systemBannerCritical ? "text-red-600" : "text-amber-700",
                       )}
                     >
-                      {systemBannerCritical ? "System Critical" : "System Warning"}
+                      {systemBannerCritical ? t("System Critical") : t("System Warning")}
                     </p>
                     <h2 className="mt-2 text-xl font-black tracking-tight text-slate-950">
                       {systemBanner.title}
@@ -220,12 +225,12 @@ export default function AdminLayout({ children }) {
                         bannerIsCritical ? "text-red-600" : "text-amber-700",
                       )}
                     >
-                      {bannerIsCritical ? "Upgrade Required" : "New Nora Version Available"}
+                      {bannerIsCritical ? t("Upgrade Required") : t("New Nora Version Available")}
                     </p>
                     <h2 className="mt-2 text-xl font-black tracking-tight text-slate-950">
                       {release?.latestVersion
                         ? `${formatVersionLabel(release.latestVersion)} is ready`
-                        : "A newer Nora release is available"}
+                        : t("A newer Nora release is available")}
                     </h2>
                     <p className="mt-2 max-w-3xl text-sm font-medium leading-relaxed text-slate-700">
                       {release?.currentVersion
@@ -251,7 +256,7 @@ export default function AdminLayout({ children }) {
                           : "bg-amber-500 text-slate-950 hover:bg-amber-400",
                       )}
                     >
-                      Review upgrade
+                      {t("Review upgrade")}
                     </Link>
                     {release?.releaseNotesUrl ? (
                       <a
@@ -260,7 +265,7 @@ export default function AdminLayout({ children }) {
                         rel="noreferrer"
                         className="inline-flex items-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm transition-all hover:-translate-y-0.5 hover:bg-slate-50"
                       >
-                        Release notes
+                        {t("Release notes")}
                         <ArrowUpRight size={15} />
                       </a>
                     ) : null}

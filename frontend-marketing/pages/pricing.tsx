@@ -12,14 +12,14 @@ import {
   Shield,
   Zap,
 } from "lucide-react";
+import LanguageSwitcher from "../components/LanguageSwitcher";
 
 const OSS_REPO_URL = "https://github.com/solomon2773/nora";
 const QUICKSTART_URL = `${OSS_REPO_URL}#quick-start`;
 const PUBLIC_SITE_URL = "https://nora.solomontsao.com";
 const LOGIN_URL = `${PUBLIC_SITE_URL}/login`;
 const SIGNUP_URL = `${PUBLIC_SITE_URL}/signup`;
-const RAW_REPO_BASE_URL =
-  "https://raw.githubusercontent.com/solomon2773/nora/master";
+const RAW_REPO_BASE_URL = "https://raw.githubusercontent.com/solomon2773/nora/master";
 const SETUP_SH_URL = `${RAW_REPO_BASE_URL}/setup.sh`;
 const SETUP_PS1_URL = `${RAW_REPO_BASE_URL}/setup.ps1`;
 
@@ -115,12 +115,15 @@ export default function Pricing() {
               N
             </div>
             <div>
-              <div className="text-sm font-black uppercase tracking-[0.28em] text-slate-300">Nora</div>
+              <div className="text-sm font-black uppercase tracking-[0.28em] text-slate-300">
+                Nora
+              </div>
               <div className="text-xs text-slate-500">Deploy intelligence anywhere.</div>
             </div>
           </Link>
 
           <div className="flex items-center gap-3">
+            <LanguageSwitcher className="hidden sm:inline-flex" />
             <a
               href={OSS_REPO_URL}
               target="_blank"
@@ -155,9 +158,9 @@ export default function Pricing() {
                 Nora is open source first, and PaaS mode is yours to run.
               </h1>
               <p className="mt-6 max-w-2xl text-base leading-8 text-slate-300 sm:text-lg">
-                Public messaging should be direct: Nora is fully open source, the public repo is the trust anchor, commercial use is
-                allowed under Apache 2.0, and `PLATFORM_MODE=paas` exists so operators can run Nora as their own hosted business or
-                internal platform.
+                Public messaging should be direct: Nora is fully open source, the public repo is the
+                trust anchor, commercial use is allowed under Apache 2.0, and `PLATFORM_MODE=paas`
+                exists so operators can run Nora as their own hosted business or internal platform.
               </p>
 
               <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
@@ -196,7 +199,10 @@ export default function Pricing() {
               </h2>
               <div className="space-y-4">
                 {RIGHTS.map((item) => (
-                  <div key={item} className="flex items-start gap-3 text-sm leading-7 text-slate-800">
+                  <div
+                    key={item}
+                    className="flex items-start gap-3 text-sm leading-7 text-slate-800"
+                  >
                     <Check size={18} className="mt-1 shrink-0 text-[#b55e18]" />
                     <span>{item}</span>
                   </div>
@@ -214,12 +220,17 @@ export default function Pricing() {
                     <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.05] text-[#8ae6ff]">
                       <Icon size={20} />
                     </div>
-                    <div className="mt-5 text-xs font-black uppercase tracking-[0.28em] text-[#f2d7a1]">{mode.eyebrow}</div>
+                    <div className="mt-5 text-xs font-black uppercase tracking-[0.28em] text-[#f2d7a1]">
+                      {mode.eyebrow}
+                    </div>
                     <h2 className="mt-3 text-2xl font-black text-white">{mode.title}</h2>
                     <p className="mt-4 text-sm leading-7 text-slate-400">{mode.body}</p>
                     <div className="mt-6 space-y-3">
                       {mode.points.map((point) => (
-                        <div key={point} className="flex items-start gap-3 text-sm leading-7 text-slate-300">
+                        <div
+                          key={point}
+                          className="flex items-start gap-3 text-sm leading-7 text-slate-300"
+                        >
                           <Check size={18} className="mt-1 shrink-0 text-[#8ae6ff]" />
                           <span>{point}</span>
                         </div>
@@ -232,17 +243,18 @@ export default function Pricing() {
           </section>
 
           <section className="grid gap-8 pb-14 lg:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
-              <div>
-                <div className="eyebrow mb-5">
-                  <Boxes size={14} />
-                  Public trust path
-                </div>
+            <div>
+              <div className="eyebrow mb-5">
+                <Boxes size={14} />
+                Public trust path
+              </div>
               <h2 className="max-w-lg text-4xl font-black leading-tight text-white sm:text-5xl">
                 The public repo and public site should explain the product without a service pitch.
               </h2>
               <p className="mt-5 max-w-lg text-base leading-8 text-slate-300">
-                What matters publicly is straightforward: the source is open, the install path is public, the login and signup
-                flow are easy to find, and PaaS mode belongs to the operators who choose to run it.
+                What matters publicly is straightforward: the source is open, the install path is
+                public, the login and signup flow are easy to find, and PaaS mode belongs to the
+                operators who choose to run it.
               </p>
             </div>
 
@@ -280,8 +292,9 @@ export default function Pricing() {
                   Keep the public route simple: repo, quick start, login, signup, and OSS rights.
                 </h2>
                 <p className="mt-5 max-w-xl text-base leading-8 text-slate-300">
-                  Users should be able to inspect the code, install Nora, create an account, and understand their commercial rights
-                  without being pushed into a maintainer-run service narrative.
+                  Users should be able to inspect the code, install Nora, create an account, and
+                  understand their commercial rights without being pushed into a maintainer-run
+                  service narrative.
                 </p>
               </div>
 
@@ -294,7 +307,9 @@ export default function Pricing() {
                     rel="noopener noreferrer"
                     className="block rounded-[26px] border border-white/10 bg-white/[0.03] px-4 py-4 transition-colors hover:bg-white/[0.06]"
                   >
-                    <div className="text-xs font-black uppercase tracking-[0.28em] text-slate-500">{item.label}</div>
+                    <div className="text-xs font-black uppercase tracking-[0.28em] text-slate-500">
+                      {item.label}
+                    </div>
                     <div className="mt-2 text-lg font-black text-white">{item.text}</div>
                   </a>
                 ))}

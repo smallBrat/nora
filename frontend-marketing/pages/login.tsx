@@ -2,6 +2,8 @@ import Head from "next/head";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { ArrowUpRight, CheckCircle2, Loader2, Lock, Mail, Shield, Zap } from "lucide-react";
+import LanguageSwitcher from "../components/LanguageSwitcher";
+import { normalizeLocale, useI18n } from "../lib/i18n";
 
 const OAUTH_LOGIN_ENABLED = process.env.NEXT_PUBLIC_OAUTH_LOGIN_ENABLED === "true";
 const IS_SELF_HOSTED = process.env.NEXT_PUBLIC_PLATFORM_MODE === "selfhosted";
@@ -14,7 +16,13 @@ const LOGIN_NOTES = [
   "After login, add a provider key, deploy OpenClaw or Hermes, and validate the operator workflow.",
 ];
 
+type LanguageProfile = {
+  effectiveLocale?: string;
+  defaultLocale?: string;
+};
+
 export default function Login() {
+  const { localizePath, t } = useI18n();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -28,7 +36,7 @@ export default function Login() {
     fetch("/api/auth/me", { credentials: "include" })
       .then((res) => {
         if (res.ok) {
-          window.location.assign("/app/dashboard");
+          window.location.assign(localizePath("/app/dashboard"));
           return;
         }
         // Legacy migration: older sessions only have a token in localStorage
@@ -42,7 +50,7 @@ export default function Login() {
         })
           .then((res2) => {
             if (res2.ok) {
-              window.location.assign("/app/dashboard");
+              window.location.assign(localizePath("/app/dashboard"));
             } else {
               localStorage.removeItem("token");
             }
@@ -50,27 +58,37 @@ export default function Login() {
           .catch(() => localStorage.removeItem("token"));
       })
       .catch(() => {});
-  }, []);
+  }, [localizePath]);
 
   async function routeAfterLogin() {
     try {
-      const [providersRes, agentsRes] = await Promise.all([
+      const [profileRes, providersRes, agentsRes] = await Promise.all([
+        fetch("/api/auth/me", { credentials: "include" }),
         fetch("/api/llm-providers", { credentials: "include" }),
         fetch("/api/agents", { credentials: "include" }),
       ]);
 
-      const [providers, agents] = await Promise.all([
+      const [profile, providers, agents] = await Promise.all([
+        profileRes.ok
+          ? profileRes.json().catch(() => ({}) as LanguageProfile)
+          : ({} as LanguageProfile),
         providersRes.ok ? providersRes.json() : [],
         agentsRes.ok ? agentsRes.json() : [],
       ]);
 
       const hasProviders = Array.isArray(providers) && providers.length > 0;
       const hasAgents = Array.isArray(agents) && agents.length > 0;
+      const targetLocale = normalizeLocale(profile.effectiveLocale || profile.defaultLocale);
 
-      window.location.assign(hasProviders || hasAgents ? "/app/dashboard" : "/app/getting-started");
+      window.location.assign(
+        localizePath(
+          hasProviders || hasAgents ? "/app/dashboard" : "/app/getting-started",
+          targetLocale,
+        ),
+      );
     } catch (routeErr) {
       console.error(routeErr);
-      window.location.assign("/app/dashboard");
+      window.location.assign(localizePath("/app/dashboard"));
     }
   }
 
@@ -98,10 +116,10 @@ export default function Login() {
         return;
       }
 
-      setError(data.error || "Login failed. Check your email and password and try again.");
+      setError(data.error || t("Login failed. Check your email and password and try again."));
     } catch (loginErr) {
       console.error(loginErr);
-      setError("Login failed. Please try again.");
+      setError(t("Login failed. Please try again."));
     } finally {
       setLoading(false);
     }
@@ -109,7 +127,7 @@ export default function Login() {
 
   function handleOAuth(provider) {
     setOauthLoading(provider);
-    window.location.assign(`/auth/oauth/${provider}`);
+    window.location.assign(localizePath(`/auth/oauth/${provider}`));
   }
 
   return (
@@ -137,6 +155,7 @@ export default function Login() {
           </Link>
 
           <div className="flex items-center gap-3">
+            <LanguageSwitcher className="hidden sm:inline-flex" />
             <a
               href={OSS_REPO_URL}
               target="_blank"

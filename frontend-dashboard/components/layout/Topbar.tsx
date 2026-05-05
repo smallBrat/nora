@@ -3,6 +3,8 @@ import { useState, useEffect } from "react";
 import { clsx } from "clsx";
 import { useRouter } from "next/router";
 import { fetchWithAuth } from "../../lib/api";
+import LanguageSwitcher from "../LanguageSwitcher";
+import { useI18n } from "../../lib/i18n";
 
 const PAGE_META = {
   "/dashboard": {
@@ -37,6 +39,7 @@ const PAGE_META = {
 
 export default function Topbar({ onMenuClick }) {
   const router = useRouter();
+  const { loginPath, t } = useI18n();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [user, setUser] = useState(null);
 
@@ -69,16 +72,17 @@ export default function Topbar({ onMenuClick }) {
 
         <div className="min-w-0">
           <p className="text-sm md:text-base font-black text-slate-900 truncate">
-            {pageMeta.title}
+            {t(pageMeta.title)}
           </p>
-          <p className="hidden sm:block text-xs text-slate-500 truncate">{pageMeta.subtitle}</p>
+          <p className="hidden sm:block text-xs text-slate-500 truncate">{t(pageMeta.subtitle)}</p>
         </div>
       </div>
 
       <div className="flex items-center gap-3 md:gap-6 shrink-0">
+        <LanguageSwitcher className="hidden sm:inline-flex" />
         <div className="hidden md:flex items-center gap-2 px-3 py-2 rounded-xl border border-emerald-100 bg-emerald-50 text-emerald-700">
           <CheckCircle2 size={14} />
-          <span className="text-xs font-bold">Operational</span>
+          <span className="text-xs font-bold">{t("Operational")}</span>
         </div>
 
         <div className="relative">
@@ -117,12 +121,12 @@ export default function Topbar({ onMenuClick }) {
                     credentials: "include",
                   }).catch(() => {});
                   clearAuth.finally(() => {
-                    window.location.href = "/login";
+                    window.location.href = loginPath;
                   });
                 }}
               >
                 <LogOut size={16} />
-                Log Out
+                {t("Log Out")}
               </div>
             </div>
           )}

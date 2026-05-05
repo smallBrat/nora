@@ -1,5 +1,9 @@
 import { useEffect } from "react";
+import { useI18n } from "../lib/i18n";
 export default function Home() {
-  useEffect(() => { window.location.href = "/app/agents"; }, []);
+  const { localizePath } = useI18n();
+  useEffect(() => {
+    window.location.href = localizePath("/app/agents");
+  }, [localizePath]);
   return null;
 }

@@ -6,14 +6,42 @@ const OAUTH_STATE_COOKIE = "nora_oauth_state";
 const AUTH_COOKIE = "nora_auth";
 const OAUTH_STATE_MAX_AGE_SECONDS = 10 * 60;
 const AUTH_MAX_AGE_SECONDS = 7 * 24 * 60 * 60;
+const SUPPORTED_LOCALES = new Set(["en", "es", "fr", "zh-Hans", "zh-Hant"]);
+const DEFAULT_LOCALE = "en";
 
 export const SUPPORTED_OAUTH_PROVIDERS = new Set(["google", "github"]);
 
 type OAuthProvider = "google" | "github";
+type LanguageProfile = {
+  effectiveLocale?: string;
+  defaultLocale?: string;
+};
 
 function normalizeProvider(value: unknown): OAuthProvider | null {
   const provider = typeof value === "string" ? value.toLowerCase() : "";
   return SUPPORTED_OAUTH_PROVIDERS.has(provider) ? (provider as OAuthProvider) : null;
+}
+
+function normalizeLocale(value: unknown) {
+  return typeof value === "string" && SUPPORTED_LOCALES.has(value) ? value : DEFAULT_LOCALE;
+}
+
+function localizePath(path: string, locale: string) {
+  const normalized = normalizeLocale(locale);
+  if (normalized === DEFAULT_LOCALE) return path;
+  const [pathname, suffix = ""] = path.split(/([?#].*)/, 2);
+  const cleanPath = pathname || "/";
+  if (cleanPath.startsWith("/app") || cleanPath.startsWith("/admin")) {
+    const [basePath, restPath = ""] = cleanPath.match(/^\/(app|admin)(.*)$/)?.slice(1) || [
+      "",
+      cleanPath,
+    ];
+    const withoutLocale =
+      (restPath || "/").replace(/^\/(en|es|fr|zh-Hans|zh-Hant)(?=\/|$)/, "") || "/";
+    return `/${basePath}/${normalized}${withoutLocale === "/" ? "" : withoutLocale}${suffix}`;
+  }
+  const withoutLocale = cleanPath.replace(/^\/(en|es|fr|zh-Hans|zh-Hant)(?=\/|$)/, "") || "/";
+  return `/${normalized}${withoutLocale === "/" ? "" : withoutLocale}${suffix}`;
 }
 
 function isSecureRequest(ctx: GetServerSidePropsContext) {
@@ -192,18 +220,24 @@ async function backendOAuthLogin(
 async function routeAfterLogin(token: string) {
   try {
     const headers = { Authorization: `Bearer ${token}` };
-    const [providersRes, agentsRes] = await Promise.all([
+    const [profileRes, providersRes, agentsRes] = await Promise.all([
+      fetch(`${API_INTERNAL}/auth/me`, { headers }),
       fetch(`${API_INTERNAL}/llm-providers`, { headers }),
       fetch(`${API_INTERNAL}/agents`, { headers }),
     ]);
-    const [providers, agents] = await Promise.all([
+    const [profile, providers, agents] = await Promise.all([
+      profileRes.ok
+        ? profileRes.json().catch(() => ({}) as LanguageProfile)
+        : ({} as LanguageProfile),
       providersRes.ok ? providersRes.json() : [],
       agentsRes.ok ? agentsRes.json() : [],
     ]);
-    return (Array.isArray(providers) && providers.length > 0) ||
+    const target =
+      (Array.isArray(providers) && providers.length > 0) ||
       (Array.isArray(agents) && agents.length > 0)
-      ? "/app/dashboard"
-      : "/app/getting-started";
+        ? "/app/dashboard"
+        : "/app/getting-started";
+    return localizePath(target, profile.effectiveLocale || profile.defaultLocale);
   } catch {
     return "/app/dashboard";
   }

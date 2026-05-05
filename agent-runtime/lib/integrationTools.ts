@@ -396,7 +396,7 @@ function buildIntegrationSkillMarkdown(integrations = [], options = {}) {
     `2. On OpenClaw, read \`${NORA_SYNC_INTEGRATIONS_CATALOG_FILE}\` to see the connected integration catalog. On Hermes, read \`/opt/data/workspace/integrations/integrations.json\`. Use \`$NORA_INTEGRATIONS_CONFIG\` only if that file exists. Follow each \`detailsFile\` only when credential/tool details are needed.`,
     "3. Prefer an executable Nora integration tool when one is listed.",
     `4. Run \`${NORA_INTEGRATION_TOOL_COMMAND} --list\` if you need executable tool names.`,
-    `5. Execute a supported tool with JSON input: \`${NORA_INTEGRATION_TOOL_COMMAND} <tool_name> '{\"key\":\"value\"}'\`.`,
+    `5. Execute a supported tool with JSON input: \`${NORA_INTEGRATION_TOOL_COMMAND} <tool_name> '{"key":"value"}'\`.`,
     "6. If no executable tool exists, call the provider API or SDK directly with the credential env vars listed below.",
     "7. Summarize the result for the operator instead of pasting large raw payloads unless they asked for full output.",
     "",

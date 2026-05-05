@@ -2,6 +2,8 @@ import Head from "next/head";
 import Link from "next/link";
 import { useState } from "react";
 import { ArrowUpRight, CheckCircle2, Loader2, Lock, Mail, Server, Shield, Zap } from "lucide-react";
+import LanguageSwitcher from "../components/LanguageSwitcher";
+import { normalizeLocale, useI18n } from "../lib/i18n";
 
 const OAUTH_LOGIN_ENABLED = process.env.NEXT_PUBLIC_OAUTH_LOGIN_ENABLED === "true";
 const IS_SELF_HOSTED = process.env.NEXT_PUBLIC_PLATFORM_MODE === "selfhosted";
@@ -16,6 +18,7 @@ const NEXT_STEPS = [
 ];
 
 export default function Signup() {
+  const { localizePath, t } = useI18n();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -38,7 +41,7 @@ export default function Signup() {
       const signupData = await signupRes.json().catch(() => ({}));
 
       if (!signupRes.ok) {
-        setError(signupData.error || "Could not create the account. Please try again.");
+        setError(signupData.error || t("Could not create the account. Please try again."));
         return;
       }
 
@@ -55,14 +58,21 @@ export default function Signup() {
         // Backend set an HttpOnly nora_auth cookie; we don't mirror the token
         // into localStorage anymore. Any stale legacy token gets dropped here.
         localStorage.removeItem("token");
-        window.location.assign("/app/getting-started");
+        const profileRes = await fetch("/api/auth/me", { credentials: "include" });
+        const profile = profileRes.ok ? await profileRes.json().catch(() => ({})) : {};
+        window.location.assign(
+          localizePath(
+            "/app/getting-started",
+            normalizeLocale(profile.effectiveLocale || profile.defaultLocale),
+          ),
+        );
         return;
       }
 
-      window.location.assign("/login");
+      window.location.assign(localizePath("/login"));
     } catch (signupErr) {
       console.error(signupErr);
-      setError("Could not create the account. Please try again.");
+      setError(t("Could not create the account. Please try again."));
     } finally {
       setLoading(false);
     }
@@ -70,7 +80,7 @@ export default function Signup() {
 
   function handleOAuth(provider) {
     setOauthLoading(provider);
-    window.location.assign(`/auth/oauth/${provider}`);
+    window.location.assign(localizePath(`/auth/oauth/${provider}`));
   }
 
   return (
@@ -98,6 +108,7 @@ export default function Signup() {
           </Link>
 
           <div className="flex items-center gap-3">
+            <LanguageSwitcher className="hidden sm:inline-flex" />
             <a
               href={OSS_REPO_URL}
               target="_blank"

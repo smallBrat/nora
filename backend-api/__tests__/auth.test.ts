@@ -277,15 +277,22 @@ describe("Cookie-based authentication", () => {
           role: "user",
           provider: null,
           avatar: null,
+          preferred_locale: null,
           created_at: new Date().toISOString(),
         },
       ],
     });
+    mockDb.query.mockResolvedValueOnce({ rows: [{ default_locale: "es" }] });
 
     const res = await request(app).get("/auth/me").set("Cookie", `nora_auth=${token}`);
 
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty("id", "user-1");
+    expect(res.body).toMatchObject({
+      preferredLocale: null,
+      defaultLocale: "es",
+      effectiveLocale: "es",
+    });
   });
 
   it("POST /auth/logout clears the auth cookie", async () => {
@@ -317,9 +324,11 @@ describe("Protected auth routes", () => {
     const token = jwt.sign({ id: "user-1", role: "user" }, JWT_SECRET, { expiresIn: "1h" });
     const avatar = `data:image/png;base64,${"a".repeat(250000)}`;
 
-    mockDb.query.mockResolvedValueOnce({
-      rows: [{ name: "User One", avatar }],
-    });
+    mockDb.query
+      .mockResolvedValueOnce({
+        rows: [{ name: "User One", avatar, preferred_locale: null }],
+      })
+      .mockResolvedValueOnce({ rows: [{ default_locale: "en" }] });
 
     const res = await request(app)
       .patch("/auth/profile")
@@ -327,7 +336,80 @@ describe("Protected auth routes", () => {
       .send({ avatar });
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ name: "User One", avatar });
+    expect(res.body).toEqual({
+      name: "User One",
+      avatar,
+      preferredLocale: null,
+      defaultLocale: "en",
+      effectiveLocale: "en",
+    });
+  });
+
+  it("updates the authenticated user's preferred language", async () => {
+    const token = jwt.sign({ id: "user-1", role: "user" }, JWT_SECRET, { expiresIn: "1h" });
+
+    mockDb.query
+      .mockResolvedValueOnce({
+        rows: [{ name: "User One", avatar: null, preferred_locale: "fr" }],
+      })
+      .mockResolvedValueOnce({ rows: [{ default_locale: "es" }] });
+
+    const res = await request(app)
+      .patch("/auth/profile")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ preferredLocale: "fr" });
+
+    expect(res.status).toBe(200);
+    expect(mockDb.query).toHaveBeenNthCalledWith(
+      1,
+      expect.stringContaining("preferred_locale = $1"),
+      ["fr", "user-1"],
+    );
+    expect(res.body).toMatchObject({
+      preferredLocale: "fr",
+      defaultLocale: "es",
+      effectiveLocale: "fr",
+    });
+  });
+
+  it("clears the authenticated user's preferred language to the platform default", async () => {
+    const token = jwt.sign({ id: "user-1", role: "user" }, JWT_SECRET, { expiresIn: "1h" });
+
+    mockDb.query
+      .mockResolvedValueOnce({
+        rows: [{ name: "User One", avatar: null, preferred_locale: null }],
+      })
+      .mockResolvedValueOnce({ rows: [{ default_locale: "zh-Hant" }] });
+
+    const res = await request(app)
+      .patch("/auth/profile")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ preferredLocale: null });
+
+    expect(res.status).toBe(200);
+    expect(mockDb.query).toHaveBeenNthCalledWith(
+      1,
+      expect.stringContaining("preferred_locale = $1"),
+      [null, "user-1"],
+    );
+    expect(res.body).toMatchObject({
+      preferredLocale: null,
+      defaultLocale: "zh-Hant",
+      effectiveLocale: "zh-Hant",
+    });
+  });
+
+  it("rejects unsupported preferred languages", async () => {
+    const token = jwt.sign({ id: "user-1", role: "user" }, JWT_SECRET, { expiresIn: "1h" });
+
+    const res = await request(app)
+      .patch("/auth/profile")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ preferredLocale: "de" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/preferredLocale must be one of/i);
+    expect(mockDb.query).not.toHaveBeenCalled();
   });
 
   it("returns the effective subscription payload for the authenticated user", async () => {

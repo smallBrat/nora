@@ -19,6 +19,10 @@ const mockGetSystemBanner = jest.fn().mockResolvedValue({
   featureEnabled: false,
   active: false,
 });
+const mockGetLanguageSettings = jest.fn().mockResolvedValue({
+  defaultLocale: "en",
+  supportedLocales: ["en", "es", "fr", "zh-Hans", "zh-Hant"],
+});
 const RELEASE_ENV_KEYS = [
   "NORA_CURRENT_VERSION",
   "NORA_CURRENT_COMMIT",
@@ -144,6 +148,7 @@ jest.mock("../metrics", () => ({
 }));
 jest.mock("../platformSettings", () => ({
   getDeploymentDefaults: mockGetDeploymentDefaults,
+  getLanguageSettings: mockGetLanguageSettings,
   getSystemBanner: mockGetSystemBanner,
 }));
 
@@ -163,6 +168,10 @@ describe("public platform config", () => {
       message: "",
       featureEnabled: false,
       active: false,
+    });
+    mockGetLanguageSettings.mockReset().mockResolvedValue({
+      defaultLocale: "en",
+      supportedLocales: ["en", "es", "fr", "zh-Hans", "zh-Hant"],
     });
     RELEASE_ENV_KEYS.forEach((key) => delete process.env[key]);
     CATALOG_ENV_KEYS.forEach((key) => delete process.env[key]);
@@ -194,6 +203,10 @@ describe("public platform config", () => {
           message: "",
           featureEnabled: false,
           active: false,
+        },
+        language: {
+          defaultLocale: "en",
+          supportedLocales: ["en", "es", "fr", "zh-Hans", "zh-Hant"],
         },
       }),
     );
