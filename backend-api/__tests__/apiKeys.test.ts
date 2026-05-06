@@ -374,6 +374,110 @@ describe("auth middleware: API key intake", () => {
     expect(res.body.code).toBe("session_required");
   });
 
+  // Regression: an API key issued in workspace A must not unlock workspace B,
+  // even when the issuing user is a member of B. Pre-fix the workspace param
+  // was only checked against the user's membership, not the key's binding.
+  it("rejects an API key with cross-workspace access (workspace route)", async () => {
+    mockDb.query
+      // verifyApiKey: key bound to ws-A
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: "k-cw",
+            workspace_id: "ws-A",
+            created_by: "user-1",
+            key_hash: "h",
+            key_prefix: "nora_p",
+            scopes: ["workspaces:read"],
+            status: "active",
+            workspace_name: "A",
+            user_email: "u@x.com",
+            user_role: "user",
+            user_name: "U",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [] }); // last_used_at update
+    // No membership query should be issued — the workspace gate must reject
+    // before findWorkspaceMembership runs. If the gate is bypassed, the next
+    // mockResolvedValueOnce wouldn't exist and the request would 500/200.
+
+    const res = await request(app)
+      .get("/workspaces/ws-B/alert-rules")
+      .set("Authorization", "Bearer nora_crossworkspace");
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe("wrong_workspace");
+  });
+
+  it("rejects an API key reaching another workspace's agent", async () => {
+    mockDb.query
+      // verifyApiKey: key bound to ws-A; needs both scopes because the request
+      // crosses two scope-gated routers (agents.ts then monitoring.ts).
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: "k-cwa",
+            workspace_id: "ws-A",
+            created_by: "user-1",
+            key_hash: "h",
+            key_prefix: "nora_p",
+            scopes: ["agents:read", "monitoring:read"],
+            status: "active",
+            workspace_name: "A",
+            user_email: "u@x.com",
+            user_role: "user",
+            user_name: "U",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [] }) // last_used_at update
+      // workspace_agents lookup inside enforceApiKeyAgentScope: agent is NOT in ws-A
+      .mockResolvedValueOnce({ rows: [] });
+
+    const res = await request(app)
+      .get("/agents/agent-xyz/metrics")
+      .set("Authorization", "Bearer nora_crossagent");
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe("wrong_workspace");
+  });
+
+  it("filters GET /workspaces to the API key's bound workspace only", async () => {
+    mockDb.query
+      // verifyApiKey: key bound to ws-A
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: "k-list",
+            workspace_id: "ws-A",
+            created_by: "user-1",
+            key_hash: "h",
+            key_prefix: "nora_p",
+            scopes: ["workspaces:read"],
+            status: "active",
+            workspace_name: "A",
+            user_email: "u@x.com",
+            user_role: "user",
+            user_name: "U",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [] }); // last_used_at update
+
+    // listWorkspaces is mocked at the top of this describe block to return [];
+    // override it here to return both workspaces the user belongs to.
+    const workspacesModule = require("../workspaces");
+    workspacesModule.listWorkspaces.mockResolvedValueOnce([
+      { id: "ws-A", name: "A", role: "owner" },
+      { id: "ws-B", name: "B", role: "member" },
+    ]);
+
+    const res = await request(app)
+      .get("/workspaces")
+      .set("Authorization", "Bearer nora_listing");
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([{ id: "ws-A", name: "A", role: "owner" }]);
+  });
+
   it("falls back to API key intake when x-api-key header is set", async () => {
     mockDb.query
       .mockResolvedValueOnce({

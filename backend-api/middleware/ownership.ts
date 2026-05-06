@@ -19,6 +19,48 @@ function roleSatisfies(actual, required) {
   return a >= r;
 }
 
+// API keys are bound to a single workspace at issuance. Even if the issuing
+// user is a member of other workspaces, the key must not unlock them — the
+// `--workspace` flag in the CLI is a binding, not a hint.
+function apiKeyWorkspaceId(req) {
+  if (!req || !req.apiKey) return null;
+  return req.apiKeyWorkspace?.id ?? req.apiKey?.workspaceId ?? null;
+}
+
+function enforceApiKeyWorkspace(req, res, workspaceId) {
+  if (!req.apiKey) return true;
+  const bound = apiKeyWorkspaceId(req);
+  if (!bound || bound !== workspaceId) {
+    res.status(403).json({
+      error: "API key is not scoped to this workspace",
+      code: "wrong_workspace",
+    });
+    return false;
+  }
+  return true;
+}
+
+async function enforceApiKeyAgentScope(req, res, agentId) {
+  if (!req.apiKey) return true;
+  const bound = apiKeyWorkspaceId(req);
+  if (!bound) {
+    res.status(403).json({ error: "API key has no workspace binding", code: "wrong_workspace" });
+    return false;
+  }
+  const result = await db.query(
+    "SELECT 1 FROM workspace_agents WHERE workspace_id = $1 AND agent_id = $2 LIMIT 1",
+    [bound, agentId],
+  );
+  if (result.rows.length === 0) {
+    res.status(403).json({
+      error: "API key is not scoped to this agent's workspace",
+      code: "wrong_workspace",
+    });
+    return false;
+  }
+  return true;
+}
+
 async function findOwnedAgent(agentId, userId) {
   if (!agentId) return null;
   const result = await db.query(
@@ -108,6 +150,7 @@ function requireOwnedAgent(paramName = "id", attachAs = "agent") {
   return async (req, res, next) => {
     try {
       const agentId = req.params[paramName];
+      if (!(await enforceApiKeyAgentScope(req, res, agentId))) return;
       const agent = await findOwnedAgent(agentId, req.user.id);
       if (!agent) return res.status(404).json({ error: "Agent not found" });
       req[attachAs] = agent;
@@ -122,6 +165,7 @@ function requireOwnedWorkspace(paramName = "id", attachAs = "workspace") {
   return async (req, res, next) => {
     try {
       const workspaceId = req.params[paramName];
+      if (!enforceApiKeyWorkspace(req, res, workspaceId)) return;
       const workspace = await findOwnedWorkspace(workspaceId, req.user.id);
       if (!workspace) return res.status(404).json({ error: "Workspace not found" });
       req[attachAs] = workspace;
@@ -142,6 +186,7 @@ function requireAccessibleAgent(requiredRole = "viewer", paramName = "id", attac
   return async (req, res, next) => {
     try {
       const agentId = req.params[paramName];
+      if (!(await enforceApiKeyAgentScope(req, res, agentId))) return;
       const agent = await findAccessibleAgent(agentId, req.user.id, requiredRole);
       if (!agent) return res.status(404).json({ error: "Agent not found" });
       req[attachAs] = agent;
@@ -161,6 +206,7 @@ function requireWorkspaceRole(requiredRole, paramName = "id", attachAs = "worksp
   return async (req, res, next) => {
     try {
       const workspaceId = req.params[paramName];
+      if (!enforceApiKeyWorkspace(req, res, workspaceId)) return;
       const membership = await findWorkspaceMembership(workspaceId, req.user.id);
       if (!membership) return res.status(404).json({ error: "Workspace not found" });
       if (!roleSatisfies(membership.role, requiredRole)) {
@@ -178,6 +224,9 @@ module.exports = {
   WORKSPACE_ROLE_RANK,
   rankRole,
   roleSatisfies,
+  apiKeyWorkspaceId,
+  enforceApiKeyWorkspace,
+  enforceApiKeyAgentScope,
   findOwnedAgent,
   findAccessibleAgent,
   findOwnedWorkspace,

@@ -96,7 +96,9 @@ function recordApiMetric(entry) {
   if (apiBuffer.length > MAX_BUFFER) apiBuffer.shift();
 }
 
-// Flush aggregates every 60 seconds
+// Flush aggregates every 60 seconds. .unref() so this background timer never
+// keeps the event loop alive on its own — important for tests (Jest worker
+// would otherwise hang without --forceExit) and for clean shutdowns.
 setInterval(async () => {
   if (apiBuffer.length === 0) return;
   const batch = apiBuffer.splice(0);
@@ -116,7 +118,7 @@ setInterval(async () => {
   } catch (err) {
     console.error("[metrics] Failed to flush API performance metrics:", err.message);
   }
-}, 60000);
+}, 60000).unref();
 
 /**
  * Get agent cost estimate based on resource usage and token consumption.

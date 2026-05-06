@@ -13,7 +13,7 @@ const {
   buildWorkspaceContext,
   createMutationFailureAuditMiddleware,
 } = require("../auditLog");
-const { findOwnedAgent, requireWorkspaceRole } = require("../middleware/ownership");
+const { apiKeyWorkspaceId, findOwnedAgent, requireWorkspaceRole } = require("../middleware/ownership");
 const { requireSession, scopeByMethod } = require("../middleware/auth");
 
 const router = express.Router();
@@ -47,7 +47,11 @@ function logWorkspaceEvent(req, eventType, message, context) {
 
 router.get("/", async (req, res) => {
   try {
-    res.json(await workspaces.listWorkspaces(req.user.id));
+    const all = await workspaces.listWorkspaces(req.user.id);
+    // API keys are bound to a single workspace — even when the issuing user
+    // belongs to others, the key must not enumerate them.
+    const bound = apiKeyWorkspaceId(req);
+    res.json(bound ? all.filter((w) => w.id === bound) : all);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
