@@ -78,9 +78,7 @@ async function sendMail({ to, subject, text, html, replyTo } = {}) {
       host: config.host,
       port: config.port,
       secure,
-      auth: config.username
-        ? { user: config.username, pass: config.password || "" }
-        : undefined,
+      auth: config.username ? { user: config.username, pass: config.password || "" } : undefined,
     });
   } catch (err) {
     return { delivered: false, error: `transport error: ${err.message}` };
@@ -114,9 +112,7 @@ async function verifyConnection() {
       host: config.host,
       port: config.port,
       secure: Boolean(config.secure),
-      auth: config.username
-        ? { user: config.username, pass: config.password || "" }
-        : undefined,
+      auth: config.username ? { user: config.username, pass: config.password || "" } : undefined,
     });
     await transporter.verify();
     return { ok: true };

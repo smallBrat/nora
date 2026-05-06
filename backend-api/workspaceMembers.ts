@@ -151,10 +151,10 @@ async function removeMember(workspaceId, userId) {
     error.statusCode = 409;
     throw error;
   }
-  await db.query(
-    "DELETE FROM workspace_members WHERE workspace_id = $1 AND user_id = $2",
-    [workspaceId, userId],
-  );
+  await db.query("DELETE FROM workspace_members WHERE workspace_id = $1 AND user_id = $2", [
+    workspaceId,
+    userId,
+  ]);
   return true;
 }
 
@@ -249,7 +249,9 @@ async function acceptInvitation(rawToken, userId) {
     throw error;
   }
   if (new Date(invite.expires_at) < new Date()) {
-    await db.query("UPDATE workspace_invitations SET status = 'expired' WHERE id = $1", [invite.id]);
+    await db.query("UPDATE workspace_invitations SET status = 'expired' WHERE id = $1", [
+      invite.id,
+    ]);
     const error = new Error("Invitation has expired");
     error.statusCode = 410;
     throw error;

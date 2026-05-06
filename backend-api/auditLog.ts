@@ -1,11 +1,7 @@
 // @ts-nocheck
 const monitoring = require("./monitoring");
 const { buildAgentRuntimeFields } = require("./agentRuntimeFields");
-const {
-  ensureAuditSourceMetadata,
-  readRequestHeader,
-  readRequestIp,
-} = require("./auditSource");
+const { ensureAuditSourceMetadata, readRequestHeader, readRequestIp } = require("./auditSource");
 
 function isPlainObject(value) {
   return Object.prototype.toString.call(value) === "[object Object]";
@@ -28,7 +24,7 @@ function normalizeAuditValue(value, depth = 0) {
         status: value.statusCode || value.status || null,
         stack: typeof value.stack === "string" ? value.stack : undefined,
       },
-      depth + 1
+      depth + 1,
     );
   }
 
@@ -77,25 +73,17 @@ function buildAuditMetadata(req, context = {}) {
                 correlationId: req.correlationId || null,
                 ip: readRequestIp(req) || null,
                 origin:
-                  readRequestHeader(req, "origin") ||
-                  readRequestHeader(req, "referer") ||
-                  null,
+                  readRequestHeader(req, "origin") || readRequestHeader(req, "referer") || null,
                 userAgent: readRequestHeader(req, "user-agent") || null,
-                params:
-                  req.params && Object.keys(req.params).length
-                    ? req.params
-                    : undefined,
-                query:
-                  req.query && Object.keys(req.query).length
-                    ? req.query
-                    : undefined,
+                params: req.params && Object.keys(req.params).length ? req.params : undefined,
+                query: req.query && Object.keys(req.query).length ? req.query : undefined,
               }
             : undefined,
           source,
           ...restContext,
         },
-        req
-      )
+        req,
+      ),
     ) || {}
   );
 }
@@ -143,33 +131,17 @@ function buildAgentContext(agent = {}, overrides = {}) {
     agent: {
       id: id || agent?.id || null,
       name: name || agent?.name || null,
-      ownerUserId:
-        ownerUserId !== undefined ? ownerUserId : agent?.user_id || null,
-      ownerEmail:
-        ownerEmail !== undefined ? ownerEmail : agent?.ownerEmail || null,
+      ownerUserId: ownerUserId !== undefined ? ownerUserId : agent?.user_id || null,
+      ownerEmail: ownerEmail !== undefined ? ownerEmail : agent?.ownerEmail || null,
       runtimeFamily:
-        runtimeFamily !== undefined
-          ? runtimeFamily
-          : runtimeFields.runtime_family || null,
-      deployTarget:
-        deployTarget !== undefined
-          ? deployTarget
-          : runtimeFields.deploy_target || null,
+        runtimeFamily !== undefined ? runtimeFamily : runtimeFields.runtime_family || null,
+      deployTarget: deployTarget !== undefined ? deployTarget : runtimeFields.deploy_target || null,
       sandboxProfile:
-        sandboxProfile !== undefined
-          ? sandboxProfile
-          : runtimeFields.sandbox_profile || null,
-      backendType:
-        backendType !== undefined
-          ? backendType
-          : runtimeFields.backend_type || null,
-      sandboxType:
-        sandboxType !== undefined
-          ? sandboxType
-          : runtimeFields.sandbox_type || null,
+        sandboxProfile !== undefined ? sandboxProfile : runtimeFields.sandbox_profile || null,
+      backendType: backendType !== undefined ? backendType : runtimeFields.backend_type || null,
+      sandboxType: sandboxType !== undefined ? sandboxType : runtimeFields.sandbox_type || null,
       node: node !== undefined ? node : agent?.node || null,
-      containerId:
-        containerId !== undefined ? containerId : agent?.container_id || null,
+      containerId: containerId !== undefined ? containerId : agent?.container_id || null,
     },
     ...rest,
   });
@@ -189,45 +161,36 @@ function buildUserContext(user = {}, overrides = {}) {
 }
 
 function buildListingContext(listing = {}, overrides = {}) {
-  const {
-    id,
-    name,
-    ownerUserId,
-    ownerEmail,
-    status,
-    sourceType,
-    category,
-    snapshotId,
-    ...rest
-  } = overrides;
+  const { id, name, ownerUserId, ownerEmail, status, sourceType, category, snapshotId, ...rest } =
+    overrides;
 
   return normalizeAuditValue({
     listing: {
       id: id || listing?.id || null,
       name: name || listing?.name || null,
-      ownerUserId:
-        ownerUserId !== undefined
-          ? ownerUserId
-          : listing?.owner_user_id || null,
-      ownerEmail:
-        ownerEmail !== undefined
-          ? ownerEmail
-          : listing?.owner_email || null,
+      ownerUserId: ownerUserId !== undefined ? ownerUserId : listing?.owner_user_id || null,
+      ownerEmail: ownerEmail !== undefined ? ownerEmail : listing?.owner_email || null,
       status: status || listing?.status || null,
       sourceType: sourceType || listing?.source_type || null,
       category: category || listing?.category || null,
-      snapshotId:
-        snapshotId !== undefined
-          ? snapshotId
-          : listing?.snapshot_id || null,
+      snapshotId: snapshotId !== undefined ? snapshotId : listing?.snapshot_id || null,
     },
     ...rest,
   });
 }
 
 function buildWorkspaceContext(workspace = {}, overrides = {}) {
-  const { id, name, role, memberUserId, memberEmail, invitationId, invitationEmail, invitationRole, ...rest } =
-    overrides || {};
+  const {
+    id,
+    name,
+    role,
+    memberUserId,
+    memberEmail,
+    invitationId,
+    invitationEmail,
+    invitationRole,
+    ...rest
+  } = overrides || {};
   return normalizeAuditValue({
     workspace: {
       id: id || workspace?.id || null,
@@ -267,21 +230,12 @@ function buildReportContext(report = {}, overrides = {}) {
       id: id || report?.id || null,
       status: status || report?.status || null,
       reporterUserId:
-        reporterUserId !== undefined
-          ? reporterUserId
-          : report?.reporter_user_id || null,
-      reporterEmail:
-        reporterEmail !== undefined
-          ? reporterEmail
-          : report?.reporter_email || null,
+        reporterUserId !== undefined ? reporterUserId : report?.reporter_user_id || null,
+      reporterEmail: reporterEmail !== undefined ? reporterEmail : report?.reporter_email || null,
       reviewerUserId:
-        reviewerUserId !== undefined
-          ? reviewerUserId
-          : report?.reviewed_by_user_id || null,
+        reviewerUserId !== undefined ? reviewerUserId : report?.reviewed_by_user_id || null,
       reviewerEmail:
-        reviewerEmail !== undefined
-          ? reviewerEmail
-          : report?.reviewed_by_email || null,
+        reviewerEmail !== undefined ? reviewerEmail : report?.reviewed_by_email || null,
       reason: reason || report?.reason || null,
     },
     ...rest,
@@ -314,28 +268,25 @@ function createMutationFailureAuditMiddleware(routeArea) {
         statusCode: res.statusCode,
       };
 
-      const metadata = buildAuditMetadata(
-        req,
-        {
-          ...(res.locals?.auditContext || {}),
-          ...buildErrorMetadata(errorLike, {
-            context: {
-              area: routeArea,
-              severity: res.statusCode >= 500 ? "error" : "warning",
-            },
-            response: {
-              status: res.statusCode,
-            },
-          }),
-        }
-      );
+      const metadata = buildAuditMetadata(req, {
+        ...(res.locals?.auditContext || {}),
+        ...buildErrorMetadata(errorLike, {
+          context: {
+            area: routeArea,
+            severity: res.statusCode >= 500 ? "error" : "warning",
+          },
+          response: {
+            status: res.statusCode,
+          },
+        }),
+      });
 
       Promise.resolve(
         monitoring.logEvent(
           `${routeArea}_action_failed`,
           `${routeArea} action failed: ${req.method} ${req.originalUrl}`,
-          metadata
-        )
+          metadata,
+        ),
       ).catch((error) => {
         console.error("Failed to write audit failure event:", error.message);
       });

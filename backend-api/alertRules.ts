@@ -81,7 +81,9 @@ function normalizeChannels(value) {
         if (trimmed && !cleanTo.includes(trimmed)) cleanTo.push(trimmed);
       }
       if (cleanTo.length === 0) {
-        const error = new Error(`channel #${index + 1}: email channel requires at least one recipient in "to"`);
+        const error = new Error(
+          `channel #${index + 1}: email channel requires at least one recipient in "to"`,
+        );
         error.statusCode = 400;
         throw error;
       }

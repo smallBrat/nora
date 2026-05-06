@@ -104,10 +104,9 @@ export async function revokeInvitation(
   workspaceId: string,
   invitationId: string,
 ): Promise<WorkspaceInvitation> {
-  const res = await fetchWithAuth(
-    `/api/workspaces/${workspaceId}/invitations/${invitationId}`,
-    { method: "DELETE" },
-  );
+  const res = await fetchWithAuth(`/api/workspaces/${workspaceId}/invitations/${invitationId}`, {
+    method: "DELETE",
+  });
   return jsonOrThrow<WorkspaceInvitation>(res);
 }
 
@@ -209,7 +208,12 @@ export async function createAlertRule(
 export async function updateAlertRule(
   workspaceId: string,
   ruleId: string,
-  payload: Partial<{ name: string; eventPattern: string; channels: AlertChannel[]; enabled: boolean }>,
+  payload: Partial<{
+    name: string;
+    eventPattern: string;
+    channels: AlertChannel[];
+    enabled: boolean;
+  }>,
 ): Promise<AlertRule> {
   const res = await fetchWithAuth(`/api/workspaces/${workspaceId}/alert-rules/${ruleId}`, {
     method: "PATCH",
@@ -273,9 +277,7 @@ export async function getWorkspaceCost(
   workspaceId: string,
   { periodDays = 30 }: { periodDays?: number } = {},
 ): Promise<WorkspaceCost> {
-  const res = await fetchWithAuth(
-    `/api/workspaces/${workspaceId}/cost?period_days=${periodDays}`,
-  );
+  const res = await fetchWithAuth(`/api/workspaces/${workspaceId}/cost?period_days=${periodDays}`);
   return jsonOrThrow<WorkspaceCost>(res);
 }
 
@@ -322,10 +324,7 @@ export async function listAgentVersions(agentId: string): Promise<AgentVersion[]
   return jsonOrThrow<AgentVersion[]>(res);
 }
 
-export async function getAgentVersion(
-  agentId: string,
-  versionId: string,
-): Promise<AgentVersion> {
+export async function getAgentVersion(agentId: string, versionId: string): Promise<AgentVersion> {
   const res = await fetchWithAuth(`/api/agents/${agentId}/versions/${versionId}`);
   return jsonOrThrow<AgentVersion>(res);
 }

@@ -145,13 +145,18 @@ router.post("/:id/rollback", async (req, res) => {
       rolledBackAt: new Date().toISOString(),
     });
 
-    await logFleetEvent(req, "fleet_migration_rolled_back", `Rolled back fleet migration ${req.params.id}`, {
-      migration: {
-        id: req.params.id,
-        restoredCount: restoredAgents.length,
-        errorCount: errors.length,
+    await logFleetEvent(
+      req,
+      "fleet_migration_rolled_back",
+      `Rolled back fleet migration ${req.params.id}`,
+      {
+        migration: {
+          id: req.params.id,
+          restoredCount: restoredAgents.length,
+          errorCount: errors.length,
+        },
       },
-    });
+    );
 
     res.json({ migration: updated, restoredAgents, errors });
   } catch (e) {

@@ -301,10 +301,7 @@ function normalizeSmtpSettings(input = {}, fallback = DEFAULT_SMTP_SETTINGS) {
       1,
       65535,
     ),
-    smtpSecure: parseBoolean(
-      input.smtp_secure ?? input.smtpSecure,
-      fallback.smtpSecure,
-    ),
+    smtpSecure: parseBoolean(input.smtp_secure ?? input.smtpSecure, fallback.smtpSecure),
     smtpUsername: normalizeText(input.smtp_username ?? input.smtpUsername) || fallback.smtpUsername,
     smtpPasswordEncrypted:
       input.smtp_password_encrypted ??
@@ -353,7 +350,8 @@ function parseRequiredSmtpSettings(input = {}) {
     clearSmtpPassword: parseBoolean(input.clearSmtpPassword, false),
     smtpFromAddress: fromAddress,
     smtpFromName:
-      normalizeText(input.smtpFromName ?? input.smtp_from_name) || DEFAULT_SMTP_SETTINGS.smtpFromName,
+      normalizeText(input.smtpFromName ?? input.smtp_from_name) ||
+      DEFAULT_SMTP_SETTINGS.smtpFromName,
   };
 }
 
@@ -377,9 +375,7 @@ function resolveSmtpSettingsPayload(settings) {
     smtpFromAddress: settings.smtpFromAddress,
     smtpFromName: settings.smtpFromName,
     smtpPasswordMasked: storedPasswordMasked,
-    smtpConfigured: Boolean(
-      settings.smtpHost && settings.smtpPort && settings.smtpFromAddress,
-    ),
+    smtpConfigured: Boolean(settings.smtpHost && settings.smtpPort && settings.smtpFromAddress),
   };
 }
 
@@ -914,9 +910,7 @@ async function getSmtpSettings() {
       WHERE singleton = TRUE
       LIMIT 1`,
   );
-  return resolveSmtpSettingsPayload(
-    normalizeSmtpSettings(result.rows[0] || DEFAULT_SMTP_SETTINGS),
-  );
+  return resolveSmtpSettingsPayload(normalizeSmtpSettings(result.rows[0] || DEFAULT_SMTP_SETTINGS));
 }
 
 // Decrypted SMTP config for mailer.ts. Returns null when SMTP is not

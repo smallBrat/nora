@@ -54,7 +54,6 @@ export default function WorkspaceCostPage() {
 
   useEffect(() => {
     reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceId, periodDays]);
 
   async function handleSaveBudget(event: React.FormEvent) {
@@ -135,8 +134,8 @@ export default function WorkspaceCostPage() {
               <ul className="text-xs text-slate-700 space-y-1">
                 {cost.crossings.map((crossing, i) => (
                   <li key={i}>
-                    {crossing.bucket === "hard" ? "🚨" : "⚠️"} {crossing.budget.period}{" "}
-                    budget at {crossing.pct}% — {formatUsd(crossing.currentUsd)} of{" "}
+                    {crossing.bucket === "hard" ? "🚨" : "⚠️"} {crossing.budget.period} budget at{" "}
+                    {crossing.pct}% — {formatUsd(crossing.currentUsd)} of{" "}
                     {formatUsd(crossing.budget.limitUsd)}
                   </li>
                 ))}
@@ -166,13 +165,17 @@ export default function WorkspaceCostPage() {
         <section className="bg-white border border-slate-200 rounded-[2.5rem] p-8 shadow-sm">
           <h2 className="text-lg font-black text-slate-900 mb-4">{t("Per-agent breakdown")}</h2>
           {sortedAgents.length === 0 ? (
-            <div className="text-sm text-slate-500 py-8 text-center">{t("No agents in this workspace.")}</div>
+            <div className="text-sm text-slate-500 py-8 text-center">
+              {t("No agents in this workspace.")}
+            </div>
           ) : (
             <ul className="divide-y divide-slate-100">
               {sortedAgents.map((agent) => (
                 <li key={agent.agentId} className="py-3 flex items-center justify-between gap-4">
                   <div className="min-w-0 flex-1">
-                    <div className="text-sm font-bold text-slate-900 truncate">{agent.agentName}</div>
+                    <div className="text-sm font-bold text-slate-900 truncate">
+                      {agent.agentName}
+                    </div>
                     <div className="text-xs text-slate-500">
                       {t("Compute")} {formatUsd(agent.compute_cost)} · {t("Tokens")}{" "}
                       {formatUsd(agent.token_cost)} · {agent.uptime_hours.toFixed(1)} {t("hrs")}

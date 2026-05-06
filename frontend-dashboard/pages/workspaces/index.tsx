@@ -26,7 +26,9 @@ export default function Workspaces() {
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, []);
 
   const create = async (e) => {
     e.preventDefault();
@@ -68,8 +70,12 @@ export default function Workspaces() {
               <FolderOpen size={28} strokeWidth={2.5} />
             </div>
             <div className="flex flex-col">
-              <h1 className="text-xl sm:text-2xl md:text-3xl font-black text-slate-900 tracking-tight leading-none mb-1">Workspaces</h1>
-              <span className="text-[10px] text-slate-400 font-black uppercase tracking-widest opacity-80 leading-none">Logical groupings for your agents</span>
+              <h1 className="text-xl sm:text-2xl md:text-3xl font-black text-slate-900 tracking-tight leading-none mb-1">
+                Workspaces
+              </h1>
+              <span className="text-[10px] text-slate-400 font-black uppercase tracking-widest opacity-80 leading-none">
+                Logical groupings for your agents
+              </span>
             </div>
           </div>
           <form onSubmit={create} className="flex items-center gap-3 w-full md:w-auto">
@@ -93,7 +99,9 @@ export default function Workspaces() {
         {loading ? (
           <div className="h-64 flex flex-col items-center justify-center text-slate-400 gap-4 bg-white border border-slate-200 rounded-[3rem] border-dashed">
             <Loader2 size={40} className="animate-spin text-blue-500" />
-            <span className="text-sm font-bold uppercase tracking-widest">Loading workspaces...</span>
+            <span className="text-sm font-bold uppercase tracking-widest">
+              Loading workspaces...
+            </span>
           </div>
         ) : workspaces.length === 0 ? (
           <div className="h-64 flex flex-col items-center justify-center text-slate-400 gap-3 bg-white border border-slate-200 rounded-[3rem] border-dashed">
@@ -114,7 +122,9 @@ export default function Workspaces() {
                     </div>
                     <div className="flex flex-col">
                       <h3 className="text-lg font-black text-slate-900 leading-tight">{w.name}</h3>
-                      <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">ID: {w.id}</span>
+                      <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+                        ID: {w.id}
+                      </span>
                     </div>
                   </div>
                   <div className="flex items-center gap-1">

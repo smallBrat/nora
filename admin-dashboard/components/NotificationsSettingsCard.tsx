@@ -1,13 +1,5 @@
 import { useEffect, useState } from "react";
-import {
-  CheckCircle2,
-  Loader2,
-  Mail,
-  RefreshCw,
-  Save,
-  Send,
-  AlertCircle,
-} from "lucide-react";
+import { CheckCircle2, Loader2, Mail, RefreshCw, Save, Send, AlertCircle } from "lucide-react";
 import { fetchWithAuth } from "../lib/api";
 import { useToast } from "./Toast";
 import { useI18n } from "../lib/i18n";
@@ -38,7 +30,9 @@ export default function NotificationsSettingsCard() {
   const { t } = useI18n();
   const toast = useToast();
   const [settings, setSettings] = useState<SmtpSettings>(EMPTY);
-  const [form, setForm] = useState<Partial<SmtpSettings & { smtpPassword: string; clearSmtpPassword: boolean }>>({});
+  const [form, setForm] = useState<
+    Partial<SmtpSettings & { smtpPassword: string; clearSmtpPassword: boolean }>
+  >({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -60,7 +54,6 @@ export default function NotificationsSettingsCard() {
 
   useEffect(() => {
     load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function update<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
@@ -227,11 +220,7 @@ export default function NotificationsSettingsCard() {
             onClick={handleTest}
             disabled={testing || !settings.smtpConfigured}
             className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-            title={
-              settings.smtpConfigured
-                ? ""
-                : t("Save SMTP settings first")
-            }
+            title={settings.smtpConfigured ? "" : t("Save SMTP settings first")}
           >
             {testing ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
             {t("Send test email to me")}

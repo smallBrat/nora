@@ -359,7 +359,9 @@ describe("Workspace member management", () => {
     mockMailer.sendMail.mockResolvedValueOnce({ delivered: true, messageId: "m-1" });
     process.env.NEXTAUTH_URL = "https://nora.example.com";
     mockDb.query
-      .mockResolvedValueOnce({ rows: [{ id: "ws-1", user_id: "creator", role: "admin", name: "Prod" }] })
+      .mockResolvedValueOnce({
+        rows: [{ id: "ws-1", user_id: "creator", role: "admin", name: "Prod" }],
+      })
       .mockResolvedValueOnce({ rows: [{ name: "Prod" }] }); // workspace name lookup
     mockWorkspaceMembers.createInvitation.mockResolvedValueOnce({
       id: "inv-2",

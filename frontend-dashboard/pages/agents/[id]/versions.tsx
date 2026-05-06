@@ -1,21 +1,10 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
-import {
-  ArrowLeft,
-  History,
-  Loader2,
-  RotateCcw,
-  Tag,
-  GitBranch,
-} from "lucide-react";
+import { ArrowLeft, History, Loader2, RotateCcw, Tag, GitBranch } from "lucide-react";
 import Layout from "../../../components/layout/Layout";
 import { useToast } from "../../../components/Toast";
 import { useI18n } from "../../../lib/i18n";
-import {
-  type AgentVersion,
-  listAgentVersions,
-  rollbackAgent,
-} from "../../../lib/workspaceClient";
+import { type AgentVersion, listAgentVersions, rollbackAgent } from "../../../lib/workspaceClient";
 
 const SOURCE_BADGES: Record<AgentVersion["source"], string> = {
   edit: "bg-slate-50 text-slate-700 border-slate-200",
@@ -54,7 +43,6 @@ export default function AgentVersionsPage() {
 
   useEffect(() => {
     reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agentId]);
 
   async function handleRollback(version: AgentVersion) {

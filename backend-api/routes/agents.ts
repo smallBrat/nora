@@ -1858,10 +1858,9 @@ router.post(
     });
 
     // Snapshot the current state first so rollback is itself reversible.
-    const currentResult = await db.query(
-      "SELECT template_payload FROM agents WHERE id = $1",
-      [agent.id],
-    );
+    const currentResult = await db.query("SELECT template_payload FROM agents WHERE id = $1", [
+      agent.id,
+    ]);
     const currentPayload = currentResult.rows[0]?.template_payload || {};
     await agentVersions.recordVersionBestEffort(agent.id, currentPayload, {
       createdBy: req.user.id,

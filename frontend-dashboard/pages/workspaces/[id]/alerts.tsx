@@ -1,14 +1,6 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
-import {
-  Bell,
-  Loader2,
-  Plus,
-  Send,
-  Trash2,
-  AlertCircle,
-  CheckCircle2,
-} from "lucide-react";
+import { Bell, Loader2, Plus, Send, Trash2, AlertCircle, CheckCircle2 } from "lucide-react";
 import Layout from "../../../components/layout/Layout";
 import { useToast } from "../../../components/Toast";
 import { useI18n } from "../../../lib/i18n";
@@ -59,7 +51,6 @@ export default function WorkspaceAlertsPage() {
 
   useEffect(() => {
     reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceId]);
 
   async function handleCreate(event: React.FormEvent) {
@@ -189,7 +180,9 @@ export default function WorkspaceAlertsPage() {
               <Loader2 size={24} className="animate-spin" />
             </div>
           ) : rules.length === 0 ? (
-            <div className="text-sm text-slate-500 py-8 text-center">{t("No alert rules yet.")}</div>
+            <div className="text-sm text-slate-500 py-8 text-center">
+              {t("No alert rules yet.")}
+            </div>
           ) : (
             <ul className="divide-y divide-slate-100">
               {rules.map((rule) => (

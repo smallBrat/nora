@@ -161,10 +161,10 @@ async function verifyApiKey(rawKey) {
   if (!row) return null;
 
   if (row.key_hash && row.key_hash !== primaryHash) {
-    await db.query(
-      "UPDATE api_keys SET key_hash = $1, last_used_at = NOW() WHERE id = $2",
-      [primaryHash, row.id],
-    );
+    await db.query("UPDATE api_keys SET key_hash = $1, last_used_at = NOW() WHERE id = $2", [
+      primaryHash,
+      row.id,
+    ]);
   } else {
     await db.query("UPDATE api_keys SET last_used_at = NOW() WHERE id = $1", [row.id]);
   }

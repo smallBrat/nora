@@ -1,15 +1,17 @@
 // @ts-nocheck
 const db = require("./db");
 const { deployQueue } = require("./redisQueue");
-const {
-  ensureAuditSourceMetadata,
-} = require("./auditSource");
+const { ensureAuditSourceMetadata } = require("./auditSource");
 
 const DEFAULT_EVENT_LIMIT = 20;
 const DEFAULT_AUDIT_PAGE_LIMIT = 30;
 const MAX_AUDIT_PAGE_LIMIT = 100;
 
-function normalizePositiveInteger(value, defaultValue, { min = 1, max = Number.MAX_SAFE_INTEGER } = {}) {
+function normalizePositiveInteger(
+  value,
+  defaultValue,
+  { min = 1, max = Number.MAX_SAFE_INTEGER } = {},
+) {
   const numeric = Number.parseInt(value, 10);
   if (!Number.isFinite(numeric)) return defaultValue;
   return Math.min(max, Math.max(min, numeric));
@@ -27,10 +29,7 @@ function normalizeEventFilters(filters = {}) {
   };
 }
 
-function buildEventWhereClause(
-  filters = {},
-  { tableAlias = "", startIndex = 1 } = {}
-) {
+function buildEventWhereClause(filters = {}, { tableAlias = "", startIndex = 1 } = {}) {
   const normalized = normalizeEventFilters(filters);
   const prefix = tableAlias ? `${tableAlias}.` : "";
   const clauses = [];
@@ -41,7 +40,7 @@ function buildEventWhereClause(
     params.push(`%${normalized.search}%`);
     parameterIndex += 1;
     clauses.push(
-      `(${prefix}type ILIKE $${parameterIndex} OR COALESCE(${prefix}message, '') ILIKE $${parameterIndex} OR COALESCE(${prefix}metadata::text, '') ILIKE $${parameterIndex})`
+      `(${prefix}type ILIKE $${parameterIndex} OR COALESCE(${prefix}message, '') ILIKE $${parameterIndex} OR COALESCE(${prefix}metadata::text, '') ILIKE $${parameterIndex})`,
     );
   }
 
@@ -71,11 +70,7 @@ function buildEventWhereClause(
 
 function joinWhereClauses(clauses = []) {
   const normalized = clauses
-    .map((clause) =>
-      typeof clause === "string"
-        ? clause.trim().replace(/^WHERE\s+/i, "")
-        : ""
-    )
+    .map((clause) => (typeof clause === "string" ? clause.trim().replace(/^WHERE\s+/i, "") : ""))
     .filter(Boolean);
 
   return normalized.length ? `WHERE ${normalized.join(" AND ")}` : "";
@@ -83,7 +78,7 @@ function joinWhereClauses(clauses = []) {
 
 function buildUserEventScopeClause(
   userId,
-  { agentId = null, tableAlias = "e", startIndex = 1 } = {}
+  { agentId = null, tableAlias = "e", startIndex = 1 } = {},
 ) {
   const prefix = tableAlias ? `${tableAlias}.` : "";
   const params = [];
@@ -127,7 +122,7 @@ function buildUserEventScopeClause(
         ${prefix}metadata #>> '{agent,id}' = $${parameterIndex}
         OR ${prefix}metadata #>> '{sourceAgent,id}' = $${parameterIndex}
         OR ${prefix}metadata->>'agentId' = $${parameterIndex}
-      )`
+      )`,
     );
   }
 
@@ -156,16 +151,10 @@ async function queryEvents(filters = {}, { limit = null, offset = 0 } = {}) {
   return result.rows;
 }
 
-async function queryUserEvents(
-  userId,
-  options = {},
-  { limit = null, offset = 0 } = {}
-) {
+async function queryUserEvents(userId, options = {}, { limit = null, offset = 0 } = {}) {
   const scope = buildUserEventScopeClause(userId, {
     agentId:
-      typeof options.agentId === "string" && options.agentId.trim()
-        ? options.agentId.trim()
-        : null,
+      typeof options.agentId === "string" && options.agentId.trim() ? options.agentId.trim() : null,
     tableAlias: "e",
   });
   const filter = buildEventWhereClause(normalizeEventFilters(options), {
@@ -191,18 +180,16 @@ async function queryUserEvents(
 }
 
 async function getMetrics(options = {}) {
-  const normalizedOptions =
-    typeof options === "string" ? { userId: options } : options || {};
+  const normalizedOptions = typeof options === "string" ? { userId: options } : options || {};
   const userId =
     typeof normalizedOptions.userId === "string" && normalizedOptions.userId.trim()
       ? normalizedOptions.userId.trim()
       : null;
 
   const agentCountsQuery = userId
-    ? db.query(
-        "SELECT status, count(*)::int FROM agents WHERE user_id = $1 GROUP BY status",
-        [userId]
-      )
+    ? db.query("SELECT status, count(*)::int FROM agents WHERE user_id = $1 GROUP BY status", [
+        userId,
+      ])
     : db.query("SELECT status, count(*)::int FROM agents GROUP BY status");
 
   const deploymentCountQuery = userId
@@ -211,7 +198,7 @@ async function getMetrics(options = {}) {
            FROM deployments d
            INNER JOIN agents a ON a.id = d.agent_id
           WHERE a.user_id = $1`,
-        [userId]
+        [userId],
       )
     : db.query("SELECT count(*)::int as total FROM deployments");
 
@@ -240,12 +227,7 @@ async function getMetrics(options = {}) {
     };
   } else {
     try {
-      queueStats = await deployQueue.getJobCounts(
-        "waiting",
-        "active",
-        "completed",
-        "failed"
-      );
+      queueStats = await deployQueue.getJobCounts("waiting", "active", "completed", "failed");
     } catch (e) {
       /* queue may not be ready */
     }
@@ -278,7 +260,7 @@ async function getRecentEvents(limit = 20) {
         min: 1,
         max: MAX_AUDIT_PAGE_LIMIT,
       }),
-    }
+    },
   );
 }
 
@@ -301,9 +283,7 @@ async function getUserEventsPage(userId, options = {}) {
     max: Number.MAX_SAFE_INTEGER,
   });
   const scopedAgentId =
-    typeof options.agentId === "string" && options.agentId.trim()
-      ? options.agentId.trim()
-      : null;
+    typeof options.agentId === "string" && options.agentId.trim() ? options.agentId.trim() : null;
   const scope = buildUserEventScopeClause(userId, {
     agentId: scopedAgentId,
     tableAlias: "e",
@@ -316,16 +296,13 @@ async function getUserEventsPage(userId, options = {}) {
   const queryParams = [...scope.params, ...filter.params];
 
   const [countResult, typeResult] = await Promise.all([
-    db.query(
-      `SELECT count(*)::int AS total FROM events e ${whereClause}`,
-      queryParams
-    ),
+    db.query(`SELECT count(*)::int AS total FROM events e ${whereClause}`, queryParams),
     db.query(
       `SELECT DISTINCT e.type
          FROM events e
         ${scope.whereClause}
         ORDER BY e.type ASC`,
-      scope.params
+      scope.params,
     ),
   ]);
 
@@ -388,17 +365,18 @@ async function exportEvents(filters = {}) {
 
 async function logEvent(type, message, metadata = {}) {
   const enrichedMetadata = ensureAuditSourceMetadata(metadata);
-  await db.query(
-    "INSERT INTO events(type, message, metadata) VALUES($1, $2, $3)",
-    [type, message, JSON.stringify(enrichedMetadata)]
-  );
+  await db.query("INSERT INTO events(type, message, metadata) VALUES($1, $2, $3)", [
+    type,
+    message,
+    JSON.stringify(enrichedMetadata),
+  ]);
   // Fire matching alert rules. Lazy-required to avoid a hard module cycle and
   // to let tests jest.mock("../alertRules") cleanly. Failures inside the
   // evaluator are swallowed there — the event itself is already persisted.
   try {
     const alertRules = require("./alertRules");
-    Promise.resolve(alertRules.evaluateAndDeliver(type, message, enrichedMetadata)).catch(
-      (err) => console.error("Alert rule evaluation failed:", err.message),
+    Promise.resolve(alertRules.evaluateAndDeliver(type, message, enrichedMetadata)).catch((err) =>
+      console.error("Alert rule evaluation failed:", err.message),
     );
   } catch (err) {
     // alertRules module not present (shouldn't happen) — keep going.

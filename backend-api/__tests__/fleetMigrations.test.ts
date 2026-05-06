@@ -26,10 +26,14 @@ beforeEach(() => {
 
 describe("normalizeSelection", () => {
   it("rejects unknown deploy_target", () => {
-    expect(() => fleet.normalizeSelection({ deploy_target: "moon" }, "from")).toThrow(/deploy_target/);
+    expect(() => fleet.normalizeSelection({ deploy_target: "moon" }, "from")).toThrow(
+      /deploy_target/,
+    );
   });
   it("rejects unknown sandbox_profile", () => {
-    expect(() => fleet.normalizeSelection({ sandbox_profile: "weird" }, "to")).toThrow(/sandbox_profile/);
+    expect(() => fleet.normalizeSelection({ sandbox_profile: "weird" }, "to")).toThrow(
+      /sandbox_profile/,
+    );
   });
   it("accepts a fully-specified selection", () => {
     const sel = fleet.normalizeSelection(

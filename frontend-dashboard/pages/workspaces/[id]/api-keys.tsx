@@ -53,7 +53,6 @@ export default function WorkspaceApiKeysPage() {
 
   useEffect(() => {
     reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceId]);
 
   function toggleScope(scope: string) {
@@ -87,8 +86,7 @@ export default function WorkspaceApiKeysPage() {
 
   async function handleRevoke(key: ApiKey) {
     if (!workspaceId) return;
-    if (!confirm(`Revoke API key "${key.label}"? Any clients using it will start failing.`))
-      return;
+    if (!confirm(`Revoke API key "${key.label}"? Any clients using it will start failing.`)) return;
     try {
       await revokeApiKey(workspaceId, key.id);
       toast.success(t("Revoke") + ": " + key.label);
@@ -153,9 +151,7 @@ export default function WorkspaceApiKeysPage() {
                   </code>
                   <button
                     type="button"
-                    onClick={() =>
-                      copyToClipboard(justCreated.apiKey!, t("Copied to clipboard"))
-                    }
+                    onClick={() => copyToClipboard(justCreated.apiKey!, t("Copied to clipboard"))}
                     className="p-3 rounded-xl bg-white border border-emerald-200 text-emerald-700 hover:bg-emerald-100"
                   >
                     <Copy size={16} />

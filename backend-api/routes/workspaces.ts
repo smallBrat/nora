@@ -13,10 +13,7 @@ const {
   buildWorkspaceContext,
   createMutationFailureAuditMiddleware,
 } = require("../auditLog");
-const {
-  findOwnedAgent,
-  requireWorkspaceRole,
-} = require("../middleware/ownership");
+const { findOwnedAgent, requireWorkspaceRole } = require("../middleware/ownership");
 const { requireSession, scopeByMethod } = require("../middleware/auth");
 
 const router = express.Router();
@@ -36,7 +33,11 @@ router.use("/:id", workspaceCostRouter);
 
 function logWorkspaceEvent(req, eventType, message, context) {
   return Promise.resolve(
-    monitoring.logEvent(eventType, message, buildAuditMetadata(req, buildWorkspaceContext({}, context))),
+    monitoring.logEvent(
+      eventType,
+      message,
+      buildAuditMetadata(req, buildWorkspaceContext({}, context)),
+    ),
   ).catch((error) => {
     console.error(`Failed to write workspace audit event ${eventType}:`, error.message);
   });
@@ -257,32 +258,25 @@ router.post("/:id/invitations", requireWorkspaceRole("admin"), async (req, res) 
   }
 });
 
-router.delete(
-  "/:id/invitations/:invitationId",
-  requireWorkspaceRole("admin"),
-  async (req, res) => {
-    try {
-      const revoked = await workspaceMembers.revokeInvitation(
-        req.params.invitationId,
-        req.params.id,
-      );
-      if (!revoked) return res.status(404).json({ error: "Invitation not found" });
-      await logWorkspaceEvent(
-        req,
-        "workspace_invitation_revoked",
-        `Revoked invitation ${revoked.id} for ${revoked.email}`,
-        {
-          id: req.params.id,
-          invitationId: revoked.id,
-          invitationEmail: revoked.email,
-          invitationRole: revoked.role,
-        },
-      );
-      res.json(revoked);
-    } catch (e) {
-      res.status(e.statusCode || 500).json({ error: e.message });
-    }
-  },
-);
+router.delete("/:id/invitations/:invitationId", requireWorkspaceRole("admin"), async (req, res) => {
+  try {
+    const revoked = await workspaceMembers.revokeInvitation(req.params.invitationId, req.params.id);
+    if (!revoked) return res.status(404).json({ error: "Invitation not found" });
+    await logWorkspaceEvent(
+      req,
+      "workspace_invitation_revoked",
+      `Revoked invitation ${revoked.id} for ${revoked.email}`,
+      {
+        id: req.params.id,
+        invitationId: revoked.id,
+        invitationEmail: revoked.email,
+        invitationRole: revoked.role,
+      },
+    );
+    res.json(revoked);
+  } catch (e) {
+    res.status(e.statusCode || 500).json({ error: e.message });
+  }
+});
 
 module.exports = router;

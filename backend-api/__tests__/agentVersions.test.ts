@@ -24,9 +24,9 @@ beforeEach(() => {
 
 describe("recordVersion", () => {
   it("rejects unknown source values", async () => {
-    await expect(
-      agentVersions.recordVersion("a-1", { foo: 1 }, { source: "wat" }),
-    ).rejects.toThrow(/Unknown agent version source/);
+    await expect(agentVersions.recordVersion("a-1", { foo: 1 }, { source: "wat" })).rejects.toThrow(
+      /Unknown agent version source/,
+    );
   });
 
   it("assigns version_number as max+1 inside a transaction", async () => {

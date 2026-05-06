@@ -27,7 +27,8 @@ export default function WorkspaceSwitcher({ className = "" }: { className?: stri
         if (!active) return;
         setWorkspaces(rows);
         const stored = getActiveWorkspaceId();
-        const found = stored && rows.some((row) => row.id === stored) ? stored : rows[0]?.id || null;
+        const found =
+          stored && rows.some((row) => row.id === stored) ? stored : rows[0]?.id || null;
         setActiveId(found);
         if (found && found !== stored) setActiveWorkspaceId(found);
       })
@@ -60,9 +61,7 @@ export default function WorkspaceSwitcher({ className = "" }: { className?: stri
   }
 
   const active = workspaces.find((w) => w.id === activeId) || null;
-  const label = loading
-    ? t("Workspaces")
-    : active?.name || t("Workspaces");
+  const label = loading ? t("Workspaces") : active?.name || t("Workspaces");
 
   return (
     <div ref={containerRef} className={clsx("relative", className)}>

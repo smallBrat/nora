@@ -12,7 +12,11 @@ const router = express.Router({ mergeParams: true });
 
 function logAlertEvent(req, eventType, message, context) {
   return Promise.resolve(
-    monitoring.logEvent(eventType, message, buildAuditMetadata(req, buildWorkspaceContext({}, context))),
+    monitoring.logEvent(
+      eventType,
+      message,
+      buildAuditMetadata(req, buildWorkspaceContext({}, context)),
+    ),
   ).catch((error) => {
     console.error(`Failed to write alert audit event ${eventType}:`, error.message);
   });

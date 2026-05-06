@@ -87,7 +87,6 @@ export default function AdminMembersPage() {
 
   useEffect(() => {
     reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceFilter, roleFilter]);
 
   const totalMembers = useMemo(
@@ -352,7 +351,8 @@ function WorkspaceTable({
               <td className="px-4 py-3 text-xs text-slate-700">
                 {row.memberCounts.total}{" "}
                 <span className="text-slate-400">
-                  ({row.memberCounts.owner}/{row.memberCounts.admin}/{row.memberCounts.editor}/{row.memberCounts.viewer})
+                  ({row.memberCounts.owner}/{row.memberCounts.admin}/{row.memberCounts.editor}/
+                  {row.memberCounts.viewer})
                 </span>
               </td>
               <td className="px-4 py-3 text-xs text-slate-700">{row.agentCount}</td>

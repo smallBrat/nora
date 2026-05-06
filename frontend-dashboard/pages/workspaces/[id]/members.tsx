@@ -90,7 +90,6 @@ export default function WorkspaceMembersPage() {
 
   useEffect(() => {
     reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceId]);
 
   async function handleInvite(event: React.FormEvent) {
@@ -113,7 +112,9 @@ export default function WorkspaceMembersPage() {
             toast.success(t("Invitation link copied"));
           }
         } catch {
-          toast.success(emailSent ? `${t("Email sent to")} ${invitation.email}` : t("Send invitation"));
+          toast.success(
+            emailSent ? `${t("Email sent to")} ${invitation.email}` : t("Send invitation"),
+          );
         }
       }
       await reload();
@@ -202,7 +203,11 @@ export default function WorkspaceMembersPage() {
                 disabled={submitting}
                 className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold px-6 py-3.5 rounded-2xl shadow-xl shadow-blue-500/30 active:scale-95 disabled:opacity-50"
               >
-                {submitting ? <Loader2 size={16} className="animate-spin" /> : <UserPlus size={16} />}
+                {submitting ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : (
+                  <UserPlus size={16} />
+                )}
                 {t("Send invitation")}
               </button>
             </form>
@@ -216,7 +221,9 @@ export default function WorkspaceMembersPage() {
               <Loader2 size={24} className="animate-spin" />
             </div>
           ) : members.length === 0 ? (
-            <div className="text-sm text-slate-500 py-8 text-center">{t("No workspaces yet. Create one above.")}</div>
+            <div className="text-sm text-slate-500 py-8 text-center">
+              {t("No workspaces yet. Create one above.")}
+            </div>
           ) : (
             <ul className="divide-y divide-slate-100">
               {members.map((member) => (
@@ -280,10 +287,7 @@ export default function WorkspaceMembersPage() {
               {invitations
                 .filter((invitation) => invitation.status === "pending")
                 .map((invitation) => (
-                  <li
-                    key={invitation.id}
-                    className="py-4 flex items-center justify-between gap-4"
-                  >
+                  <li key={invitation.id} className="py-4 flex items-center justify-between gap-4">
                     <div className="flex items-center gap-3 min-w-0">
                       <Mail size={18} className="text-slate-400 shrink-0" />
                       <div className="min-w-0">
@@ -331,4 +335,3 @@ export default function WorkspaceMembersPage() {
     </Layout>
   );
 }
-

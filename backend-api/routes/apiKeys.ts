@@ -13,7 +13,11 @@ const router = express.Router({ mergeParams: true });
 
 function logKeyEvent(req, eventType, message, context) {
   return Promise.resolve(
-    monitoring.logEvent(eventType, message, buildAuditMetadata(req, buildWorkspaceContext({}, context))),
+    monitoring.logEvent(
+      eventType,
+      message,
+      buildAuditMetadata(req, buildWorkspaceContext({}, context)),
+    ),
   ).catch((error) => {
     console.error(`Failed to write api key audit event ${eventType}:`, error.message);
   });

@@ -21,9 +21,7 @@ router.get("/cost", requireWorkspaceRole("viewer", "id"), async (req, res) => {
     const crossings = await budgets.evaluateBudgetCrossings(req.params.id, summary.totalUsd);
     for (const crossing of crossings) {
       const eventType =
-        crossing.bucket === "hard"
-          ? "workspace.budget_exceeded"
-          : "workspace.budget_soft_exceeded";
+        crossing.bucket === "hard" ? "workspace.budget_exceeded" : "workspace.budget_soft_exceeded";
       Promise.resolve(
         monitoring.logEvent(
           eventType,

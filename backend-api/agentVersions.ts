@@ -32,7 +32,11 @@ function serializeVersion(row) {
   };
 }
 
-async function recordVersion(agentId, config, { createdBy = null, message = null, source = "edit" } = {}) {
+async function recordVersion(
+  agentId,
+  config,
+  { createdBy = null, message = null, source = "edit" } = {},
+) {
   if (!agentId) throw new Error("agentId is required");
   if (!VALID_SOURCES.has(source)) {
     throw new Error(`Unknown agent version source: ${source}`);

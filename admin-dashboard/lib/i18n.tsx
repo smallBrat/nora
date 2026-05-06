@@ -100,8 +100,7 @@ const TRANSLATIONS = {
     "Platform admin": "Admin de plataforma",
     Manage: "Gestionar",
     Creator: "Creador",
-    "Search by user, email, or workspace…":
-      "Buscar por usuario, correo o espacio de trabajo…",
+    "Search by user, email, or workspace…": "Buscar por usuario, correo o espacio de trabajo…",
     "No members match.": "Ningun miembro coincide.",
     by: "por",
     "Notifications (SMTP)": "Notificaciones (SMTP)",
@@ -203,8 +202,7 @@ const TRANSLATIONS = {
     "Platform admin": "Admin plateforme",
     Manage: "Gerer",
     Creator: "Createur",
-    "Search by user, email, or workspace…":
-      "Rechercher par utilisateur, email ou espace…",
+    "Search by user, email, or workspace…": "Rechercher par utilisateur, email ou espace…",
     "No members match.": "Aucun membre ne correspond.",
     by: "par",
     "Notifications (SMTP)": "Notifications (SMTP)",

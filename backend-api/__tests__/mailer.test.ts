@@ -14,11 +14,7 @@ const mockCreateTransport = jest.fn(() => ({
   verify: mockVerify,
 }));
 
-jest.mock(
-  "nodemailer",
-  () => ({ createTransport: mockCreateTransport }),
-  { virtual: true },
-);
+jest.mock("nodemailer", () => ({ createTransport: mockCreateTransport }), { virtual: true });
 
 const mockGetSmtpDeliveryConfig = jest.fn();
 jest.mock("../platformSettings", () => ({
@@ -90,9 +86,10 @@ describe("sendMail — input validation", () => {
   });
 
   it("rejects empty 'to' array", async () => {
-    expect(
-      await mailer.sendMail({ to: [], subject: "S", text: "T" }),
-    ).toMatchObject({ delivered: false, error: "to address required" });
+    expect(await mailer.sendMail({ to: [], subject: "S", text: "T" })).toMatchObject({
+      delivered: false,
+      error: "to address required",
+    });
   });
 });
 

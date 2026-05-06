@@ -37,7 +37,9 @@ jest.mock("../billing", () => ({
   BILLING_ENABLED: false,
   PLATFORM_MODE: "selfhosted",
   IS_PAAS: false,
-  enforceLimits: jest.fn().mockResolvedValue({ allowed: true, subscription: { plan: "selfhosted" } }),
+  enforceLimits: jest
+    .fn()
+    .mockResolvedValue({ allowed: true, subscription: { plan: "selfhosted" } }),
   getSubscription: jest.fn().mockResolvedValue({ plan: "selfhosted" }),
 }));
 
@@ -394,9 +396,7 @@ describe("auth middleware: API key intake", () => {
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] });
 
-    const res = await request(app)
-      .get("/workspaces")
-      .set("x-api-key", "nora_some_other_token");
+    const res = await request(app).get("/workspaces").set("x-api-key", "nora_some_other_token");
     expect(res.status).toBe(200);
   });
 });

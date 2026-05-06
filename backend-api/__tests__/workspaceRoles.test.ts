@@ -35,12 +35,7 @@ describe("workspace role hierarchy", () => {
   });
 
   it("exports a complete rank table", () => {
-    expect(Object.keys(WORKSPACE_ROLE_RANK).sort()).toEqual([
-      "admin",
-      "editor",
-      "owner",
-      "viewer",
-    ]);
+    expect(Object.keys(WORKSPACE_ROLE_RANK).sort()).toEqual(["admin", "editor", "owner", "viewer"]);
   });
 
   describe("roleSatisfies", () => {

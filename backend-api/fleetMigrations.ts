@@ -24,13 +24,17 @@ function normalizeSelection(value, label) {
   }
   const deployTarget = sel.deploy_target || sel.deployTarget;
   if (deployTarget && !ALLOWED_TARGETS.has(deployTarget)) {
-    const error = new Error(`${label}.deploy_target must be one of: ${[...ALLOWED_TARGETS].join(", ")}`);
+    const error = new Error(
+      `${label}.deploy_target must be one of: ${[...ALLOWED_TARGETS].join(", ")}`,
+    );
     error.statusCode = 400;
     throw error;
   }
   const sandboxProfile = sel.sandbox_profile || sel.sandboxProfile;
   if (sandboxProfile && !ALLOWED_SANDBOXES.has(sandboxProfile)) {
-    const error = new Error(`${label}.sandbox_profile must be one of: ${[...ALLOWED_SANDBOXES].join(", ")}`);
+    const error = new Error(
+      `${label}.sandbox_profile must be one of: ${[...ALLOWED_SANDBOXES].join(", ")}`,
+    );
     error.statusCode = 400;
     throw error;
   }

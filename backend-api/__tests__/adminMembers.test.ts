@@ -85,9 +85,7 @@ describe("GET /admin/workspaces (god view)", () => {
 describe("GET /admin/members (god view)", () => {
   it("filters by workspaceId and role", async () => {
     mockDb.query.mockResolvedValueOnce({ rows: [] });
-    const res = await asAdmin(
-      request(app).get("/admin/members?workspaceId=ws-1&role=admin"),
-    );
+    const res = await asAdmin(request(app).get("/admin/members?workspaceId=ws-1&role=admin"));
     expect(res.status).toBe(200);
     const [sql, params] = mockDb.query.mock.calls[0];
     expect(sql).toMatch(/m\.workspace_id = \$1/);
@@ -161,7 +159,11 @@ describe("GET /admin/members/summary", () => {
     });
     const res = await asAdmin(request(app).get("/admin/members/summary"));
     expect(res.status).toBe(200);
-    expect(res.body[0]).toMatchObject({ email: "alice@x.com", topRole: "admin", workspaceCount: 3 });
+    expect(res.body[0]).toMatchObject({
+      email: "alice@x.com",
+      topRole: "admin",
+      workspaceCount: 3,
+    });
     expect(res.body[1]).toMatchObject({ email: "bob@x.com", topRole: null, workspaceCount: 0 });
   });
 });

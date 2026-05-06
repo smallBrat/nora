@@ -7,11 +7,7 @@
 const crypto = require("crypto");
 
 const PRIMARY_HASH_ENV = "NORA_API_KEY_HASH_SECRET";
-const LEGACY_HASH_ENVS = [
-  "NORA_AGENT_HUB_API_KEY_HASH_SECRET",
-  "ENCRYPTION_KEY",
-  "JWT_SECRET",
-];
+const LEGACY_HASH_ENVS = ["NORA_AGENT_HUB_API_KEY_HASH_SECRET", "ENCRYPTION_KEY", "JWT_SECRET"];
 const TEST_FALLBACK_SECRET = "nora-api-key-test-hash-secret";
 const SECRET_MIN_LENGTH = 32;
 
@@ -34,9 +30,7 @@ function explicitPrimarySecret() {
   const raw = process.env[PRIMARY_HASH_ENV];
   const trimmed = typeof raw === "string" ? raw.trim() : "";
   if (trimmed && trimmed.length < SECRET_MIN_LENGTH) {
-    throw buildSecretError(
-      `${PRIMARY_HASH_ENV} must be at least ${SECRET_MIN_LENGTH} characters`,
-    );
+    throw buildSecretError(`${PRIMARY_HASH_ENV} must be at least ${SECRET_MIN_LENGTH} characters`);
   }
   return normalizeSecret(raw);
 }

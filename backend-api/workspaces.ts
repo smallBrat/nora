@@ -51,14 +51,14 @@ async function addAgent(workspaceId, agentId, role = "member", userId = null) {
        FROM workspaces w
        JOIN agents a ON a.id = $2
        WHERE w.id = $1 AND w.user_id = $3 AND a.user_id = $3`,
-      [workspaceId, agentId, userId]
+      [workspaceId, agentId, userId],
     );
     if (!ownership.rows[0]) throw new Error("Workspace or agent not found");
   }
 
   const result = await db.query(
     "INSERT INTO workspace_agents(workspace_id, agent_id, role) VALUES($1, $2, $3) RETURNING *",
-    [workspaceId, agentId, role]
+    [workspaceId, agentId, role],
   );
   return result.rows[0];
 }
