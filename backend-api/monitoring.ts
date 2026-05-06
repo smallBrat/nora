@@ -392,6 +392,18 @@ async function logEvent(type, message, metadata = {}) {
     "INSERT INTO events(type, message, metadata) VALUES($1, $2, $3)",
     [type, message, JSON.stringify(enrichedMetadata)]
   );
+  // Fire matching alert rules. Lazy-required to avoid a hard module cycle and
+  // to let tests jest.mock("../alertRules") cleanly. Failures inside the
+  // evaluator are swallowed there — the event itself is already persisted.
+  try {
+    const alertRules = require("./alertRules");
+    Promise.resolve(alertRules.evaluateAndDeliver(type, message, enrichedMetadata)).catch(
+      (err) => console.error("Alert rule evaluation failed:", err.message),
+    );
+  } catch (err) {
+    // alertRules module not present (shouldn't happen) — keep going.
+    console.error("Failed to load alertRules:", err.message);
+  }
 }
 
 module.exports = {

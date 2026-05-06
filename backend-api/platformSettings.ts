@@ -41,6 +41,20 @@ const DEFAULT_BACKUP_SETTINGS = Object.freeze({
   installationScheduleHourUtc: 2,
   installationScheduleDayOfWeek: 0,
 });
+// Platform-wide SMTP for invitation emails + alert email channels (Phase 6).
+// Stored as additional columns on platform_settings; the password is encrypted
+// at rest via crypto.ts. mailer.ts treats "configured" as host + port +
+// from_address all populated.
+const DEFAULT_SMTP_SETTINGS = Object.freeze({
+  smtpHost: "",
+  smtpPort: 587,
+  smtpSecure: false,
+  smtpUsername: "",
+  smtpPasswordEncrypted: null,
+  smtpFromAddress: "",
+  smtpFromName: "Nora",
+});
+
 const BACKUP_PLAN_KEYS = Object.freeze(["free", "pro", "enterprise"]);
 const DEFAULT_BACKUP_PLAN_LIMITS = Object.freeze({
   free: Object.freeze({
@@ -275,6 +289,98 @@ function maskSecret(value) {
   if (!normalized) return "";
   if (normalized.length <= 12) return `${normalized.slice(0, 4)}...`;
   return `${normalized.slice(0, 10)}...${normalized.slice(-4)}`;
+}
+
+// ─── Platform SMTP (Phase 6) ────────────────────────────────────────────────
+
+function normalizeSmtpSettings(input = {}, fallback = DEFAULT_SMTP_SETTINGS) {
+  return {
+    smtpHost: normalizeText(input.smtp_host ?? input.smtpHost) || fallback.smtpHost,
+    smtpPort: clampInteger(
+      parseInteger(input.smtp_port ?? input.smtpPort) ?? fallback.smtpPort,
+      1,
+      65535,
+    ),
+    smtpSecure: parseBoolean(
+      input.smtp_secure ?? input.smtpSecure,
+      fallback.smtpSecure,
+    ),
+    smtpUsername: normalizeText(input.smtp_username ?? input.smtpUsername) || fallback.smtpUsername,
+    smtpPasswordEncrypted:
+      input.smtp_password_encrypted ??
+      input.smtpPasswordEncrypted ??
+      fallback.smtpPasswordEncrypted ??
+      null,
+    smtpFromAddress:
+      normalizeText(input.smtp_from_address ?? input.smtpFromAddress) || fallback.smtpFromAddress,
+    smtpFromName:
+      normalizeText(input.smtp_from_name ?? input.smtpFromName) || fallback.smtpFromName,
+  };
+}
+
+function looksLikeEmail(value) {
+  if (typeof value !== "string") return false;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
+
+function parseRequiredSmtpSettings(input = {}) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    const error = new Error("smtp settings payload must be an object");
+    error.statusCode = 400;
+    throw error;
+  }
+  const port = clampInteger(
+    parseInteger(input.smtpPort ?? input.smtp_port) ?? DEFAULT_SMTP_SETTINGS.smtpPort,
+    1,
+    65535,
+  );
+  const fromAddress = normalizeText(input.smtpFromAddress ?? input.smtp_from_address);
+  if (fromAddress && !looksLikeEmail(fromAddress)) {
+    const error = new Error("smtpFromAddress must be a valid email address");
+    error.statusCode = 400;
+    throw error;
+  }
+  return {
+    smtpHost: normalizeText(input.smtpHost ?? input.smtp_host),
+    smtpPort: port,
+    // Auto-true when port=465 (SMTPS); otherwise honor admin's flag.
+    smtpSecure: port === 465 ? true : parseBoolean(input.smtpSecure ?? input.smtp_secure, false),
+    smtpUsername: normalizeText(input.smtpUsername ?? input.smtp_username),
+    smtpPassword:
+      input.smtpPassword === undefined || input.smtpPassword === null
+        ? undefined
+        : String(input.smtpPassword),
+    clearSmtpPassword: parseBoolean(input.clearSmtpPassword, false),
+    smtpFromAddress: fromAddress,
+    smtpFromName:
+      normalizeText(input.smtpFromName ?? input.smtp_from_name) || DEFAULT_SMTP_SETTINGS.smtpFromName,
+  };
+}
+
+function resolveSmtpSettingsPayload(settings) {
+  let storedPasswordMasked = "";
+  try {
+    if (settings.smtpPasswordEncrypted) {
+      storedPasswordMasked = maskSecret(decrypt(settings.smtpPasswordEncrypted));
+    }
+  } catch {
+    // Swallow decryption errors — the column is corrupt or the encryption
+    // key changed. Surfacing this as a startup error is the wrong tradeoff;
+    // the admin UI shows the password slot as empty so they can re-enter.
+    storedPasswordMasked = "";
+  }
+  return {
+    smtpHost: settings.smtpHost,
+    smtpPort: settings.smtpPort,
+    smtpSecure: settings.smtpSecure,
+    smtpUsername: settings.smtpUsername,
+    smtpFromAddress: settings.smtpFromAddress,
+    smtpFromName: settings.smtpFromName,
+    smtpPasswordMasked: storedPasswordMasked,
+    smtpConfigured: Boolean(
+      settings.smtpHost && settings.smtpPort && settings.smtpFromAddress,
+    ),
+  };
 }
 
 function normalizeDeploymentDefaults(input = {}, fallback = DEFAULT_DEPLOYMENT_DEFAULTS) {
@@ -800,6 +906,96 @@ async function getAgentHubSourceApiKey() {
   return encrypted ? decrypt(encrypted) : "";
 }
 
+async function getSmtpSettings() {
+  const result = await db.query(
+    `SELECT smtp_host, smtp_port, smtp_secure, smtp_username,
+            smtp_password_encrypted, smtp_from_address, smtp_from_name
+       FROM platform_settings
+      WHERE singleton = TRUE
+      LIMIT 1`,
+  );
+  return resolveSmtpSettingsPayload(
+    normalizeSmtpSettings(result.rows[0] || DEFAULT_SMTP_SETTINGS),
+  );
+}
+
+// Decrypted SMTP config for mailer.ts. Returns null when SMTP is not
+// configured (host or from missing) so callers can short-circuit cheaply.
+async function getSmtpDeliveryConfig() {
+  const result = await db.query(
+    `SELECT smtp_host, smtp_port, smtp_secure, smtp_username,
+            smtp_password_encrypted, smtp_from_address, smtp_from_name
+       FROM platform_settings
+      WHERE singleton = TRUE
+      LIMIT 1`,
+  );
+  const settings = normalizeSmtpSettings(result.rows[0] || DEFAULT_SMTP_SETTINGS);
+  if (!settings.smtpHost || !settings.smtpPort || !settings.smtpFromAddress) {
+    return null;
+  }
+  let password = "";
+  try {
+    if (settings.smtpPasswordEncrypted) password = decrypt(settings.smtpPasswordEncrypted);
+  } catch {
+    password = "";
+  }
+  return {
+    host: settings.smtpHost,
+    port: settings.smtpPort,
+    secure: settings.smtpPort === 465 ? true : Boolean(settings.smtpSecure),
+    username: settings.smtpUsername,
+    password,
+    fromAddress: settings.smtpFromAddress,
+    fromName: settings.smtpFromName,
+  };
+}
+
+async function updateSmtpSettings(settings = {}) {
+  const next = parseRequiredSmtpSettings(settings);
+  const current = await db.query(
+    `SELECT smtp_password_encrypted
+       FROM platform_settings
+      WHERE singleton = TRUE
+      LIMIT 1`,
+  );
+  let smtpPasswordEncrypted = current.rows[0]?.smtp_password_encrypted || null;
+  if (next.clearSmtpPassword) {
+    smtpPasswordEncrypted = null;
+  } else if (next.smtpPassword !== undefined) {
+    if (next.smtpPassword) ensureEncryptionConfigured("Platform SMTP credential storage");
+    smtpPasswordEncrypted = next.smtpPassword ? encrypt(next.smtpPassword) : smtpPasswordEncrypted;
+  }
+
+  const result = await db.query(
+    `INSERT INTO platform_settings(
+       singleton, smtp_host, smtp_port, smtp_secure, smtp_username,
+       smtp_password_encrypted, smtp_from_address, smtp_from_name, updated_at
+     )
+     VALUES(TRUE, $1, $2, $3, $4, $5, $6, $7, NOW())
+     ON CONFLICT (singleton) DO UPDATE SET
+       smtp_host = EXCLUDED.smtp_host,
+       smtp_port = EXCLUDED.smtp_port,
+       smtp_secure = EXCLUDED.smtp_secure,
+       smtp_username = EXCLUDED.smtp_username,
+       smtp_password_encrypted = EXCLUDED.smtp_password_encrypted,
+       smtp_from_address = EXCLUDED.smtp_from_address,
+       smtp_from_name = EXCLUDED.smtp_from_name,
+       updated_at = NOW()
+     RETURNING smtp_host, smtp_port, smtp_secure, smtp_username,
+               smtp_password_encrypted, smtp_from_address, smtp_from_name`,
+    [
+      next.smtpHost,
+      next.smtpPort,
+      next.smtpSecure,
+      next.smtpUsername,
+      smtpPasswordEncrypted,
+      next.smtpFromAddress,
+      next.smtpFromName,
+    ],
+  );
+  return resolveSmtpSettingsPayload(normalizeSmtpSettings(result.rows[0]));
+}
+
 async function getBackupSettings() {
   const result = await db.query(
     `SELECT backup_storage_backend,
@@ -1187,6 +1383,7 @@ module.exports = {
   DEFAULT_BACKUP_PLAN_LIMITS,
   DEFAULT_BACKUP_SETTINGS,
   DEFAULT_LANGUAGE_SETTINGS,
+  DEFAULT_SMTP_SETTINGS,
   DEFAULT_SYSTEM_BANNER,
   AGENT_HUB_SHARE_TARGETS,
   BACKUP_PLAN_KEYS,
@@ -1202,6 +1399,8 @@ module.exports = {
   getBackupStorageConfig,
   getDeploymentDefaults,
   getLanguageSettings,
+  getSmtpDeliveryConfig,
+  getSmtpSettings,
   getSystemBanner,
   isSystemBannerFeatureEnabled,
   normalizeAgentHubSettings,
@@ -1210,6 +1409,7 @@ module.exports = {
   normalizeDeploymentDefaults,
   normalizeLanguageSettings,
   normalizeLocale,
+  normalizeSmtpSettings,
   normalizeSystemBanner,
   parseRequiredAgentHubSettings,
   parseRequiredBackupPlanLimits,
@@ -1217,9 +1417,11 @@ module.exports = {
   parseRequiredDeploymentDefaults,
   parseRequiredLanguageSettings,
   parseRequiredLocale,
+  parseRequiredSmtpSettings,
   parseRequiredSystemBanner,
   resolveBackupSettingsPayload,
   resolveLanguageSettingsPayload,
+  resolveSmtpSettingsPayload,
   resolvePreferredLocale,
   resolveSystemBannerPayload,
   updateAgentHubSettings,
@@ -1227,5 +1429,6 @@ module.exports = {
   updateBackupSettings,
   updateDeploymentDefaults,
   updateLanguageSettings,
+  updateSmtpSettings,
   updateSystemBanner,
 };

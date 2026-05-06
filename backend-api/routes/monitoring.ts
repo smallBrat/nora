@@ -5,11 +5,17 @@ const monitoring = require("../monitoring");
 const metricsModule = require("../metrics");
 const { asyncHandler } = require("../middleware/errorHandler");
 const { findOwnedAgent, requireOwnedAgent } = require("../middleware/ownership");
-const { requireAdmin } = require("../middleware/auth");
+const { requireAdmin, scopeByMethod } = require("../middleware/auth");
 
 const router = express.Router();
 
 router.use("/agents/:id", requireOwnedAgent("id"));
+// Monitoring is read-only via API keys. We scope-gate the specific path
+// prefixes the router handles — applying scopeByMethod at the router root
+// would block unrelated requests because this router is mounted at "/".
+router.use("/monitoring", scopeByMethod("monitoring:read", null));
+router.use("/agents/:id/metrics", scopeByMethod("monitoring:read", null));
+router.use("/agents/:id/cost", scopeByMethod("monitoring:read", null));
 
 function createHttpError(message, statusCode = 400) {
   const error = new Error(message);

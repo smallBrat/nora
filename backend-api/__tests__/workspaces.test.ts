@@ -42,6 +42,16 @@ const mockWorkspaces = {
   getWorkspaceAgents: jest.fn().mockResolvedValue([]),
 };
 jest.mock("../workspaces", () => mockWorkspaces);
+const mockWorkspaceMembers = {
+  listMembers: jest.fn().mockResolvedValue([]),
+  updateMemberRole: jest.fn(),
+  removeMember: jest.fn(),
+  createInvitation: jest.fn(),
+  listInvitations: jest.fn().mockResolvedValue([]),
+  revokeInvitation: jest.fn(),
+  acceptInvitation: jest.fn(),
+};
+jest.mock("../workspaceMembers", () => mockWorkspaceMembers);
 jest.mock("../integrations", () => ({
   listIntegrations: jest.fn().mockResolvedValue([]),
   connectIntegration: jest.fn(),
@@ -52,11 +62,18 @@ jest.mock("../integrations", () => ({
   getIntegrationsForSync: jest.fn().mockResolvedValue({}),
   seedCatalog: jest.fn(),
 }));
-jest.mock("../monitoring", () => ({
+const mockMonitoring = {
   getMetrics: jest.fn().mockResolvedValue({}),
-  logEvent: jest.fn(),
+  logEvent: jest.fn().mockResolvedValue(undefined),
   getRecentEvents: jest.fn().mockResolvedValue([]),
-}));
+};
+jest.mock("../monitoring", () => mockMonitoring);
+const mockMailer = {
+  sendMail: jest.fn().mockResolvedValue({ delivered: false, error: "not_configured" }),
+  isConfigured: jest.fn().mockResolvedValue(false),
+  bustCache: jest.fn(),
+};
+jest.mock("../mailer", () => mockMailer);
 jest.mock("../billing", () => ({
   BILLING_ENABLED: false,
   PLATFORM_MODE: "selfhosted",
@@ -107,6 +124,16 @@ beforeEach(() => {
   mockWorkspaces.listWorkspaces.mockReset().mockResolvedValue([]);
   mockWorkspaces.createWorkspace.mockReset();
   mockWorkspaces.addAgent.mockReset();
+  mockWorkspaceMembers.listMembers.mockReset().mockResolvedValue([]);
+  mockWorkspaceMembers.updateMemberRole.mockReset();
+  mockWorkspaceMembers.removeMember.mockReset();
+  mockWorkspaceMembers.createInvitation.mockReset();
+  mockWorkspaceMembers.listInvitations.mockReset().mockResolvedValue([]);
+  mockWorkspaceMembers.revokeInvitation.mockReset();
+  mockWorkspaceMembers.acceptInvitation.mockReset();
+  mockMonitoring.logEvent.mockReset().mockResolvedValue(undefined);
+  mockMailer.sendMail.mockReset().mockResolvedValue({ delivered: false, error: "not_configured" });
+  mockMailer.isConfigured.mockReset().mockResolvedValue(false);
 });
 
 describe("GET /workspaces", () => {
@@ -156,35 +183,56 @@ describe("POST /workspaces", () => {
 });
 
 describe("DELETE /workspaces/:id", () => {
-  it("rejects if not owner", async () => {
-    mockDb.query.mockResolvedValueOnce({ rows: [] }); // ownership check fails
+  it("rejects if not a member", async () => {
+    mockDb.query.mockResolvedValueOnce({ rows: [] }); // membership check fails
 
     const res = await auth(request(app).delete("/workspaces/ws-1"));
     expect(res.status).toBe(404);
   });
 
-  it("deletes owned workspace", async () => {
+  it("rejects non-owner members (admin tries to delete)", async () => {
+    mockDb.query.mockResolvedValueOnce({
+      rows: [{ id: "ws-1", user_id: "creator", role: "admin" }],
+    });
+    const res = await auth(request(app).delete("/workspaces/ws-1"));
+    expect(res.status).toBe(403);
+  });
+
+  it("deletes when caller is owner", async () => {
     mockDb.query
-      .mockResolvedValueOnce({ rows: [{ id: "ws-1" }] }) // ownership OK
-      .mockResolvedValueOnce({ rows: [] }) // delete workspace_agents
-      .mockResolvedValueOnce({ rows: [] }); // delete workspace
+      .mockResolvedValueOnce({ rows: [{ id: "ws-1", user_id: "user-1", role: "owner" }] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
 
     const res = await auth(request(app).delete("/workspaces/ws-1"));
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty("success", true);
   });
+
+  it("treats legacy creator (workspaces.user_id only) as owner", async () => {
+    // Membership row missing but workspaces.user_id matches caller — fallback path.
+    mockDb.query
+      .mockResolvedValueOnce({ rows: [{ id: "ws-1", user_id: "user-1", role: null }] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const res = await auth(request(app).delete("/workspaces/ws-1"));
+    expect(res.status).toBe(200);
+  });
 });
 
 describe("GET /workspaces/:id/agents", () => {
-  it("rejects if not workspace owner", async () => {
+  it("rejects if not a member", async () => {
     mockDb.query.mockResolvedValueOnce({ rows: [] });
 
     const res = await auth(request(app).get("/workspaces/ws-1/agents"));
     expect(res.status).toBe(404);
   });
 
-  it("returns workspace agents for owned workspace", async () => {
-    mockDb.query.mockResolvedValueOnce({ rows: [{ id: "ws-1", user_id: "user-1" }] });
+  it("allows viewers to read agents", async () => {
+    mockDb.query.mockResolvedValueOnce({
+      rows: [{ id: "ws-1", user_id: "creator", role: "viewer" }],
+    });
     mockWorkspaces.getWorkspaceAgents.mockResolvedValueOnce([
       { agent_id: "a1", agent_name: "Agent 1" },
     ]);
@@ -197,21 +245,193 @@ describe("GET /workspaces/:id/agents", () => {
 });
 
 describe("POST /workspaces/:id/agents", () => {
-  it("rejects if not workspace owner", async () => {
-    mockDb.query.mockResolvedValueOnce({ rows: [] }); // ownership check fails
+  it("rejects if not a member", async () => {
+    mockDb.query.mockResolvedValueOnce({ rows: [] });
 
     const res = await auth(request(app).post("/workspaces/ws-1/agents").send({ agentId: "a1" }));
     expect(res.status).toBe(404);
   });
 
-  it("rejects if agent is not owned by the workspace owner", async () => {
+  it("rejects viewers (insufficient role)", async () => {
+    mockDb.query.mockResolvedValueOnce({
+      rows: [{ id: "ws-1", user_id: "creator", role: "viewer" }],
+    });
+    const res = await auth(request(app).post("/workspaces/ws-1/agents").send({ agentId: "a1" }));
+    expect(res.status).toBe(403);
+  });
+
+  it("rejects when agent is not owned by the caller", async () => {
     mockDb.query
-      .mockResolvedValueOnce({ rows: [{ id: "ws-1", user_id: "user-1" }] })
-      .mockResolvedValueOnce({ rows: [] });
+      .mockResolvedValueOnce({ rows: [{ id: "ws-1", user_id: "user-1", role: "owner" }] })
+      .mockResolvedValueOnce({ rows: [] }); // findOwnedAgent miss
 
     const res = await auth(
       request(app).post("/workspaces/ws-1/agents").send({ agentId: "a-foreign" }),
     );
     expect(res.status).toBe(404);
+  });
+});
+
+describe("Workspace member management", () => {
+  it("GET /:id/members returns members to viewers", async () => {
+    mockDb.query.mockResolvedValueOnce({
+      rows: [{ id: "ws-1", user_id: "creator", role: "viewer" }],
+    });
+    mockWorkspaceMembers.listMembers.mockResolvedValueOnce([
+      { userId: "u-1", role: "owner", email: "a@b.com" },
+    ]);
+    const res = await auth(request(app).get("/workspaces/ws-1/members"));
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(1);
+  });
+
+  it("PATCH /:id/members/:userId rejects editor (admin required)", async () => {
+    mockDb.query.mockResolvedValueOnce({
+      rows: [{ id: "ws-1", user_id: "creator", role: "editor" }],
+    });
+    const res = await auth(
+      request(app).patch("/workspaces/ws-1/members/u-2").send({ role: "viewer" }),
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("PATCH /:id/members/:userId allows admin to change role", async () => {
+    mockDb.query.mockResolvedValueOnce({
+      rows: [{ id: "ws-1", user_id: "creator", role: "admin" }],
+    });
+    mockWorkspaceMembers.updateMemberRole.mockResolvedValueOnce({
+      userId: "u-2",
+      role: "editor",
+    });
+    const res = await auth(
+      request(app).patch("/workspaces/ws-1/members/u-2").send({ role: "editor" }),
+    );
+    expect(res.status).toBe(200);
+    expect(mockWorkspaceMembers.updateMemberRole).toHaveBeenCalledWith("ws-1", "u-2", "editor");
+  });
+
+  it("DELETE /:id/members/:userId surfaces last-owner errors", async () => {
+    mockDb.query.mockResolvedValueOnce({
+      rows: [{ id: "ws-1", user_id: "user-1", role: "owner" }],
+    });
+    const err = new Error("Cannot remove the last owner of a workspace");
+    err.statusCode = 409;
+    mockWorkspaceMembers.removeMember.mockRejectedValueOnce(err);
+    const res = await auth(request(app).delete("/workspaces/ws-1/members/user-1"));
+    expect(res.status).toBe(409);
+  });
+
+  it("POST /:id/invitations issues invitation as admin and logs audit event", async () => {
+    mockDb.query.mockResolvedValueOnce({
+      rows: [{ id: "ws-1", user_id: "creator", role: "admin" }],
+    });
+    mockWorkspaceMembers.createInvitation.mockResolvedValueOnce({
+      id: "inv-1",
+      email: "new@b.com",
+      role: "editor",
+      token: "nora_inv_xyz",
+    });
+    const res = await auth(
+      request(app)
+        .post("/workspaces/ws-1/invitations")
+        .send({ email: "new@b.com", role: "editor" }),
+    );
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty("token");
+    expect(res.body.emailDelivery).toEqual({ sent: false, error: "not_configured" });
+    expect(mockMailer.sendMail).not.toHaveBeenCalled();
+    expect(mockMonitoring.logEvent).toHaveBeenCalledWith(
+      "workspace_invitation_created",
+      expect.stringContaining("new@b.com"),
+      expect.objectContaining({
+        workspace: expect.objectContaining({ id: "ws-1" }),
+        invitation: expect.objectContaining({
+          id: "inv-1",
+          email: "new@b.com",
+          role: "editor",
+        }),
+      }),
+    );
+  });
+
+  it("POST /:id/invitations sends email and reports sent:true when SMTP configured", async () => {
+    mockMailer.isConfigured.mockResolvedValueOnce(true);
+    mockMailer.sendMail.mockResolvedValueOnce({ delivered: true, messageId: "m-1" });
+    process.env.NEXTAUTH_URL = "https://nora.example.com";
+    mockDb.query
+      .mockResolvedValueOnce({ rows: [{ id: "ws-1", user_id: "creator", role: "admin", name: "Prod" }] })
+      .mockResolvedValueOnce({ rows: [{ name: "Prod" }] }); // workspace name lookup
+    mockWorkspaceMembers.createInvitation.mockResolvedValueOnce({
+      id: "inv-2",
+      workspaceId: "ws-1",
+      email: "alice@example.com",
+      role: "editor",
+      token: "nora_inv_abc",
+      expiresAt: new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString(),
+    });
+
+    const res = await auth(
+      request(app)
+        .post("/workspaces/ws-1/invitations")
+        .send({ email: "alice@example.com", role: "editor" }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body.emailDelivery).toMatchObject({ sent: true });
+    expect(mockMailer.sendMail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: "alice@example.com",
+        subject: expect.stringContaining("Prod"),
+        text: expect.stringContaining(
+          "https://nora.example.com/app/invitations/accept?token=nora_inv_abc",
+        ),
+      }),
+    );
+    delete process.env.NEXTAUTH_URL;
+  });
+
+  it("PATCH /:id/members/:userId logs audit event on success", async () => {
+    mockDb.query.mockResolvedValueOnce({
+      rows: [{ id: "ws-1", user_id: "creator", role: "admin" }],
+    });
+    mockWorkspaceMembers.updateMemberRole.mockResolvedValueOnce({
+      userId: "u-2",
+      email: "user2@x.com",
+      role: "editor",
+    });
+    const res = await auth(
+      request(app).patch("/workspaces/ws-1/members/u-2").send({ role: "editor" }),
+    );
+    expect(res.status).toBe(200);
+    expect(mockMonitoring.logEvent).toHaveBeenCalledWith(
+      "workspace_member_role_changed",
+      expect.stringContaining("editor"),
+      expect.objectContaining({
+        member: expect.objectContaining({ userId: "u-2" }),
+      }),
+    );
+  });
+
+  it("POST /invitations/accept proxies to acceptInvitation", async () => {
+    mockWorkspaceMembers.acceptInvitation.mockResolvedValueOnce({
+      workspaceId: "ws-1",
+      role: "editor",
+    });
+    const res = await auth(
+      request(app).post("/workspaces/invitations/accept").send({ token: "nora_inv_xyz" }),
+    );
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ workspaceId: "ws-1", role: "editor" });
+    expect(mockWorkspaceMembers.acceptInvitation).toHaveBeenCalledWith("nora_inv_xyz", "user-1");
+  });
+
+  it("POST /invitations/accept surfaces 410 for expired tokens", async () => {
+    const err = new Error("Invitation has expired");
+    err.statusCode = 410;
+    mockWorkspaceMembers.acceptInvitation.mockRejectedValueOnce(err);
+    const res = await auth(
+      request(app).post("/workspaces/invitations/accept").send({ token: "nora_inv_old" }),
+    );
+    expect(res.status).toBe(410);
   });
 });

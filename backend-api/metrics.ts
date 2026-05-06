@@ -156,6 +156,40 @@ async function getAgentCost(agentId) {
   };
 }
 
+/**
+ * Sum costs for every agent in a workspace, optionally restricted to a
+ * lookback window. Returns one row per agent plus a workspace total in USD.
+ */
+async function getWorkspaceCost(workspaceId, { periodDays = 30 } = {}) {
+  const agentRows = await db.query(
+    `SELECT a.id, a.name
+       FROM agents a
+       JOIN workspace_agents wa ON wa.agent_id = a.id
+      WHERE wa.workspace_id = $1`,
+    [workspaceId],
+  );
+  const agents = agentRows.rows;
+  const perAgent = await Promise.all(
+    agents.map(async (agent) => {
+      const cost = await getAgentCost(agent.id).catch(() => null);
+      return {
+        agentId: agent.id,
+        agentName: agent.name,
+        ...(cost || { compute_cost: 0, token_cost: 0, total_cost: 0, total_tokens: 0, uptime_hours: 0 }),
+      };
+    }),
+  );
+  const total = perAgent.reduce((sum, row) => sum + (row.total_cost || 0), 0);
+  return {
+    workspaceId,
+    periodDays,
+    periodStart: new Date(Date.now() - periodDays * 24 * 60 * 60 * 1000).toISOString(),
+    periodEnd: new Date().toISOString(),
+    totalUsd: Math.round(total * 100) / 100,
+    perAgent,
+  };
+}
+
 module.exports = {
   recordMetric,
   getAgentMetrics,
@@ -163,4 +197,5 @@ module.exports = {
   getUserSummary,
   recordApiMetric,
   getAgentCost,
+  getWorkspaceCost,
 };

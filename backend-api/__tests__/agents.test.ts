@@ -413,6 +413,7 @@ describe("GET /agents/:id", () => {
           status: "warning",
           user_id: "user-1",
           container_id: "container-1",
+          effective_role: "owner",
         },
       ],
     });
@@ -435,6 +436,7 @@ describe("GET /agents/:id", () => {
             status: "warning",
             user_id: "user-1",
             container_id: "container-warning-down",
+            effective_role: "owner",
           },
         ],
       })
@@ -463,6 +465,7 @@ describe("GET /agents/:id", () => {
             status: "stopped",
             user_id: "user-1",
             container_id: "container-2",
+            effective_role: "owner",
           },
         ],
       })
@@ -1828,6 +1831,7 @@ describe("GET /agents/:id/stats/history", () => {
             backend_type: "proxmox",
             sandbox_type: "standard",
             status: "running",
+            effective_role: "owner",
           },
         ],
       })
@@ -1904,6 +1908,7 @@ describe("GET /agents/:id/stats/history", () => {
             backend_type: "docker",
             sandbox_type: "standard",
             status: "running",
+            effective_role: "owner",
           },
         ],
       })
@@ -3833,7 +3838,9 @@ describe("POST /agents/:id/stop", () => {
   it("stops a running agent", async () => {
     // db.query calls: SELECT agent, UPDATE status
     mockDb.query
-      .mockResolvedValueOnce({ rows: [{ id: "a1", status: "running", container_id: null }] })
+      .mockResolvedValueOnce({
+        rows: [{ id: "a1", status: "running", container_id: null, user_id: "user-1" }],
+      })
       .mockResolvedValueOnce({ rows: [{ id: "a1", status: "stopped" }] });
 
     const res = await auth(request(app).post("/agents/a1/stop"));
@@ -3856,6 +3863,7 @@ describe("POST /agents/:id/redeploy", () => {
             ram_mb: 2048,
             disk_gb: 20,
             container_name: "oclaw-agent-warning",
+            user_id: "user-1",
           },
         ],
       })
@@ -3913,6 +3921,7 @@ describe("POST /agents/:id/redeploy", () => {
             disk_gb: 20,
             container_name: "oclaw-agent-nemo",
             image: null,
+            user_id: "user-1",
           },
         ],
       })
@@ -3966,6 +3975,7 @@ describe("POST /agents/:id/redeploy", () => {
             disk_gb: 20,
             container_name: "oclaw-agent-docker",
             image: "nora-openclaw-agent:local",
+            user_id: "user-1",
           },
         ],
       })
@@ -4018,6 +4028,7 @@ describe("POST /agents/:id/redeploy", () => {
             disk_gb: 20,
             container_name: "oclaw-agent-desk-bot-old123",
             image: "nora-openclaw-agent:local",
+            user_id: "user-1",
           },
         ],
       })
@@ -4057,7 +4068,7 @@ describe("POST /agents/:id/redeploy", () => {
 
   it("rejects redeploy when the agent is still actively running", async () => {
     mockDb.query.mockResolvedValueOnce({
-      rows: [{ id: "a-running", name: "Running Agent", status: "running" }],
+      rows: [{ id: "a-running", name: "Running Agent", status: "running", user_id: "user-1" }],
     });
 
     const res = await auth(request(app).post("/agents/a-running/redeploy"));
@@ -4072,7 +4083,7 @@ describe("POST /agents/:id/delete", () => {
   it("deletes an agent", async () => {
     // db.query calls: SELECT agent, DELETE
     mockDb.query
-      .mockResolvedValueOnce({ rows: [{ id: "a1", container_id: null }] })
+      .mockResolvedValueOnce({ rows: [{ id: "a1", container_id: null, user_id: "user-1" }] })
       .mockResolvedValueOnce({ rows: [] });
 
     const res = await auth(request(app).post("/agents/a1/delete"));

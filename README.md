@@ -404,6 +404,54 @@ Users see their own agents, installs, submissions, monitoring data, and related 
 
 Admins get separate platform-wide views for Agent Hub moderation, listing detail, fleet operations, and settings changes that should not live in the operator workspace.
 
+### Drive Nora From A Command Line
+
+A small CLI lives in [`cli/`](./cli) (npm package `@nora/cli`). It uses the public REST API and the same workspace-scoped tokens described below:
+
+```bash
+nora login --host https://your-nora.example.com --token nora_...
+nora workspaces list
+nora agents list
+nora agents restart <agent-id>
+nora monitoring tail
+```
+
+See [`cli/README.md`](./cli/README.md) for the full command list.
+
+### Send Invitations and Alerts Via Email
+
+Configure SMTP at **`/admin/settings → Notifications (SMTP)`**. Once set:
+
+- Workspace invitations are emailed automatically. The dashboard still copies the accept link to the clipboard as a manual fallback.
+- Alert rules accept an `email` channel alongside `webhook`: `{"type":"email","to":["ops@example.com"],"subjectPrefix":"PROD"}`.
+- The "Send test email to me" button on the SMTP card delivers a one-line message to the calling admin's own login email — there is no operator-supplied `to` field.
+
+SMTP credentials (host, port, username, password, from-address, from-name) are stored on `platform_settings` with the password encrypted at rest via `ENCRYPTION_KEY`. There are no SMTP-specific env vars; configuration lives entirely in the admin UI.
+
+### Use The Public REST API
+
+Every workspace can mint scoped API keys for programmatic access. Tokens are bearer-only, prefixed `nora_`, hashed at rest with HMAC-SHA256, and carry a fixed scope set: `agents:read`, `agents:write`, `workspaces:read`, `monitoring:read`, `integrations:read`, `integrations:write`. Workspace mutation, member management, and key issuance stay on session auth — an API key cannot mint another key.
+
+```bash
+# 1. Issue a key from the dashboard at /app/workspaces/<id>/api-keys
+#    — copy the token shown once on creation.
+export NORA_TOKEN="nora_..."
+
+# 2. List agents in the workspace.
+curl -H "Authorization: Bearer $NORA_TOKEN" \
+  https://your-nora.example.com/api/agents
+
+# 3. Restart an agent (requires agents:write).
+curl -X POST -H "Authorization: Bearer $NORA_TOKEN" \
+  https://your-nora.example.com/api/agents/<agent-id>/restart
+
+# 4. Read monitoring metrics.
+curl -H "Authorization: Bearer $NORA_TOKEN" \
+  https://your-nora.example.com/api/monitoring/metrics
+```
+
+Stable surface: `agents:read|write` covers `GET/POST/PATCH/DELETE /api/agents/...`; `workspaces:read` covers `GET /api/workspaces/...`; `monitoring:read` covers `GET /api/monitoring/*` and `GET /api/agents/:id/metrics|cost`; `integrations:read|write` covers `/api/agents/:id/integrations/...`. Other paths are internal and may change without notice.
+
 ## Architecture
 
 ```text
@@ -633,13 +681,17 @@ NemoClaw in this repo is a Docker-hosted sandbox backend with OpenShell policy c
 
 ### Planned
 
-- fleet-level runtime transition tooling with preview, validation, and rollback
-- public REST API and API keys
-- richer alerting and cost controls
-- stronger multi-tenant RBAC
-- agent versioning and rollback
-- CLI workflows for deployment, sync, and runtime operations
 - additional runtime adapters as the ecosystem evolves
+
+### Recently Shipped
+
+- multi-tenant RBAC: workspace members with `owner / admin / editor / viewer` roles, role-aware authorization on agents, integrations, and workspace mutations, audit-logged member + invitation flows
+- public REST API with workspace-scoped API keys, six-scope catalog, bearer-only intake, in-dashboard issuance UI
+- alerting + cost controls: workspace-scoped alert rules with literal/glob event patterns and webhook delivery (Slack, Discord, Teams, PagerDuty, etc.), per-workspace budgets with soft + hard thresholds that emit events into the same alerting pipeline, cost dashboard with per-agent breakdown and 7/30/90-day windows
+- agent versioning and rollback: every deploy and duplicate captures a version of the agent's configuration; the version timeline is visible per agent at `/app/agents/<id>/versions` with a "Roll back to this version" action that snapshots current state first and triggers a redeploy
+- CLI: `@nora/cli` (in `cli/`) wraps the public REST API for `nora workspaces`, `nora agents list/start/stop/restart/redeploy/versions/rollback`, and `nora monitoring metrics/events/tail`
+- fleet-level runtime transitions: admin-only `POST /admin/fleet/migrations/preview` evaluates compatibility for every agent in the source selection without queueing, `POST /admin/fleet/migrations` runs (or dry-runs) the move and snapshots each agent's pre-state, and `POST /admin/fleet/migrations/:id/rollback` replays the saved before-state per agent
+- platform email: workspace invitations email the recipient automatically when SMTP is configured at `/admin/settings → Notifications`, alert rules accept an `email` channel alongside `webhook`, and the dashboard still falls back to copy-link UX when SMTP is absent
 
 ## Contributing
 

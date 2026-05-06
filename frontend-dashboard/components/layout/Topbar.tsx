@@ -4,6 +4,7 @@ import { clsx } from "clsx";
 import { useRouter } from "next/router";
 import { fetchWithAuth } from "../../lib/api";
 import LanguageSwitcher from "../LanguageSwitcher";
+import WorkspaceSwitcher from "../WorkspaceSwitcher";
 import { useI18n } from "../../lib/i18n";
 
 const PAGE_META = {
@@ -79,6 +80,7 @@ export default function Topbar({ onMenuClick }) {
       </div>
 
       <div className="flex items-center gap-3 md:gap-6 shrink-0">
+        <WorkspaceSwitcher className="hidden md:inline-flex" />
         <LanguageSwitcher className="hidden sm:inline-flex" />
         <div className="hidden md:flex items-center gap-2 px-3 py-2 rounded-xl border border-emerald-100 bg-emerald-50 text-emerald-700">
           <CheckCircle2 size={14} />

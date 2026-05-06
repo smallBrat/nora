@@ -1,0 +1,21 @@
+{
+  "name": "@nora/cli",
+  "version": "0.1.0",
+  "description": "Nora command-line interface for managing agents, workspaces, and runtimes via the public REST API.",
+  "license": "Apache-2.0",
+  "type": "commonjs",
+  "bin": {
+    "nora": "./src/index.js"
+  },
+  "main": "./src/index.js",
+  "engines": {
+    "node": ">=24"
+  },
+  "files": [
+    "src/**/*.js",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test src/**/*.test.js"
+  }
+}

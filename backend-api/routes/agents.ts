@@ -67,9 +67,15 @@ const {
   testHermesChannel,
 } = require("../hermesUi");
 const { runContainerCommand, syncAuthToUserAgents } = require("../authSync");
+const { findAccessibleAgent } = require("../middleware/ownership");
+const { scopeByMethod } = require("../middleware/auth");
+const agentVersions = require("../agentVersions");
 
 const router = express.Router();
 router.use(createMutationFailureAuditMiddleware("agent"));
+// API-key requests need agents:read for GET/HEAD, agents:write for everything
+// else. Session-authenticated requests skip this check (req.apiKey is unset).
+router.use(scopeByMethod("agents:read", "agents:write"));
 
 function resolveRequestedImage({
   requestedImage,
@@ -244,13 +250,8 @@ router.get(
 router.get(
   "/:id",
   asyncHandler(async (req, res) => {
-    const result = await db.query("SELECT * FROM agents WHERE id = $1 AND user_id = $2", [
-      req.params.id,
-      req.user.id,
-    ]);
-    if (!result.rows[0]) return res.status(404).json({ error: "Agent not found" });
-
-    const agent = result.rows[0];
+    const agent = await findAccessibleAgent(req.params.id, req.user.id, "viewer");
+    if (!agent) return res.status(404).json({ error: "Agent not found" });
 
     // Live status reconciliation — check actual container state while preserving
     // warning as a first-class degraded state until the container actually stops.
@@ -279,11 +280,7 @@ router.get(
 router.get(
   "/:id/stats/history",
   asyncHandler(async (req, res) => {
-    const agentCheck = await db.query("SELECT * FROM agents WHERE id = $1 AND user_id = $2", [
-      req.params.id,
-      req.user.id,
-    ]);
-    const agent = agentCheck.rows[0];
+    const agent = await findAccessibleAgent(req.params.id, req.user.id, "viewer");
     if (!agent) return res.status(404).json({ error: "Agent not found" });
 
     const rangeMap = {
@@ -335,15 +332,7 @@ function agentAuditMetadata(req, agent, extra = {}) {
 router.get(
   "/:id/gateway-url",
   asyncHandler(async (req, res) => {
-    const result = await db.query(
-      `SELECT id, host, container_id, backend_type, runtime_family, deploy_target,
-            sandbox_profile, gateway_token, gateway_host_port,
-            gateway_host, gateway_port, user_id, status
-       FROM agents
-      WHERE id = $1 AND user_id = $2`,
-      [req.params.id, req.user.id],
-    );
-    const agent = result.rows[0];
+    const agent = await findAccessibleAgent(req.params.id, req.user.id, "viewer");
     if (!agent) return res.status(404).json({ error: "Agent not found" });
     res.locals.auditContext = buildAgentContext(agent, {
       ownerEmail: req.user.email || null,
@@ -442,12 +431,8 @@ function createStatusCodeError(message, statusCode) {
   return error;
 }
 
-async function loadHermesUiAgent(req) {
-  const result = await db.query("SELECT * FROM agents WHERE id = $1 AND user_id = $2", [
-    req.params.id,
-    req.user.id,
-  ]);
-  const agent = result.rows[0];
+async function loadHermesUiAgent(req, { requiredRole = "viewer" } = {}) {
+  const agent = await findAccessibleAgent(req.params.id, req.user.id, requiredRole);
   if (!agent) {
     throw createStatusCodeError("Agent not found", 404);
   }
@@ -956,7 +941,7 @@ router.get(
 router.post(
   "/:id/hermes-ui/chat",
   asyncHandler(async (req, res) => {
-    const agent = await loadHermesUiAgent(req);
+    const agent = await loadHermesUiAgent(req, { requiredRole: "editor" });
 
     const messages = (Array.isArray(req.body?.messages) ? req.body.messages : [])
       .map((entry) => ({
@@ -1058,7 +1043,7 @@ router.get(
 router.post(
   "/:id/hermes-ui/cron",
   asyncHandler(async (req, res) => {
-    const agent = await loadHermesUiAgent(req);
+    const agent = await loadHermesUiAgent(req, { requiredRole: "editor" });
 
     try {
       const cronResponse = await fetchHermesApi(agent, "/api/jobs", {
@@ -1091,7 +1076,7 @@ router.post(
 router.delete(
   "/:id/hermes-ui/cron/:jobId",
   asyncHandler(async (req, res) => {
-    const agent = await loadHermesUiAgent(req);
+    const agent = await loadHermesUiAgent(req, { requiredRole: "editor" });
 
     try {
       const cronResponse = await fetchHermesApi(
@@ -1141,7 +1126,7 @@ router.get(
 router.post(
   "/:id/hermes-ui/channels",
   asyncHandler(async (req, res) => {
-    const agent = await loadHermesUiAgent(req);
+    const agent = await loadHermesUiAgent(req, { requiredRole: "editor" });
     const type = typeof req.body?.type === "string" ? req.body.type.trim().toLowerCase() : "";
 
     if (!type) {
@@ -1165,7 +1150,7 @@ router.post(
 router.patch(
   "/:id/hermes-ui/channels/:channelId",
   asyncHandler(async (req, res) => {
-    const agent = await loadHermesUiAgent(req);
+    const agent = await loadHermesUiAgent(req, { requiredRole: "editor" });
 
     try {
       res.json(
@@ -1182,7 +1167,7 @@ router.patch(
 router.delete(
   "/:id/hermes-ui/channels/:channelId",
   asyncHandler(async (req, res) => {
-    const agent = await loadHermesUiAgent(req);
+    const agent = await loadHermesUiAgent(req, { requiredRole: "editor" });
 
     try {
       res.json(await deleteHermesChannel(agent, req.params.channelId));
@@ -1197,7 +1182,7 @@ router.delete(
 router.post(
   "/:id/hermes-ui/channels/:channelId/test",
   asyncHandler(async (req, res) => {
-    const agent = await loadHermesUiAgent(req);
+    const agent = await loadHermesUiAgent(req, { requiredRole: "editor" });
 
     try {
       res.json(await testHermesChannel(agent, req.params.channelId));
@@ -1213,11 +1198,7 @@ router.post(
 router.get(
   "/:id/stats",
   asyncHandler(async (req, res) => {
-    const result = await db.query("SELECT * FROM agents WHERE id = $1 AND user_id = $2", [
-      req.params.id,
-      req.user.id,
-    ]);
-    const agent = result.rows[0];
+    const agent = await findAccessibleAgent(req.params.id, req.user.id, "viewer");
     if (!agent) return res.status(404).json({ error: "Agent not found" });
     res.json(await buildAgentStatsResponse(agent));
   }),
@@ -1354,6 +1335,14 @@ router.post("/deploy", async (req, res) => {
     );
     const agent = result.rows[0];
 
+    // Capture v1 of the agent's configuration so the version timeline starts
+    // from deploy. Best-effort — never blocks the deploy on a snapshot failure.
+    agentVersions.recordVersionBestEffort(agent.id, templatePayload, {
+      createdBy: req.user.id,
+      message: `Initial deploy: ${name}`,
+      source: "deploy",
+    });
+
     if (migrationDraft) {
       await materializeManagedMigrationState(req.user.id, agent.id, migrationDraft.manifest);
 
@@ -1417,11 +1406,7 @@ router.post("/deploy", async (req, res) => {
 router.patch(
   "/:id",
   asyncHandler(async (req, res) => {
-    const result = await db.query("SELECT * FROM agents WHERE id = $1 AND user_id = $2", [
-      req.params.id,
-      req.user.id,
-    ]);
-    const agent = result.rows[0];
+    const agent = await findAccessibleAgent(req.params.id, req.user.id, "editor");
     if (!agent) return res.status(404).json({ error: "Agent not found" });
 
     const name = sanitizeAgentName(req.body.name, agent.name || "OpenClaw-Agent");
@@ -1456,11 +1441,7 @@ router.post(
       return res.status(402).json({ error: limits.error, subscription: limits.subscription });
     }
 
-    const sourceResult = await db.query("SELECT * FROM agents WHERE id = $1 AND user_id = $2", [
-      req.params.id,
-      req.user.id,
-    ]);
-    const sourceAgent = sourceResult.rows[0];
+    const sourceAgent = await findAccessibleAgent(req.params.id, req.user.id, "editor");
     if (!sourceAgent) return res.status(404).json({ error: "Agent not found" });
     const sourceRuntime = buildAgentRuntimeFields(sourceAgent);
     res.locals.auditContext = buildAgentContext(sourceAgent, {
@@ -1544,6 +1525,12 @@ router.post(
     );
     const agent = inserted.rows[0];
 
+    agentVersions.recordVersionBestEffort(agent.id, templatePayload, {
+      createdBy: req.user.id,
+      message: `Duplicated from "${sourceAgent.name}"`,
+      source: "duplicate",
+    });
+
     await materializeTemplateWiring(agent.id, templatePayload);
     await db.query("INSERT INTO deployments(agent_id, status) VALUES($1, 'queued')", [agent.id]);
     await addDeploymentJob({
@@ -1580,11 +1567,7 @@ router.post(
 
 router.post("/:id/start", async (req, res) => {
   try {
-    const result = await db.query("SELECT * FROM agents WHERE id = $1 AND user_id = $2", [
-      req.params.id,
-      req.user.id,
-    ]);
-    const agent = result.rows[0];
+    const agent = await findAccessibleAgent(req.params.id, req.user.id, "editor");
     if (!agent) return res.status(404).json({ error: "Agent not found" });
     res.locals.auditContext = buildAgentContext(agent, {
       ownerEmail: req.user.email || null,
@@ -1627,11 +1610,7 @@ router.post("/:id/start", async (req, res) => {
 
 router.post("/:id/stop", async (req, res) => {
   try {
-    const result = await db.query("SELECT * FROM agents WHERE id = $1 AND user_id = $2", [
-      req.params.id,
-      req.user.id,
-    ]);
-    const agent = result.rows[0];
+    const agent = await findAccessibleAgent(req.params.id, req.user.id, "editor");
     if (!agent) return res.status(404).json({ error: "Agent not found" });
     res.locals.auditContext = buildAgentContext(agent, {
       ownerEmail: req.user.email || null,
@@ -1665,11 +1644,7 @@ router.post("/:id/stop", async (req, res) => {
 });
 
 async function destroyAgent(agentId, userId, req, res) {
-  const result = await db.query("SELECT * FROM agents WHERE id = $1 AND user_id = $2", [
-    agentId,
-    userId,
-  ]);
-  const agent = result.rows[0];
+  const agent = await findAccessibleAgent(agentId, userId, "admin");
   if (!agent) return res.status(404).json({ error: "Agent not found" });
   res.locals.auditContext = buildAgentContext(agent, {
     ownerEmail: req.user.email || null,
@@ -1712,11 +1687,7 @@ router.delete("/:id", async (req, res) => {
 
 router.post("/:id/restart", async (req, res) => {
   try {
-    const result = await db.query("SELECT * FROM agents WHERE id = $1 AND user_id = $2", [
-      req.params.id,
-      req.user.id,
-    ]);
-    const agent = result.rows[0];
+    const agent = await findAccessibleAgent(req.params.id, req.user.id, "editor");
     if (!agent) return res.status(404).json({ error: "Agent not found" });
     res.locals.auditContext = buildAgentContext(agent, {
       ownerEmail: req.user.email || null,
@@ -1743,11 +1714,7 @@ router.post("/:id/restart", async (req, res) => {
 router.post("/:id/redeploy", async (req, res) => {
   try {
     const requestBody = req.body || {};
-    const result = await db.query("SELECT * FROM agents WHERE id = $1 AND user_id = $2", [
-      req.params.id,
-      req.user.id,
-    ]);
-    const agent = result.rows[0];
+    const agent = await findAccessibleAgent(req.params.id, req.user.id, "editor");
     if (!agent) return res.status(404).json({ error: "Agent not found" });
     res.locals.auditContext = buildAgentContext(agent, {
       ownerEmail: req.user.email || null,
@@ -1850,5 +1817,120 @@ router.post("/:id/redeploy", async (req, res) => {
     res.status(e.statusCode || 500).json({ error: e.message });
   }
 });
+
+// ── Agent versions + rollback ────────────────────────────────────────────────
+
+router.get(
+  "/:id/versions",
+  asyncHandler(async (req, res) => {
+    const agent = await findAccessibleAgent(req.params.id, req.user.id, "viewer");
+    if (!agent) return res.status(404).json({ error: "Agent not found" });
+    const limit = Math.max(1, Math.min(200, Number(req.query.limit) || 50));
+    res.json(await agentVersions.listVersions(agent.id, { limit }));
+  }),
+);
+
+router.get(
+  "/:id/versions/:versionId",
+  asyncHandler(async (req, res) => {
+    const agent = await findAccessibleAgent(req.params.id, req.user.id, "viewer");
+    if (!agent) return res.status(404).json({ error: "Agent not found" });
+    const version = await agentVersions.getVersion(agent.id, req.params.versionId);
+    if (!version) return res.status(404).json({ error: "Version not found" });
+    res.json(version);
+  }),
+);
+
+// Rollback restores the prior config to the agent's current row and triggers
+// a redeploy so the running container picks up the change. The current
+// configuration is captured as a new version first so the rollback itself is
+// reversible. requires editor role on the agent.
+router.post(
+  "/:id/rollback/:versionId",
+  asyncHandler(async (req, res) => {
+    const agent = await findAccessibleAgent(req.params.id, req.user.id, "editor");
+    if (!agent) return res.status(404).json({ error: "Agent not found" });
+    const target = await agentVersions.getVersion(agent.id, req.params.versionId);
+    if (!target) return res.status(404).json({ error: "Version not found" });
+
+    res.locals.auditContext = buildAgentContext(agent, {
+      ownerEmail: req.user.email || null,
+    });
+
+    // Snapshot the current state first so rollback is itself reversible.
+    const currentResult = await db.query(
+      "SELECT template_payload FROM agents WHERE id = $1",
+      [agent.id],
+    );
+    const currentPayload = currentResult.rows[0]?.template_payload || {};
+    await agentVersions.recordVersionBestEffort(agent.id, currentPayload, {
+      createdBy: req.user.id,
+      message: `Pre-rollback snapshot (rolling back to v${target.versionNumber})`,
+      source: "rollback",
+    });
+
+    // Replace the agent's template_payload with the target version.
+    await db.query("UPDATE agents SET template_payload = $1::jsonb WHERE id = $2", [
+      JSON.stringify(target.config),
+      agent.id,
+    ]);
+
+    // Record the rolled-back state as the new "current" version.
+    const restored = await agentVersions.recordVersion(agent.id, target.config, {
+      createdBy: req.user.id,
+      message: `Rolled back to v${target.versionNumber}`,
+      source: "rollback",
+    });
+
+    // Re-materialize wiring + queue redeploy if the agent has a container.
+    try {
+      await materializeTemplateWiring(agent.id, target.config);
+    } catch (err) {
+      console.warn(`[agents.rollback] wiring materialize failed: ${err.message}`);
+    }
+    if (agent.container_id) {
+      await db.query(
+        `UPDATE agents
+            SET status = 'queued',
+                container_id = NULL
+          WHERE id = $1`,
+        [agent.id],
+      );
+      await db.query("INSERT INTO deployments(agent_id, status) VALUES($1, 'queued')", [agent.id]);
+      await addDeploymentJob({
+        id: agent.id,
+        name: agent.name,
+        userId: req.user.id,
+        backend: agent.backend_type,
+        sandbox: agent.sandbox_profile,
+        specs: {
+          vcpu: agent.vcpu || 2,
+          ram_mb: agent.ram_mb || 2048,
+          disk_gb: agent.disk_gb || 20,
+        },
+        container_name: agent.container_name,
+        image: agent.image,
+      });
+    }
+
+    await monitoring.logEvent(
+      "agent_rolled_back",
+      `Agent "${agent.name}" rolled back to v${target.versionNumber}`,
+      agentAuditMetadata(req, agent, {
+        rollback: {
+          targetVersionId: target.id,
+          targetVersionNumber: target.versionNumber,
+          newVersionNumber: restored.versionNumber,
+        },
+      }),
+    );
+
+    res.json({
+      success: true,
+      restored,
+      redeployed: Boolean(agent.container_id),
+    });
+  }),
+);
 
 module.exports = router;

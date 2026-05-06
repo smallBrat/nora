@@ -945,6 +945,12 @@ app.use("/clawhub", require("./routes/clawhub"));
 app.use("/agent-hub", require("./routes/agentHub"));
 app.use("/workspaces", require("./routes/workspaces"));
 app.use("/billing", require("./routes/billing"));
+// Fleet routes mount before /admin so the explicit prefix wins; both still go
+// through requireAdmin (the fleet router applies it itself, and /admin's own
+// guard is redundant but harmless). Same pattern for the platform-admin RBAC
+// god view.
+app.use("/admin/fleet/migrations", require("./routes/fleetMigrations"));
+app.use("/admin", require("./routes/adminMembers"));
 app.use("/admin", require("./routes/admin"));
 
 // ─── Central Error Handler ────────────────────────────────────────
@@ -1439,6 +1445,134 @@ async function migrateDB() {
           AND v.id IS NULL`,
     `CREATE INDEX IF NOT EXISTS idx_snapshots_template_key ON snapshots(template_key)`,
     `CREATE INDEX IF NOT EXISTS idx_agent_hub_listings_snapshot_id ON agent_hub_listings(snapshot_id)`,
+    // ─── Phase 0: multi-tenant workspace foundation ─────────────────────
+    `CREATE TABLE IF NOT EXISTS workspace_members (
+       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+       workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+       user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+       role TEXT NOT NULL DEFAULT 'viewer'
+         CHECK (role IN ('owner', 'admin', 'editor', 'viewer')),
+       invited_by UUID REFERENCES users(id) ON DELETE SET NULL,
+       created_at TIMESTAMPTZ DEFAULT NOW(),
+       UNIQUE(workspace_id, user_id)
+     )`,
+    `CREATE INDEX IF NOT EXISTS idx_workspace_members_user ON workspace_members(user_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_workspace_members_workspace_role ON workspace_members(workspace_id, role)`,
+    // Backfill: every existing workspace creator becomes the 'owner' member.
+    // Safe to re-run because of the UNIQUE(workspace_id, user_id) constraint.
+    `INSERT INTO workspace_members (workspace_id, user_id, role)
+       SELECT id, user_id, 'owner' FROM workspaces WHERE user_id IS NOT NULL
+       ON CONFLICT (workspace_id, user_id) DO NOTHING`,
+    `CREATE TABLE IF NOT EXISTS workspace_invitations (
+       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+       workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+       email TEXT NOT NULL,
+       role TEXT NOT NULL DEFAULT 'viewer'
+         CHECK (role IN ('admin', 'editor', 'viewer')),
+       token_hash TEXT NOT NULL UNIQUE,
+       invited_by UUID REFERENCES users(id) ON DELETE SET NULL,
+       status TEXT NOT NULL DEFAULT 'pending'
+         CHECK (status IN ('pending', 'accepted', 'revoked', 'expired')),
+       accepted_by UUID REFERENCES users(id) ON DELETE SET NULL,
+       accepted_at TIMESTAMPTZ,
+       expires_at TIMESTAMPTZ NOT NULL,
+       created_at TIMESTAMPTZ DEFAULT NOW()
+     )`,
+    `CREATE INDEX IF NOT EXISTS idx_workspace_invitations_workspace ON workspace_invitations(workspace_id, status, created_at DESC)`,
+    `CREATE INDEX IF NOT EXISTS idx_workspace_invitations_email_pending ON workspace_invitations(email) WHERE status = 'pending'`,
+    // ─── Phase 1: workspace-scoped API keys ─────────────────────────────
+    `CREATE TABLE IF NOT EXISTS api_keys (
+       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+       workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+       created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+       label TEXT NOT NULL,
+       key_hash TEXT NOT NULL UNIQUE,
+       key_prefix TEXT NOT NULL,
+       scopes JSONB NOT NULL DEFAULT '[]'::jsonb,
+       status TEXT NOT NULL DEFAULT 'active'
+         CHECK (status IN ('active', 'revoked')),
+       expires_at TIMESTAMPTZ,
+       last_used_at TIMESTAMPTZ,
+       revoked_at TIMESTAMPTZ,
+       created_at TIMESTAMPTZ DEFAULT NOW()
+     )`,
+    `CREATE INDEX IF NOT EXISTS idx_api_keys_workspace ON api_keys(workspace_id, created_at DESC)`,
+    `CREATE INDEX IF NOT EXISTS idx_api_keys_hash_active ON api_keys(key_hash) WHERE status = 'active' AND revoked_at IS NULL`,
+    // ─── Phase 2: alert rules + per-workspace budgets ───────────────────
+    `CREATE TABLE IF NOT EXISTS alert_rules (
+       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+       workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+       created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+       name TEXT NOT NULL,
+       event_pattern TEXT NOT NULL,
+       channels JSONB NOT NULL DEFAULT '[]'::jsonb,
+       enabled BOOLEAN NOT NULL DEFAULT true,
+       last_fired_at TIMESTAMPTZ,
+       last_error TEXT,
+       created_at TIMESTAMPTZ DEFAULT NOW(),
+       updated_at TIMESTAMPTZ DEFAULT NOW()
+     )`,
+    `CREATE INDEX IF NOT EXISTS idx_alert_rules_workspace_enabled ON alert_rules(workspace_id, enabled)`,
+    `CREATE INDEX IF NOT EXISTS idx_alert_rules_pattern_enabled ON alert_rules(event_pattern) WHERE enabled = true`,
+    `CREATE TABLE IF NOT EXISTS workspace_budgets (
+       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+       workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+       period TEXT NOT NULL DEFAULT 'monthly'
+         CHECK (period IN ('daily', 'weekly', 'monthly')),
+       limit_usd NUMERIC(12, 2) NOT NULL,
+       soft_threshold_pct INTEGER NOT NULL DEFAULT 80
+         CHECK (soft_threshold_pct BETWEEN 0 AND 100),
+       last_alerted_at TIMESTAMPTZ,
+       last_alerted_pct INTEGER,
+       created_at TIMESTAMPTZ DEFAULT NOW(),
+       updated_at TIMESTAMPTZ DEFAULT NOW(),
+       UNIQUE(workspace_id, period)
+     )`,
+    // ─── Phase 3: agent configuration history ───────────────────────────
+    `CREATE TABLE IF NOT EXISTS agent_versions (
+       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+       agent_id UUID NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+       version_number INTEGER NOT NULL,
+       config JSONB NOT NULL DEFAULT '{}',
+       created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+       message TEXT,
+       source TEXT NOT NULL DEFAULT 'edit'
+         CHECK (source IN ('edit', 'deploy', 'redeploy', 'duplicate', 'hub-install', 'restore', 'rollback')),
+       created_at TIMESTAMPTZ DEFAULT NOW(),
+       UNIQUE(agent_id, version_number)
+     )`,
+    `CREATE INDEX IF NOT EXISTS idx_agent_versions_agent_recent ON agent_versions(agent_id, version_number DESC)`,
+    // ─── Phase 5: fleet runtime migrations ──────────────────────────────
+    `CREATE TABLE IF NOT EXISTS fleet_migrations (
+       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+       initiated_by UUID REFERENCES users(id) ON DELETE SET NULL,
+       status TEXT NOT NULL DEFAULT 'pending'
+         CHECK (status IN ('pending', 'queued', 'in_progress', 'completed', 'partial_failure', 'rolled_back')),
+       source_selection JSONB NOT NULL DEFAULT '{}',
+       target_selection JSONB NOT NULL DEFAULT '{}',
+       agent_ids JSONB NOT NULL DEFAULT '[]',
+       before_state JSONB NOT NULL DEFAULT '{}',
+       after_state JSONB NOT NULL DEFAULT '{}',
+       errors JSONB NOT NULL DEFAULT '[]',
+       dry_run BOOLEAN NOT NULL DEFAULT false,
+       notes TEXT,
+       started_at TIMESTAMPTZ,
+       completed_at TIMESTAMPTZ,
+       rolled_back_at TIMESTAMPTZ,
+       created_at TIMESTAMPTZ DEFAULT NOW()
+     )`,
+    `CREATE INDEX IF NOT EXISTS idx_fleet_migrations_status_created ON fleet_migrations(status, created_at DESC)`,
+    `CREATE INDEX IF NOT EXISTS idx_fleet_migrations_initiator ON fleet_migrations(initiated_by, created_at DESC)`,
+    // ─── Phase 6: platform-wide SMTP (mailer) ───────────────────────────
+    // Stored as additional columns on platform_settings; read/written by
+    // mailer.ts via platformSettings.getSmtpSettings/updateSmtpSettings.
+    `DO $$ BEGIN ALTER TABLE platform_settings ADD COLUMN smtp_host TEXT NOT NULL DEFAULT ''; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
+    `DO $$ BEGIN ALTER TABLE platform_settings ADD COLUMN smtp_port INTEGER NOT NULL DEFAULT 587; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
+    `DO $$ BEGIN ALTER TABLE platform_settings ADD COLUMN smtp_secure BOOLEAN NOT NULL DEFAULT false; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
+    `DO $$ BEGIN ALTER TABLE platform_settings ADD COLUMN smtp_username TEXT NOT NULL DEFAULT ''; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
+    `DO $$ BEGIN ALTER TABLE platform_settings ADD COLUMN smtp_password_encrypted TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
+    `DO $$ BEGIN ALTER TABLE platform_settings ADD COLUMN smtp_from_address TEXT NOT NULL DEFAULT ''; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
+    `DO $$ BEGIN ALTER TABLE platform_settings ADD COLUMN smtp_from_name TEXT NOT NULL DEFAULT 'Nora'; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
   ];
 
   for (const sql of migrations) {

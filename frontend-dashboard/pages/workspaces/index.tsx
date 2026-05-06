@@ -1,6 +1,7 @@
 import Layout from "../../components/layout/Layout";
 import { useEffect, useState } from "react";
-import { Loader2, Plus, FolderOpen, Trash2, Bot } from "lucide-react";
+import { Loader2, Plus, FolderOpen, Trash2, Bot, Users } from "lucide-react";
+import { useRouter } from "next/router";
 import { clsx } from "clsx";
 import { fetchWithAuth } from "../../lib/api";
 import { useToast } from "../../components/Toast";
@@ -11,6 +12,7 @@ export default function Workspaces() {
   const [name, setName] = useState("");
   const [creating, setCreating] = useState(false);
   const toast = useToast();
+  const router = useRouter();
 
   const load = async () => {
     setLoading(true);
@@ -115,13 +117,22 @@ export default function Workspaces() {
                       <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">ID: {w.id}</span>
                     </div>
                   </div>
-                  <button
-                    onClick={() => remove(w.id)}
-                    aria-label={`Delete workspace ${w.name}`}
-                    className="p-2.5 rounded-xl hover:bg-red-50 text-slate-400 hover:text-red-500 transition-all"
-                  >
-                    <Trash2 size={18} />
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => router.push(`/workspaces/${w.id}/members`)}
+                      aria-label={`Manage members of ${w.name}`}
+                      className="p-2.5 rounded-xl hover:bg-blue-50 text-slate-400 hover:text-blue-600 transition-all"
+                    >
+                      <Users size={18} />
+                    </button>
+                    <button
+                      onClick={() => remove(w.id)}
+                      aria-label={`Delete workspace ${w.name}`}
+                      className="p-2.5 rounded-xl hover:bg-red-50 text-slate-400 hover:text-red-500 transition-all"
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  </div>
                 </div>
                 {w.agents && w.agents.length > 0 && (
                   <div className="flex items-center gap-2 text-xs font-bold text-slate-500">

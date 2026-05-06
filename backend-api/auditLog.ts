@@ -225,6 +225,31 @@ function buildListingContext(listing = {}, overrides = {}) {
   });
 }
 
+function buildWorkspaceContext(workspace = {}, overrides = {}) {
+  const { id, name, role, memberUserId, memberEmail, invitationId, invitationEmail, invitationRole, ...rest } =
+    overrides || {};
+  return normalizeAuditValue({
+    workspace: {
+      id: id || workspace?.id || null,
+      name: name || workspace?.name || null,
+      role: role || workspace?.role || null,
+    },
+    member:
+      memberUserId || memberEmail
+        ? { userId: memberUserId || null, email: memberEmail || null }
+        : undefined,
+    invitation:
+      invitationId || invitationEmail || invitationRole
+        ? {
+            id: invitationId || null,
+            email: invitationEmail || null,
+            role: invitationRole || null,
+          }
+        : undefined,
+    ...rest,
+  });
+}
+
 function buildReportContext(report = {}, overrides = {}) {
   const {
     id,
@@ -327,6 +352,7 @@ module.exports = {
   buildListingContext,
   buildReportContext,
   buildUserContext,
+  buildWorkspaceContext,
   createMutationFailureAuditMiddleware,
   normalizeAuditValue,
 };

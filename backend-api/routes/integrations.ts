@@ -7,7 +7,8 @@ const { encrypt, decrypt } = require("../crypto");
 const { rpcCall } = require("../gatewayProxy");
 const { runContainerCommand, syncAuthToUserAgents } = require("../authSync");
 const { buildHermesIntegrationInstallCommand } = require("../integrationRuntimeFiles");
-const { requireOwnedAgent } = require("../middleware/ownership");
+const { requireAccessibleAgent } = require("../middleware/ownership");
+const { scopeByMethod } = require("../middleware/auth");
 const { AGENT_RUNTIME_PORT } = require("../../agent-runtime/lib/contracts");
 const { runtimeUrlForAgent } = require("../../agent-runtime/lib/agentEndpoints");
 const { resolveAgentRuntimeFamily } = require("../agentRuntimeFields");
@@ -20,7 +21,12 @@ const TWITTER_OAUTH_ME_URL = "https://api.x.com/2/users/me";
 const TWITTER_OAUTH_SCOPES = ["tweet.read", "users.read", "tweet.write", "offline.access"];
 const TWITTER_OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 
-router.use("/agents/:id/integrations", requireOwnedAgent("id"));
+// Editor floor — integration configs include sensitive credentials, so viewers
+// don't see them. Per-route GET could be relaxed to viewer in a follow-up if
+// the redacted listing turns out to be useful for read-only operators.
+router.use("/agents/:id/integrations", requireAccessibleAgent("editor", "id"));
+// API keys must carry integrations:read or integrations:write to call these.
+router.use("/agents/:id/integrations", scopeByMethod("integrations:read", "integrations:write"));
 
 function base64Url(buffer) {
   return Buffer.from(buffer)

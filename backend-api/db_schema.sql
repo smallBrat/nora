@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash TEXT,
   role TEXT DEFAULT 'user',
   name TEXT,
+  preferred_locale TEXT,
   agent_limit_override INTEGER,
   managed_backups_enabled_override BOOLEAN,
   backup_limit_per_agent_override INTEGER,
@@ -101,6 +102,7 @@ CREATE TABLE IF NOT EXISTS platform_settings (
   default_vcpu INTEGER NOT NULL DEFAULT 1,
   default_ram_mb INTEGER NOT NULL DEFAULT 1024,
   default_disk_gb INTEGER NOT NULL DEFAULT 10,
+  default_locale TEXT NOT NULL DEFAULT 'en',
   system_banner_enabled BOOLEAN NOT NULL DEFAULT false,
   system_banner_severity TEXT NOT NULL DEFAULT 'warning',
   system_banner_title TEXT NOT NULL DEFAULT '',
@@ -125,6 +127,16 @@ CREATE TABLE IF NOT EXISTS platform_settings (
   backup_installation_schedule_frequency TEXT NOT NULL DEFAULT 'daily',
   backup_installation_schedule_hour_utc INTEGER NOT NULL DEFAULT 2,
   backup_installation_schedule_day_of_week INTEGER NOT NULL DEFAULT 0,
+  -- Platform-wide SMTP for invitation emails + alert email channels (Phase 6).
+  -- Encrypted password is AES-256-GCM via crypto.ts. The set is "configured"
+  -- iff host + port + from_address are populated (mailer.isConfigured()).
+  smtp_host TEXT NOT NULL DEFAULT '',
+  smtp_port INTEGER NOT NULL DEFAULT 587,
+  smtp_secure BOOLEAN NOT NULL DEFAULT false,
+  smtp_username TEXT NOT NULL DEFAULT '',
+  smtp_password_encrypted TEXT,
+  smtp_from_address TEXT NOT NULL DEFAULT '',
+  smtp_from_name TEXT NOT NULL DEFAULT 'Nora',
   -- Per-tier defaults live in backend-api/platformSettings.ts
   -- (DEFAULT_BACKUP_PLAN_LIMITS) and are applied per-key by
   -- normalizeBackupPlanLimits on read. Keep the schema default empty so the
@@ -258,6 +270,174 @@ CREATE TABLE IF NOT EXISTS workspace_agents (
   agent_id UUID REFERENCES agents(id) ON DELETE CASCADE,
   role TEXT DEFAULT 'member',
   created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Per-workspace membership (Phase 0 of multi-tenant RBAC).
+-- workspaces.user_id remains as the creator denormalization; permission checks
+-- read from workspace_members.role instead.
+CREATE TABLE IF NOT EXISTS workspace_members (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  role TEXT NOT NULL DEFAULT 'viewer'
+    CHECK (role IN ('owner', 'admin', 'editor', 'viewer')),
+  invited_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(workspace_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_workspace_members_user
+  ON workspace_members(user_id);
+
+CREATE INDEX IF NOT EXISTS idx_workspace_members_workspace_role
+  ON workspace_members(workspace_id, role);
+
+-- Backfill: every existing workspace creator becomes the 'owner' member.
+INSERT INTO workspace_members (workspace_id, user_id, role)
+SELECT id, user_id, 'owner'
+  FROM workspaces
+ WHERE user_id IS NOT NULL
+ON CONFLICT (workspace_id, user_id) DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS workspace_invitations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  email TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'viewer'
+    CHECK (role IN ('admin', 'editor', 'viewer')),
+  token_hash TEXT NOT NULL UNIQUE,
+  invited_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  status TEXT NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending', 'accepted', 'revoked', 'expired')),
+  accepted_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  accepted_at TIMESTAMPTZ,
+  expires_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_workspace_invitations_workspace
+  ON workspace_invitations(workspace_id, status, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_workspace_invitations_email_pending
+  ON workspace_invitations(email)
+  WHERE status = 'pending';
+
+-- General-purpose, workspace-scoped API keys (Phase 1 of the public REST API).
+-- Token format: "nora_" + base64url(random32). Stored as HMAC-SHA256 hash with a
+-- server-side secret; key_prefix shows first 18 chars for UI display. Scopes is
+-- a JSONB array of "resource:action" strings (e.g. "agents:read", "agents:write").
+CREATE TABLE IF NOT EXISTS api_keys (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  label TEXT NOT NULL,
+  key_hash TEXT NOT NULL UNIQUE,
+  key_prefix TEXT NOT NULL,
+  scopes JSONB NOT NULL DEFAULT '[]'::jsonb,
+  status TEXT NOT NULL DEFAULT 'active'
+    CHECK (status IN ('active', 'revoked')),
+  expires_at TIMESTAMPTZ,
+  last_used_at TIMESTAMPTZ,
+  revoked_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_api_keys_workspace
+  ON api_keys(workspace_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_api_keys_hash_active
+  ON api_keys(key_hash)
+  WHERE status = 'active' AND revoked_at IS NULL;
+
+-- Alert rules (Phase 2). Match emitted events by type pattern (literal or
+-- glob suffix like "agent.*") and deliver to one or more channels. v1 supports
+-- "webhook" channels only — POST a JSON body to a URL. Delivery is best-effort:
+-- failures are logged but don't retry. BullMQ retry can be wired later by
+-- swapping the inline POST for a queue add.
+CREATE TABLE IF NOT EXISTS alert_rules (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  name TEXT NOT NULL,
+  event_pattern TEXT NOT NULL,
+  channels JSONB NOT NULL DEFAULT '[]'::jsonb,
+  enabled BOOLEAN NOT NULL DEFAULT true,
+  last_fired_at TIMESTAMPTZ,
+  last_error TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_alert_rules_workspace_enabled
+  ON alert_rules(workspace_id, enabled);
+
+CREATE INDEX IF NOT EXISTS idx_alert_rules_pattern_enabled
+  ON alert_rules(event_pattern)
+  WHERE enabled = true;
+
+-- Agent configuration history (Phase 3). Every save of an agent's
+-- template_payload writes a new row; rollback restores a prior config and
+-- triggers a redeploy. version_number is monotonic per agent; the latest row
+-- is the current configuration baseline.
+CREATE TABLE IF NOT EXISTS agent_versions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  agent_id UUID NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+  version_number INTEGER NOT NULL,
+  config JSONB NOT NULL DEFAULT '{}',
+  created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  message TEXT,
+  source TEXT NOT NULL DEFAULT 'edit'
+    CHECK (source IN ('edit', 'deploy', 'redeploy', 'duplicate', 'hub-install', 'restore', 'rollback')),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(agent_id, version_number)
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_versions_agent_recent
+  ON agent_versions(agent_id, version_number DESC);
+
+-- Fleet runtime migrations (Phase 5). Tracks bulk runtime transitions
+-- (e.g. moving every Hermes agent from Docker to Kubernetes) so progress is
+-- visible and pre-migration state is captured for rollback.
+CREATE TABLE IF NOT EXISTS fleet_migrations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  initiated_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  status TEXT NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending', 'queued', 'in_progress', 'completed', 'partial_failure', 'rolled_back')),
+  source_selection JSONB NOT NULL DEFAULT '{}',
+  target_selection JSONB NOT NULL DEFAULT '{}',
+  agent_ids JSONB NOT NULL DEFAULT '[]',
+  before_state JSONB NOT NULL DEFAULT '{}',
+  after_state JSONB NOT NULL DEFAULT '{}',
+  errors JSONB NOT NULL DEFAULT '[]',
+  dry_run BOOLEAN NOT NULL DEFAULT false,
+  notes TEXT,
+  started_at TIMESTAMPTZ,
+  completed_at TIMESTAMPTZ,
+  rolled_back_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_fleet_migrations_status_created
+  ON fleet_migrations(status, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_fleet_migrations_initiator
+  ON fleet_migrations(initiated_by, created_at DESC);
+
+-- Per-workspace usage budgets. When usage crosses the soft threshold (e.g.
+-- 80% of limit) or 100%, an event fires that the alert system can match.
+CREATE TABLE IF NOT EXISTS workspace_budgets (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  period TEXT NOT NULL DEFAULT 'monthly'
+    CHECK (period IN ('daily', 'weekly', 'monthly')),
+  limit_usd NUMERIC(12, 2) NOT NULL,
+  soft_threshold_pct INTEGER NOT NULL DEFAULT 80
+    CHECK (soft_threshold_pct BETWEEN 0 AND 100),
+  last_alerted_at TIMESTAMPTZ,
+  last_alerted_pct INTEGER,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(workspace_id, period)
 );
 
 CREATE TABLE IF NOT EXISTS integration_catalog (

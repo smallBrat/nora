@@ -48,6 +48,7 @@ const {
   getAgentHubSettings,
   getBackupPlanLimits,
   getBackupSettings,
+  getSmtpSettings,
   getSystemBanner,
   getLanguageSettings,
   parseRequiredDeploymentDefaults,
@@ -56,8 +57,10 @@ const {
   updateBackupSettings,
   updateDeploymentDefaults,
   updateLanguageSettings,
+  updateSmtpSettings,
   updateSystemBanner,
 } = require("../platformSettings");
+const mailer = require("../mailer");
 const { resolveAuditSource } = require("../auditSource");
 
 const router = express.Router();
@@ -767,6 +770,70 @@ router.put(
     );
 
     res.json({ ...nextSettings, installationSchedule: schedule });
+  }),
+);
+
+router.get(
+  "/settings/notifications",
+  asyncHandler(async (_req, res) => {
+    res.json(await getSmtpSettings());
+  }),
+);
+
+router.put(
+  "/settings/notifications",
+  asyncHandler(async (req, res) => {
+    const previous = await getSmtpSettings();
+    res.locals.auditContext = { settings: { kind: "notifications" } };
+    const next = await updateSmtpSettings(req.body || {});
+    mailer.bustCache();
+    await monitoring.logEvent(
+      "admin_smtp_settings_updated",
+      "Admin updated platform SMTP settings",
+      adminAuditMetadata(req, {
+        settings: {
+          kind: "notifications",
+          previous,
+          next,
+        },
+      }),
+    );
+    res.json(next);
+  }),
+);
+
+// Send a test email to the calling admin's own login email. We deliberately
+// do NOT accept a `to` parameter — that would make this an open relay any
+// platform admin could abuse to spam from the install's SMTP credentials.
+router.post(
+  "/settings/notifications/test",
+  asyncHandler(async (req, res) => {
+    const recipient = req.user?.email;
+    if (!recipient) {
+      return res.status(400).json({ error: "Caller has no email on file" });
+    }
+    const configured = await mailer.isConfigured();
+    if (!configured) {
+      return res.status(409).json({ error: "SMTP is not configured" });
+    }
+    const result = await mailer.sendMail({
+      to: recipient,
+      subject: "Nora SMTP test",
+      text:
+        "This is a test message from your Nora installation. " +
+        "If you received it, platform email is wired up correctly.",
+    });
+    await monitoring.logEvent(
+      "admin_smtp_test_sent",
+      `Admin sent SMTP test email to ${recipient}`,
+      adminAuditMetadata(req, {
+        settings: {
+          kind: "notifications",
+          test: { to: recipient, delivered: result.delivered, error: result.error || null },
+        },
+      }),
+    );
+    res.status(result.delivered ? 200 : 502).json(result);
   }),
 );
 

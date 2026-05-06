@@ -16,6 +16,7 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import AdminLayout from "../components/AdminLayout";
+import NotificationsSettingsCard from "../components/NotificationsSettingsCard";
 import { useToast } from "../components/Toast";
 import { fetchWithAuth } from "../lib/api";
 import { formatDateTime } from "../lib/format";
@@ -1412,6 +1413,10 @@ export default function AdminSettingsPage() {
                   </div>
                 </section>
               </aside>
+            </div>
+
+            <div className="mt-6">
+              <NotificationsSettingsCard />
             </div>
           </div>
         )}
