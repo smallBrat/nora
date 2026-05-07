@@ -274,7 +274,8 @@ function clampMetadataForQueue(metadata) {
   return {
     truncated: true,
     originalBytes: serialized.length,
-    workspace: metadata.workspace || (metadata.workspaceId ? { id: metadata.workspaceId } : undefined),
+    workspace:
+      metadata.workspace || (metadata.workspaceId ? { id: metadata.workspaceId } : undefined),
     agent: metadata.agent,
   };
 }
