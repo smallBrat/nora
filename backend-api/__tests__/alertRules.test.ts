@@ -1,8 +1,8 @@
 // @ts-nocheck
 /**
  * __tests__/alertRules.test.ts — alert rule pattern matching, CRUD, and
- * webhook delivery. Mocks db + global fetch so we can assert delivery
- * without standing up an HTTP listener.
+ * webhook delivery. Mocks db, mailer, and the BullMQ enqueue helper so we
+ * can assert delivery semantics without Redis or an HTTP listener.
  */
 
 const request = require("supertest");
@@ -20,10 +20,13 @@ jest.mock("../mailer", () => ({
   isConfigured: jest.fn().mockResolvedValue(true),
   bustCache: jest.fn(),
 }));
+const mockAddAlertDeliveryJob = jest.fn();
 jest.mock("../redisQueue", () => ({
   addDeploymentJob: jest.fn(),
+  addAlertDeliveryJob: mockAddAlertDeliveryJob,
   getDLQJobs: jest.fn(),
   retryDLQJob: jest.fn(),
+  ALERT_DELIVERY_ATTEMPTS: 5,
 }));
 jest.mock("../scheduler", () => ({ selectNode: jest.fn() }));
 jest.mock("../containerManager", () => ({
@@ -168,26 +171,19 @@ describe("validation", () => {
 });
 
 describe("evaluateAndDeliver", () => {
-  let originalFetch;
-  let fetchMock;
-
   beforeEach(() => {
     mockDb.query.mockReset();
-    originalFetch = global.fetch;
-    fetchMock = jest.fn().mockResolvedValue({ ok: true, status: 200 });
-    global.fetch = fetchMock;
-  });
-  afterEach(() => {
-    global.fetch = originalFetch;
+    mockAddAlertDeliveryJob.mockReset().mockResolvedValue({ id: "job-1" });
+    mockMailerSendMail.mockReset();
   });
 
   it("does nothing when no rules match", async () => {
     mockDb.query.mockResolvedValueOnce({ rows: [] });
     await alertRules.evaluateAndDeliver("agent.error", "msg", {});
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(mockAddAlertDeliveryJob).not.toHaveBeenCalled();
   });
 
-  it("posts to webhook for matching rule", async () => {
+  it("enqueues a webhook delivery for a matching rule instead of POSTing inline", async () => {
     mockDb.query
       .mockResolvedValueOnce({
         rows: [
@@ -206,16 +202,67 @@ describe("evaluateAndDeliver", () => {
       workspace: { id: "ws-1" },
       agent: { id: "a-1" },
     });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [url, opts] = fetchMock.mock.calls[0];
-    expect(url).toBe("https://hooks/a");
-    const body = JSON.parse(opts.body);
-    expect(body.eventType).toBe("agent.error");
-    expect(body.ruleId).toBe("r-1");
+    expect(mockAddAlertDeliveryJob).toHaveBeenCalledTimes(1);
+    const [job] = mockAddAlertDeliveryJob.mock.calls[0];
+    expect(job.ruleId).toBe("r-1");
+    expect(job.workspaceId).toBe("ws-1");
+    expect(job.channel).toMatchObject({ type: "webhook", url: "https://hooks/a" });
+    expect(job.eventType).toBe("agent.error");
+    // recordFiring records last_fired_at with no inline error (webhook is async)
+    const recordCall = mockDb.query.mock.calls[1];
+    expect(recordCall[0]).toContain("UPDATE alert_rules");
+    expect(recordCall[1][1]).toBeNull();
+  });
+
+  it("clamps oversized metadata before queueing", async () => {
+    mockDb.query
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: "r-big",
+            workspace_id: "ws-1",
+            name: "Errors",
+            event_pattern: "agent.*",
+            channels: [{ type: "webhook", url: "https://hooks/a" }],
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const huge = "x".repeat(20 * 1024);
+    await alertRules.evaluateAndDeliver("agent.error", "Boom", {
+      workspace: { id: "ws-1" },
+      blob: huge,
+    });
+    const [job] = mockAddAlertDeliveryJob.mock.calls[0];
+    expect(job.metadata.truncated).toBe(true);
+    expect(job.metadata.workspace).toEqual({ id: "ws-1" });
+    expect(job.metadata.blob).toBeUndefined();
+  });
+
+  it("records inline error when enqueue itself fails", async () => {
+    mockAddAlertDeliveryJob.mockRejectedValueOnce(new Error("redis down"));
+    mockDb.query
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: "r-1",
+            workspace_id: "ws-1",
+            name: "Errors",
+            event_pattern: "agent.*",
+            channels: [{ type: "webhook", url: "https://hooks/a" }],
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [] });
+
+    await alertRules.evaluateAndDeliver("agent.error", "Boom", { workspace: { id: "ws-1" } });
+    const recordCall = mockDb.query.mock.calls[1];
+    expect(recordCall[1][1]).toMatch(/webhook:enqueue_failed:redis down/);
   });
 
   it("dispatches an email channel through the platform mailer", async () => {
-    mockMailerSendMail.mockReset().mockResolvedValueOnce({ delivered: true, messageId: "m-1" });
+    mockMailerSendMail.mockResolvedValueOnce({ delivered: true, messageId: "m-1" });
     mockDb.query
       .mockResolvedValueOnce({
         rows: [
@@ -239,7 +286,7 @@ describe("evaluateAndDeliver", () => {
   });
 
   it("captures last_error when email delivery fails", async () => {
-    mockMailerSendMail.mockReset().mockResolvedValueOnce({
+    mockMailerSendMail.mockResolvedValueOnce({
       delivered: false,
       error: "not_configured",
     });
@@ -279,32 +326,84 @@ describe("evaluateAndDeliver", () => {
     await alertRules.evaluateAndDeliver("agent.error", "msg", {
       workspace: { id: "ws-1" },
     });
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(mockAddAlertDeliveryJob).not.toHaveBeenCalled();
+  });
+});
+
+describe("runAlertDeliveryJob", () => {
+  let originalFetch;
+  let fetchMock;
+
+  beforeEach(() => {
+    originalFetch = global.fetch;
+    fetchMock = jest.fn().mockResolvedValue({ ok: true, status: 200 });
+    global.fetch = fetchMock;
+  });
+  afterEach(() => {
+    global.fetch = originalFetch;
   });
 
-  it("records last_error when delivery fails but does not throw", async () => {
-    fetchMock.mockResolvedValueOnce({ ok: false, status: 503 });
-    mockDb.query
-      .mockResolvedValueOnce({
-        rows: [
-          {
-            id: "r-1",
-            workspace_id: "ws-1",
-            name: "Errors",
-            event_pattern: "agent.*",
-            channels: [{ type: "webhook", url: "https://hooks/x" }],
-          },
-        ],
-      })
-      .mockResolvedValueOnce({ rows: [] }); // recordFiring update
+  it("POSTs the channel URL with the job payload", async () => {
+    await alertRules.runAlertDeliveryJob({
+      ruleId: "r-1",
+      ruleName: "Errors",
+      channel: { type: "webhook", url: "https://hooks/a" },
+      eventType: "agent.error",
+      message: "Boom",
+      metadata: { workspace: { id: "ws-1" } },
+      firedAt: "2026-05-07T00:00:00Z",
+      deliveryId: "delivery-123",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, opts] = fetchMock.mock.calls[0];
+    expect(url).toBe("https://hooks/a");
+    const body = JSON.parse(opts.body);
+    expect(body.eventType).toBe("agent.error");
+    expect(body.ruleId).toBe("r-1");
+    expect(body.deliveryId).toBe("delivery-123");
+  });
 
+  it("throws on non-2xx so BullMQ retries", async () => {
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 503 });
     await expect(
-      alertRules.evaluateAndDeliver("agent.error", "Boom", { workspace: { id: "ws-1" } }),
-    ).resolves.toBeUndefined();
-    // recordFiring was called with the error string
-    const recordCall = mockDb.query.mock.calls[1];
-    expect(recordCall[0]).toContain("UPDATE alert_rules");
-    expect(recordCall[1][1]).toMatch(/503/);
+      alertRules.runAlertDeliveryJob({
+        ruleId: "r-1",
+        channel: { type: "webhook", url: "https://hooks/x" },
+        eventType: "agent.error",
+        message: "Boom",
+        metadata: {},
+        firedAt: "2026-05-07T00:00:00Z",
+      }),
+    ).rejects.toThrow(/503/);
+  });
+
+  it("rejects unsupported channel types", async () => {
+    await expect(
+      alertRules.runAlertDeliveryJob({
+        ruleId: "r-1",
+        channel: { type: "email", to: ["a@b.com"] },
+        eventType: "agent.error",
+      }),
+    ).rejects.toThrow(/unsupported channel type/);
+  });
+});
+
+describe("recordDeliveryFailure", () => {
+  beforeEach(() => mockDb.query.mockReset());
+
+  it("updates last_error without touching last_fired_at", async () => {
+    mockDb.query.mockResolvedValueOnce({ rows: [] });
+    await alertRules.recordDeliveryFailure("r-1", "webhook:Webhook returned 503");
+    const call = mockDb.query.mock.calls[0];
+    expect(call[0]).toContain("UPDATE alert_rules");
+    expect(call[0]).toContain("last_error");
+    expect(call[0]).not.toContain("last_fired_at");
+    expect(call[1]).toEqual(["r-1", "webhook:Webhook returned 503"]);
+  });
+
+  it("noops when ruleId is missing", async () => {
+    await alertRules.recordDeliveryFailure(null, "x");
+    expect(mockDb.query).not.toHaveBeenCalled();
   });
 });
 

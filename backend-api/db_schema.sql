@@ -350,10 +350,11 @@ CREATE INDEX IF NOT EXISTS idx_api_keys_hash_active
   WHERE status = 'active' AND revoked_at IS NULL;
 
 -- Alert rules (Phase 2). Match emitted events by type pattern (literal or
--- glob suffix like "agent.*") and deliver to one or more channels. v1 supports
--- "webhook" channels only — POST a JSON body to a URL. Delivery is best-effort:
--- failures are logged but don't retry. BullMQ retry can be wired later by
--- swapping the inline POST for a queue add.
+-- glob suffix like "agent.*") and deliver to one or more channels.
+-- "webhook" channels POST a JSON body via the alert-deliveries BullMQ queue
+-- with exponential-backoff retries (handled in workers/provisioner/worker.ts);
+-- "email" channels dispatch inline through the platform mailer. last_error
+-- holds the most recent terminal delivery failure.
 CREATE TABLE IF NOT EXISTS alert_rules (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,

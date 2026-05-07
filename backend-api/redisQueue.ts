@@ -20,6 +20,12 @@ const CLAWHUB_INSTALL_JOB_TIMEOUT_MS = parseTimeoutMs(
 );
 const BACKUP_JOB_TIMEOUT_MS = parseTimeoutMs(process.env.NORA_BACKUP_JOB_TIMEOUT_MS, 1800000);
 
+const ALERT_DELIVERY_ATTEMPTS = (() => {
+  const parsed = Number.parseInt(process.env.ALERT_DELIVERY_ATTEMPTS, 10);
+  if (!Number.isFinite(parsed) || parsed < 1) return 5;
+  return Math.min(parsed, 10);
+})();
+
 const connection = new IORedis({
   host: process.env.REDIS_HOST || "redis",
   port: parseInt(process.env.REDIS_PORT || "6379"),
@@ -62,8 +68,32 @@ const backupsQueue = new Queue("backups", {
   },
 });
 
+// Alert webhook deliveries. Each job is one (rule, channel) pair so retries
+// don't replay sibling channels that already succeeded. The worker (see
+// workers/provisioner/worker.ts) calls into runAlertDeliveryJob in
+// backend-api/alertRules.ts, which throws on non-2xx so BullMQ schedules
+// the next attempt with exponential backoff.
+const alertDeliveryQueue = new Queue("alert-deliveries", {
+  connection,
+  defaultJobOptions: {
+    attempts: ALERT_DELIVERY_ATTEMPTS,
+    backoff: { type: "exponential", delay: 1000 },
+    removeOnComplete: { count: 100, age: 3600 },
+    removeOnFail: { count: 500, age: 86400 },
+  },
+});
+
 async function addDeploymentJob(agent) {
   await deployQueue.add("deploy-agent", agent);
+}
+
+async function addAlertDeliveryJob(payload) {
+  const deliveryId = payload?.deliveryId || randomUUID();
+  return alertDeliveryQueue.add(
+    "deliver-webhook",
+    { ...payload, deliveryId },
+    { jobId: deliveryId },
+  );
 }
 
 async function addClawhubInstallJob(payload) {
@@ -161,9 +191,11 @@ module.exports = {
   deployQueue,
   clawhubInstallsQueue,
   backupsQueue,
+  alertDeliveryQueue,
   addDeploymentJob,
   addClawhubInstallJob,
   addBackupJob,
+  addAlertDeliveryJob,
   findInFlightClawhubInstallJob,
   getClawhubInstallJob,
   getClawhubInstallJobStatus,
@@ -171,4 +203,5 @@ module.exports = {
   retryDLQJob,
   connection,
   BACKUP_JOB_TIMEOUT_MS,
+  ALERT_DELIVERY_ATTEMPTS,
 };

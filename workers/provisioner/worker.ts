@@ -1828,12 +1828,54 @@ clawhubInstallWorker.on("completed", (job) => {
   console.log(`[clawhub-installs] Job ${job.id} completed successfully`);
 });
 
+// ── Alert Delivery Worker ────────────────────────────────────────
+// Each job is one (rule, webhook channel) pair. runAlertDeliveryJob throws
+// on non-2xx so BullMQ retries with exponential backoff (configured on the
+// queue). When attemptsMade hits the configured limit, recordDeliveryFailure
+// updates the rule's last_error.
+const { runAlertDeliveryJob, recordDeliveryFailure } = require("../../backend-api/alertRules");
+const { ALERT_DELIVERY_ATTEMPTS } = require("../../backend-api/redisQueue");
+const ALERT_DELIVERY_CONCURRENCY = parsePositiveInteger(
+  process.env.ALERT_DELIVERY_WORKER_CONCURRENCY,
+  5,
+);
+
+const alertDeliveryWorker = new Worker(
+  "alert-deliveries",
+  async (job) => runAlertDeliveryJob(job.data),
+  { connection, concurrency: ALERT_DELIVERY_CONCURRENCY },
+);
+
+alertDeliveryWorker.on("failed", async (job, err) => {
+  if (!job) return;
+  const attemptsMade = job.attemptsMade || 0;
+  const maxAttempts = job.opts?.attempts || ALERT_DELIVERY_ATTEMPTS;
+  const terminal = attemptsMade >= maxAttempts;
+  console.error(
+    `[alert-deliveries] Job ${job.id} attempt ${attemptsMade}/${maxAttempts} failed: ${err.message}`,
+  );
+  if (terminal && job.data?.ruleId) {
+    try {
+      await recordDeliveryFailure(job.data.ruleId, `webhook:${err.message}`);
+    } catch (recordErr) {
+      console.error(
+        `[alert-deliveries] Failed to record terminal delivery failure: ${recordErr.message}`,
+      );
+    }
+  }
+});
+
+alertDeliveryWorker.on("completed", (job) => {
+  console.log(`[alert-deliveries] Job ${job.id} delivered`);
+});
+
 // ── Health Check Server ──────────────────────────────────────────
 const http = require("http");
 const HEALTH_PORT = parseInt(process.env.WORKER_HEALTH_PORT || "4001");
 const healthServer = http.createServer((req, res) => {
   if (req.url === "/health") {
-    const isReady = worker.isRunning() && clawhubInstallWorker.isRunning();
+    const isReady =
+      worker.isRunning() && clawhubInstallWorker.isRunning() && alertDeliveryWorker.isRunning();
     res.writeHead(isReady ? 200 : 503, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ status: isReady ? "ok" : "not_ready", uptime: process.uptime() }));
   } else {

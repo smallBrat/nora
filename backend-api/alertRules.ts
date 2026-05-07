@@ -1,10 +1,13 @@
 // @ts-nocheck
 // Workspace-scoped alert rules. Each rule matches events by event_pattern
 // (literal "agent.error" or suffix-glob "agent.*") and delivers to one or more
-// channels. v1 channels: { type: "webhook", url, headers? }. Delivery is
-// best-effort and inline (no retry queue yet); failures are recorded on the
-// rule's last_error and logged.
+// channels. v1 channels: { type: "webhook", url, headers? } | { type: "email" }.
+// Webhook deliveries are enqueued to the BullMQ alert-deliveries queue with
+// exponential-backoff retry; email deliveries stay inline (the mailer manages
+// its own transport-level retries). Terminal failures are recorded on the
+// rule's last_error.
 
+const { randomUUID } = require("crypto");
 const db = require("./db");
 
 const SUPPORTED_CHANNEL_TYPES = new Set(["webhook", "email"]);
@@ -13,6 +16,9 @@ const MAX_PATTERN_LENGTH = 100;
 const MAX_NAME_LENGTH = 100;
 const MAX_EMAIL_RECIPIENTS = 10;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// BullMQ persists job data in Redis. Bound the metadata blob we forward so a
+// pathological event payload can't blow up the queue.
+const MAX_QUEUED_METADATA_BYTES = 8 * 1024;
 
 function normalizeName(value) {
   const s = typeof value === "string" ? value.trim() : "";
@@ -238,6 +244,41 @@ async function recordFiring(ruleId, error) {
     });
 }
 
+// Called by the alert-deliveries worker when a webhook job exhausts its
+// retries. Updates only last_error so an inline email-channel firing's
+// last_fired_at is preserved.
+async function recordDeliveryFailure(ruleId, error) {
+  if (!ruleId) return;
+  await db
+    .query(
+      `UPDATE alert_rules
+          SET last_error = $2,
+              updated_at = NOW()
+        WHERE id = $1`,
+      [ruleId, error || null],
+    )
+    .catch((err) => {
+      console.error("Failed to record alert delivery failure:", err.message);
+    });
+}
+
+function clampMetadataForQueue(metadata) {
+  if (!metadata || typeof metadata !== "object") return metadata || {};
+  let serialized;
+  try {
+    serialized = JSON.stringify(metadata);
+  } catch {
+    return { truncated: true, reason: "metadata_unserializable" };
+  }
+  if (serialized.length <= MAX_QUEUED_METADATA_BYTES) return metadata;
+  return {
+    truncated: true,
+    originalBytes: serialized.length,
+    workspace: metadata.workspace || (metadata.workspaceId ? { id: metadata.workspaceId } : undefined),
+    agent: metadata.agent,
+  };
+}
+
 async function deliverEmail(channel, payload) {
   // Lazy-require so test suites that don't mock mailer don't pull it in.
   const mailer = require("./mailer");
@@ -286,7 +327,9 @@ async function deliverWebhook(channel, payload) {
 
 // Find rules whose pattern matches the event type and fire them. Designed for
 // fire-and-forget use from monitoring.logEvent — never throws, so a misbehaving
-// webhook can't block event recording.
+// channel can't block event recording. Webhook channels are enqueued for
+// retried delivery by the alert-deliveries worker; email channels still
+// dispatch inline (the mailer has its own retry semantics).
 async function evaluateAndDeliver(eventType, message, metadata = {}) {
   if (!eventType) return;
   let rules;
@@ -315,26 +358,77 @@ async function evaluateAndDeliver(eventType, message, metadata = {}) {
 
   if (matches.length === 0) return;
 
-  const payload = { eventType, message, metadata, firedAt: new Date().toISOString() };
+  // redisQueue is required lazily so unit tests that don't mock it (and have
+  // no Redis available) aren't pulled into a connection on import.
+  let addAlertDeliveryJob;
+  try {
+    ({ addAlertDeliveryJob } = require("./redisQueue"));
+  } catch (err) {
+    console.error("Failed to load redisQueue for alert delivery:", err.message);
+  }
+
+  const queueMetadata = clampMetadataForQueue(metadata);
+  const firedAt = new Date().toISOString();
+  const inlinePayload = { eventType, message, metadata, firedAt };
+
   await Promise.all(
     matches.map(async (rule) => {
       const channels = Array.isArray(rule.channels) ? rule.channels : [];
-      const errors = [];
+      const inlineErrors = [];
       for (const channel of channels) {
-        try {
-          const channelPayload = { ...payload, ruleId: rule.id, ruleName: rule.name };
-          if (channel.type === "webhook") {
-            await deliverWebhook(channel, channelPayload);
-          } else if (channel.type === "email") {
-            await deliverEmail(channel, channelPayload);
+        if (channel.type === "webhook") {
+          if (!addAlertDeliveryJob) {
+            inlineErrors.push("webhook:queue_unavailable");
+            continue;
           }
-        } catch (err) {
-          errors.push(`${channel.type}:${err.message}`);
+          try {
+            await addAlertDeliveryJob({
+              ruleId: rule.id,
+              ruleName: rule.name,
+              workspaceId: rule.workspace_id,
+              channel,
+              eventType,
+              message,
+              metadata: queueMetadata,
+              firedAt,
+            });
+          } catch (err) {
+            inlineErrors.push(`webhook:enqueue_failed:${err.message}`);
+          }
+        } else if (channel.type === "email") {
+          try {
+            await deliverEmail(channel, { ...inlinePayload, ruleId: rule.id, ruleName: rule.name });
+          } catch (err) {
+            inlineErrors.push(`email:${err.message}`);
+          }
         }
       }
-      await recordFiring(rule.id, errors.join("; ") || null);
+      await recordFiring(rule.id, inlineErrors.join("; ") || null);
     }),
   );
+}
+
+// Executes a single queued webhook delivery. Throws on non-2xx so BullMQ
+// schedules the next retry attempt; the worker is responsible for translating
+// a terminal failure into recordDeliveryFailure.
+async function runAlertDeliveryJob(jobData) {
+  if (!jobData || typeof jobData !== "object") {
+    throw new Error("alert delivery job data is missing");
+  }
+  const { channel, eventType, message, metadata, firedAt, ruleId, ruleName, deliveryId } = jobData;
+  if (!channel || channel.type !== "webhook") {
+    throw new Error(`alert delivery job has unsupported channel type: ${channel?.type}`);
+  }
+  const payload = {
+    eventType,
+    message,
+    metadata: metadata || {},
+    firedAt: firedAt || new Date().toISOString(),
+    ruleId,
+    ruleName,
+    deliveryId: deliveryId || randomUUID(),
+  };
+  await deliverWebhook(channel, payload);
 }
 
 module.exports = {
@@ -345,6 +439,8 @@ module.exports = {
   getRule,
   listRules,
   patternMatches,
+  recordDeliveryFailure,
+  runAlertDeliveryJob,
   serializeRule,
   updateRule,
 };
