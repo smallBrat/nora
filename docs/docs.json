@@ -8,6 +8,18 @@
     "dark": "#0b3d91"
   },
   "favicon": "/favicon.svg",
+  "navbar": {
+    "links": [
+      {
+        "label": "Contact",
+        "href": "mailto:me@solomontsao.com"
+      }
+    ],
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/solomon2773/nora"
+    }
+  },
   "navigation": {
     "groups": [
       {
