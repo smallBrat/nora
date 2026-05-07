@@ -440,8 +440,12 @@ router.post("/agents/:id/integrations", async (req, res) => {
       await syncIntegrationsToAgent(req.params.id, { strictHermes: true });
     } else {
       await syncIntegrationsToAgent(req.params.id, { strict: true });
-      // Also refresh auth-profiles.json for integrations that provide LLM tokens (e.g. HF_TOKEN)
-      syncAuthToUserAgents(req.user.id, req.params.id).catch(() => {});
+      // Only LLM-backed integrations affect OpenClaw auth-profiles.json.
+      // Non-LLM integrations are already pushed through integration sync and
+      // gateway env RPC; restarting here can race a following sync request.
+      if (integrations.integrationProviderAffectsLlmAuth(provider)) {
+        syncAuthToUserAgents(req.user.id, req.params.id).catch(() => {});
+      }
     }
 
     res.json(result);
@@ -454,13 +458,15 @@ router.delete("/agents/:id/integrations/:iid", async (req, res) => {
   try {
     const agent = await getAgentIntegrationRuntimeTarget(req.params.id);
     const runtimeFamily = resolveAgentRuntimeFamily(agent || {});
-    await integrations.removeIntegration(req.params.iid, req.params.id);
+    const removed = await integrations.removeIntegration(req.params.iid, req.params.id);
 
     if (runtimeFamily === "hermes") {
       await syncIntegrationsToAgent(req.params.id, { strictHermes: true });
     } else {
       await syncIntegrationsToAgent(req.params.id, { strict: true });
-      syncAuthToUserAgents(req.user.id, req.params.id).catch(() => {});
+      if (integrations.integrationProviderAffectsLlmAuth(removed?.provider)) {
+        syncAuthToUserAgents(req.user.id, req.params.id).catch(() => {});
+      }
     }
 
     res.json({ success: true });

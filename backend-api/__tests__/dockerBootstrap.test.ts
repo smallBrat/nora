@@ -258,7 +258,7 @@ describe("Provisioner backends", () => {
     expect(startupScript.content).toContain('exec "$OPENCLAW_BIN" gateway --port 18789');
   });
 
-  it("wire the executable guard into every inline OpenClaw startup path", () => {
+  it("wires the executable guard into OpenClaw startup paths", () => {
     const k8sSource = fs.readFileSync(
       path.resolve(__dirname, "../../workers/provisioner/backends/k8s.ts"),
       "utf8",
@@ -274,7 +274,8 @@ describe("Provisioner backends", () => {
     expect(nemoclawSource).toContain("buildOpenClawInstallCommand([");
 
     expect(k8sSource).toContain("ensureOpenClawCmd +");
-    expect(nemoclawSource).toContain("ensureOpenClawCmd +");
+    expect(nemoclawSource).toContain('Cmd: ["/opt/openclaw-runtime/start.sh"]');
+    expect(nemoclawSource).toContain("await this._putBootstrapFiles(container, bootstrapFiles)");
 
     expect(k8sSource).toContain('"$OPENCLAW_BIN" gateway');
     expect(nemoclawSource).toContain('"$OPENCLAW_BIN" gateway');

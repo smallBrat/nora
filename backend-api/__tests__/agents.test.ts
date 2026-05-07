@@ -137,6 +137,7 @@ jest.mock("../integrations", () => ({
   getCatalogItem: jest.fn(),
   getIntegrationsForSync: jest.fn().mockResolvedValue({}),
   getIntegrationEnvVars: jest.fn().mockResolvedValue({}),
+  integrationProviderAffectsLlmAuth: jest.fn().mockReturnValue(false),
   seedCatalog: jest.fn(),
   buildCloneableIntegration: jest.fn((row) => ({
     provider: row.provider,
@@ -1394,6 +1395,53 @@ describe("Hermes integration sync routes", () => {
       { timeout: 30000 },
     );
     expect(mockRunContainerCommand.mock.calls.at(-1)[1]).toContain("nora-integration-tool");
+  });
+
+  it("does not restart OpenClaw auth sync for non-LLM integrations", async () => {
+    const integrationsModule = require("../integrations");
+    integrationsModule.connectIntegration.mockResolvedValueOnce({
+      id: "int-openclaw-slack",
+      provider: "slack",
+    });
+    integrationsModule.getIntegrationsForSync.mockResolvedValueOnce([]);
+    integrationsModule.getIntegrationEnvVars.mockResolvedValueOnce({});
+    integrationsModule.integrationProviderAffectsLlmAuth.mockReturnValueOnce(false);
+    global.fetch = jest.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({}),
+    });
+
+    const agent = {
+      id: "a-openclaw-integration",
+      user_id: "user-1",
+      name: "OpenClaw Integration Agent",
+      status: "running",
+      runtime_family: "openclaw",
+      backend_type: "docker",
+      container_id: "openclaw-container",
+      host: "runtime-host",
+      runtime_port: 9090,
+      gateway_host: "gateway-host",
+      gateway_port: 18789,
+    };
+    mockDb.query
+      .mockResolvedValueOnce({ rows: [agent] })
+      .mockResolvedValueOnce({ rows: [agent] })
+      .mockResolvedValueOnce({ rows: [agent] });
+
+    const res = await auth(
+      request(app).post("/agents/a-openclaw-integration/integrations").send({
+        provider: "slack",
+        token: "xoxb-secret",
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(global.fetch).toHaveBeenCalledWith(
+      "http://runtime-host:9090/integrations/sync",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(mockSyncAuthToUserAgents).not.toHaveBeenCalled();
   });
 
   it("returns a 502 when Hermes integration sync fails after disconnect", async () => {

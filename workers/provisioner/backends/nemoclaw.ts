@@ -6,20 +6,18 @@
 const Docker = require("dockerode");
 const ProvisionerBackend = require("./interface");
 const crypto = require("crypto");
+const path = require("path");
 const {
   buildOpenClawInstallCommand,
-  buildRuntimeBootstrapCommand,
   buildTemplatePayloadBootstrapCommand,
+  buildRuntimeBootstrapFiles,
+  buildIntegrationToolWrapperScript,
   buildRuntimeEnv,
 } = require("../../../agent-runtime/lib/runtimeBootstrap");
 const {
   OPENCLAW_GATEWAY_PORT,
   AGENT_RUNTIME_PORT,
 } = require("../../../agent-runtime/lib/contracts");
-const {
-  buildContainerBootstrap,
-  toDockerLaunch,
-} = require("../../../agent-runtime/lib/containerCommand");
 const {
   buildDockerTelemetry,
   buildUnavailableTelemetry,
@@ -134,10 +132,108 @@ class NemoClawBackend extends ProvisionerBackend {
     return this._composeNetwork;
   }
 
+  _buildBootstrapFiles({ pairedJson, buildAuthScript, policyJson, templatePayload, gatewayToken }) {
+    const runtimeFiles = buildRuntimeBootstrapFiles().map(({ relPath, source }) => ({
+      name: `opt/openclaw-runtime/lib/${relPath}`,
+      content: source,
+      mode: 0o644,
+    }));
+    const templateBootstrapCmd = buildTemplatePayloadBootstrapCommand(templatePayload);
+    const policyJsonB64 = Buffer.from(policyJson).toString("base64");
+
+    const startupScript = [
+      "#!/bin/sh",
+      "set -eu",
+      buildOpenClawInstallCommand(["openclaw@latest", "nemoclaw@latest"]),
+      "mkdir -p ~/.openclaw/devices",
+      "cat <<'__NORA_GATEWAY_CONFIG__' > ~/.openclaw/openclaw.json",
+      JSON.stringify({ gateway: { port: OPENCLAW_GATEWAY_PORT, bind: "lan", mode: "local" } }),
+      "__NORA_GATEWAY_CONFIG__",
+      "chmod 0600 ~/.openclaw/openclaw.json",
+      "cat <<'__NORA_PAIRED_DEVICES__' > ~/.openclaw/devices/paired.json",
+      pairedJson,
+      "__NORA_PAIRED_DEVICES__",
+      "chmod 0600 ~/.openclaw/devices/paired.json",
+      "printf '{}' > ~/.openclaw/devices/pending.json",
+      "mkdir -p /opt/openclaw",
+      `printf '%s' '${policyJsonB64}' | base64 -d > /opt/openclaw/policy.yaml`,
+      templateBootstrapCmd ? `${templateBootstrapCmd}true` : "true",
+      "mkdir -p /var/log /root/.openclaw/workspace /root/.openclaw/agents/main/agent",
+      "touch /var/log/openclaw-agent.log",
+      '"$OPENCLAW_TSX_BIN" /opt/openclaw-runtime/lib/agent.ts >> /var/log/openclaw-agent.log 2>&1 &',
+      '"$OPENCLAW_TSX_BIN" /opt/openclaw-runtime/lib/build-auth.js',
+      `exec "$OPENCLAW_BIN" gateway --port ${OPENCLAW_GATEWAY_PORT} --password ${gatewayToken}`,
+      "",
+    ].join("\n");
+
+    return [
+      ...runtimeFiles,
+      {
+        name: "usr/local/bin/nora-integration-tool",
+        content: buildIntegrationToolWrapperScript(),
+        mode: 0o755,
+      },
+      {
+        name: "opt/openclaw-runtime/lib/build-auth.js",
+        content: buildAuthScript,
+        mode: 0o644,
+      },
+      {
+        name: "opt/openclaw-runtime/start.sh",
+        content: startupScript,
+        mode: 0o755,
+      },
+    ];
+  }
+
+  async _putBootstrapFiles(container, files) {
+    const tar = require("tar-stream");
+    const pack = tar.pack();
+    const directories = new Set(["opt", "opt/openclaw-runtime", "opt/openclaw-runtime/lib"]);
+
+    for (const file of files) {
+      let currentDir = path.posix.dirname(file.name);
+      while (currentDir && currentDir !== "." && currentDir !== "/") {
+        directories.add(currentDir);
+        currentDir = path.posix.dirname(currentDir);
+        if (currentDir === ".") break;
+      }
+    }
+
+    const chunks = [];
+    const archivePromise = new Promise((resolve, reject) => {
+      pack.on("data", (chunk) => chunks.push(chunk));
+      pack.on("end", () => resolve(Buffer.concat(chunks)));
+      pack.on("error", reject);
+    });
+    const addEntry = (header, content) =>
+      new Promise((resolve, reject) => {
+        const done = (err) => (err ? reject(err) : resolve());
+        if (typeof content === "undefined") {
+          pack.entry(header, done);
+          return;
+        }
+        pack.entry(header, content, done);
+      });
+
+    for (const dir of [...directories].sort((a, b) => a.length - b.length)) {
+      await addEntry({ name: dir, type: "directory", mode: 0o755 });
+    }
+
+    for (const file of files) {
+      await addEntry({ name: file.name, mode: file.mode || 0o644 }, file.content);
+    }
+
+    pack.finalize();
+    const archive = await archivePromise;
+    await container.putArchive(archive, { path: "/" });
+  }
+
   async create(config) {
     const { id, name, vcpu, ram_mb, disk_gb, env, container_name, templatePayload } = config;
     const containerName = container_name || `oclaw-nemoclaw-${id}`;
     const model = (env && env.NEMOCLAW_MODEL) || DEFAULT_MODEL;
+    let container = null;
 
     console.log(`[nemoclaw] Creating sandbox ${containerName} from ${SANDBOX_IMAGE}`);
 
@@ -280,33 +376,19 @@ class NemoClawBackend extends ProvisionerBackend {
       CEREBRAS_API_KEY: "cerebras",
       NVIDIA_API_KEY: "nvidia",
     };
-    const authProfiles = {
-      version: 1,
-      profiles: {},
-      order: {},
-      lastGood: {},
-    };
-    if (env) {
-      for (const [envKey, provider] of Object.entries(llmKeyMap)) {
-        if (env[envKey]) {
-          const profileId = `${provider}:default`;
-          authProfiles.profiles[profileId] = {
-            type: "api_key",
-            provider,
-            key: env[envKey],
-            ...(envKey === "NVIDIA_API_KEY"
-              ? { endpoint: "https://integrate.api.nvidia.com/v1" }
-              : {}),
-          };
-          authProfiles.order[provider] = [profileId];
-          authProfiles.lastGood[provider] = profileId;
-        }
-      }
-    }
-    const hasAuthProfiles = Object.keys(authProfiles.profiles).length > 0;
-    const authProfilesCmd = hasAuthProfiles
-      ? `mkdir -p /root/.openclaw/agents/main/agent && echo '${JSON.stringify(authProfiles).replace(/'/g, "'\\''")}' > /root/.openclaw/agents/main/agent/auth-profiles.json && chmod 0600 /root/.openclaw/agents/main/agent/auth-profiles.json && `
-      : "";
+    const buildAuthScript =
+      `var m=${JSON.stringify(llmKeyMap)},e={NVIDIA_API_KEY:"https://integrate.api.nvidia.com/v1"},s={version:1,profiles:{},order:{},lastGood:{}};` +
+      `Object.entries(m).forEach(function(x){` +
+      `var envKey=x[0],provider=x[1],key=process.env[envKey];` +
+      `if(!key)return;` +
+      `var profileId=provider+":default";` +
+      `s.profiles[profileId]=Object.assign({type:"api_key",provider:provider,key:key},e[envKey]?{endpoint:e[envKey]}:{});` +
+      `s.order[provider]=[profileId];` +
+      `s.lastGood[provider]=profileId;` +
+      `});` +
+      `require("fs").mkdirSync("/root/.openclaw/agents/main/agent",{recursive:true});` +
+      `require("fs").writeFileSync("/root/.openclaw/agents/main/agent/auth-profiles.json",JSON.stringify(s));` +
+      `require("fs").chmodSync("/root/.openclaw/agents/main/agent/auth-profiles.json",0o600);`;
 
     // Write baseline policy file
     const policyForContainer = { ...BASELINE_POLICY };
@@ -314,37 +396,17 @@ class NemoClawBackend extends ProvisionerBackend {
       ...policyForContainer.inference,
       model,
     };
-    const policyCmd = `mkdir -p /opt/openclaw && echo '${JSON.stringify(policyForContainer).replace(/'/g, "'\\''")}' > /opt/openclaw/policy.yaml && `;
-
-    const runtimeBootstrapCmd = buildRuntimeBootstrapCommand();
-    const templateBootstrapCmd = buildTemplatePayloadBootstrapCommand(templatePayload);
-    const ensureOpenClawCmd = buildOpenClawInstallCommand(["openclaw@latest", "nemoclaw@latest"]);
-
-    // Startup command: install openclaw + nemoclaw, configure everything, start the
-    // runtime sidecar, then launch the gateway.
-    // The OpenShell sandbox image ships with ENTRYPOINT ["/bin/bash"], so we
-    // route through buildContainerBootstrap which explicitly pins both
-    // Entrypoint and Cmd — see agent-runtime/lib/containerCommand.ts.
-    const startScript =
-      ensureOpenClawCmd +
-      "mkdir -p ~/.openclaw/devices && " +
-      "echo '" +
-      JSON.stringify({
-        gateway: { port: 18789, bind: "lan", mode: "local" },
-      }).replace(/'/g, "'\\''") +
-      "' > ~/.openclaw/openclaw.json && " +
-      "echo '" +
-      pairedJson.replace(/'/g, "'\\''") +
-      "' > ~/.openclaw/devices/paired.json && " +
-      "echo '{}' > ~/.openclaw/devices/pending.json && " +
-      policyCmd +
-      templateBootstrapCmd +
-      runtimeBootstrapCmd +
-      authProfilesCmd +
-      '"$OPENCLAW_BIN" gateway --port ' +
-      OPENCLAW_GATEWAY_PORT +
-      ` --password ${gatewayToken}`;
-    const bootstrap = buildContainerBootstrap(startScript);
+    const bootstrapFiles = this._buildBootstrapFiles({
+      pairedJson,
+      buildAuthScript,
+      policyJson: JSON.stringify(policyForContainer),
+      templatePayload,
+      gatewayToken,
+    });
+    const launch = {
+      Entrypoint: ["/bin/sh"],
+      Cmd: ["/opt/openclaw-runtime/start.sh"],
+    };
 
     // Resolve compose network
     const composeNetwork = await this._findComposeNetwork();
@@ -362,65 +424,77 @@ class NemoClawBackend extends ProvisionerBackend {
         .replace(/^-|-$/g, "")
         .slice(0, 63) || `nemoclaw-${id}`;
 
-    const container = await this.docker.createContainer({
-      Image: SANDBOX_IMAGE,
-      name: containerName,
-      Hostname: safeHostname,
-      Env: envArray,
-      ...toDockerLaunch(bootstrap),
-      WorkingDir: "/sandbox",
-      ExposedPorts: { "18789/tcp": {}, "9090/tcp": {} },
-      HostConfig: {
-        NanoCpus: (vcpu || 2) * 1e9,
-        Memory: (ram_mb || 2048) * 1024 * 1024,
-        RestartPolicy: { Name: "unless-stopped" },
-        // DNS only for allowed endpoints — OpenShell controls egress
-        Dns: ["8.8.8.8", "8.8.4.4"],
-        // Security hardening: drop all capabilities, add back only what's needed
-        CapDrop: ["ALL"],
-        CapAdd: ["NET_BIND_SERVICE"],
-        SecurityOpt: ["no-new-privileges:true"],
-        // Tmpfs mounts for sandbox writable dirs. The OpenShell sandbox user
-        // is UID 998 (gid 998) — we must set uid/gid on the tmpfs mount or
-        // the fresh empty tmpfs comes up root-owned and the sandbox user
-        // can't mkdir `~/.openclaw` in its own home. `mode=0755` keeps it
-        // sandbox-owned but world-readable so openclaw's log forwarders can
-        // still peek if needed.
-        Tmpfs: {
-          "/sandbox": "rw,noexec,nosuid,size=512m,uid=998,gid=998,mode=0755",
-          "/tmp": "rw,noexec,nosuid,size=256m,mode=1777",
+    try {
+      container = await this.docker.createContainer({
+        Image: SANDBOX_IMAGE,
+        name: containerName,
+        Hostname: safeHostname,
+        Env: envArray,
+        ...launch,
+        WorkingDir: "/sandbox",
+        ExposedPorts: { "18789/tcp": {}, "9090/tcp": {} },
+        HostConfig: {
+          NanoCpus: (vcpu || 2) * 1e9,
+          Memory: (ram_mb || 2048) * 1024 * 1024,
+          RestartPolicy: { Name: "unless-stopped" },
+          // DNS only for allowed endpoints — OpenShell controls egress
+          Dns: ["8.8.8.8", "8.8.4.4"],
+          // Security hardening: drop all capabilities, add back only what's needed
+          CapDrop: ["ALL"],
+          CapAdd: ["NET_BIND_SERVICE"],
+          SecurityOpt: ["no-new-privileges:true"],
+          // Tmpfs mounts for sandbox writable dirs. The OpenShell sandbox user
+          // is UID 998 (gid 998) — we must set uid/gid on the tmpfs mount or
+          // the fresh empty tmpfs comes up root-owned and the sandbox user
+          // can't mkdir `~/.openclaw` in its own home. `mode=0755` keeps it
+          // sandbox-owned but world-readable so openclaw's log forwarders can
+          // still peek if needed.
+          Tmpfs: {
+            "/sandbox": "rw,noexec,nosuid,size=512m,uid=998,gid=998,mode=0755",
+            "/tmp": "rw,noexec,nosuid,size=256m,mode=1777",
+          },
         },
-      },
-      NetworkingConfig: composeNetwork ? { EndpointsConfig: networkingConfig } : undefined,
-      Labels: {
-        "openclaw.agent.id": String(id),
-        "openclaw.agent.name": name || "",
-        "openclaw.gateway.port": String(OPENCLAW_GATEWAY_PORT),
-        "openclaw.runtime.port": String(AGENT_RUNTIME_PORT),
-        "openclaw.sandbox.type": "nemoclaw",
-        "openclaw.sandbox.model": model,
-      },
-    });
+        NetworkingConfig: composeNetwork ? { EndpointsConfig: networkingConfig } : undefined,
+        Labels: {
+          "openclaw.agent.id": String(id),
+          "openclaw.agent.name": name || "",
+          "openclaw.gateway.port": String(OPENCLAW_GATEWAY_PORT),
+          "openclaw.runtime.port": String(AGENT_RUNTIME_PORT),
+          "openclaw.sandbox.type": "nemoclaw",
+          "openclaw.sandbox.model": model,
+        },
+      });
 
-    await container.start();
+      await this._putBootstrapFiles(container, bootstrapFiles);
+      await container.start();
 
-    // NOTE: We do NOT connect to bridge network — NemoClaw enforces controlled
-    // egress via OpenShell network policies. Only Compose network for internal.
-    console.log(`[nemoclaw] Sandbox started (no bridge network — OpenShell controls egress)`);
+      // NOTE: We do NOT connect to bridge network — NemoClaw enforces controlled
+      // egress via OpenShell network policies. Only Compose network for internal.
+      console.log(`[nemoclaw] Sandbox started (no bridge network — OpenShell controls egress)`);
 
-    // Get container IP on the Compose network
-    const info = await container.inspect();
-    let host = "localhost";
-    if (composeNetwork && info.NetworkSettings?.Networks?.[composeNetwork]) {
-      host = info.NetworkSettings.Networks[composeNetwork].IPAddress || "localhost";
-    } else {
-      host = info.NetworkSettings?.IPAddress || "localhost";
+      // Get container IP on the Compose network
+      const info = await container.inspect();
+      let host = "localhost";
+      if (composeNetwork && info.NetworkSettings?.Networks?.[composeNetwork]) {
+        host = info.NetworkSettings.Networks[composeNetwork].IPAddress || "localhost";
+      } else {
+        host = info.NetworkSettings?.IPAddress || "localhost";
+      }
+
+      console.log(
+        `[nemoclaw] Container ${container.id} started at ${host} (gateway port 18789, model: ${model})`,
+      );
+      return { containerId: container.id, host, gatewayToken, containerName };
+    } catch (error) {
+      if (container) {
+        try {
+          await container.remove({ force: true });
+        } catch {
+          // Best effort cleanup only.
+        }
+      }
+      throw error;
     }
-
-    console.log(
-      `[nemoclaw] Container ${container.id} started at ${host} (gateway port 18789, model: ${model})`,
-    );
-    return { containerId: container.id, host, gatewayToken, containerName };
   }
 
   async destroy(containerId) {

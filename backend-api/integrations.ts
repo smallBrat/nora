@@ -9,6 +9,7 @@ const {
   buildIntegrationToolExecutionMetadata,
   getIntegrationToolSpecs,
 } = require("../agent-runtime/lib/integrationTools");
+const llmProviders = require("./llmProviders");
 
 const TWITTER_OAUTH_TOKEN_URL = "https://api.x.com/2/oauth2/token";
 const OAUTH_TOKEN_REFRESH_SKEW_MS = 5 * 60 * 1000;
@@ -205,6 +206,25 @@ const INTEGRATION_CONFIG_ENV_MAP = {
   // DevOps
   "docker-hub.username": "DOCKER_HUB_USERNAME",
 };
+
+const LLM_AUTH_ENV_VARS = new Set(
+  (Array.isArray(llmProviders.PROVIDERS) ? llmProviders.PROVIDERS : [])
+    .map((provider) => provider.envVar)
+    .filter(Boolean),
+);
+
+function integrationProviderAffectsLlmAuth(provider) {
+  const providerId = String(provider || "").trim();
+  if (!providerId) return false;
+
+  const primaryEnv = INTEGRATION_ENV_MAP[providerId];
+  if (primaryEnv && LLM_AUTH_ENV_VARS.has(primaryEnv)) return true;
+
+  return Object.entries(INTEGRATION_CONFIG_ENV_MAP).some(
+    ([configKey, envVar]) =>
+      configKey.startsWith(`${providerId}.`) && envVar && LLM_AUTH_ENV_VARS.has(envVar),
+  );
+}
 
 // SSRF guard lives in backend-api/networkSafety.ts now. The async variant
 // resolves the hostname via DNS and checks every returned IP, so attacks
@@ -738,10 +758,11 @@ async function listIntegrations(agentId) {
 
 async function removeIntegration(integrationId, agentId) {
   const result = await db.query(
-    "DELETE FROM integrations WHERE id = $1 AND agent_id = $2 RETURNING id",
+    "DELETE FROM integrations WHERE id = $1 AND agent_id = $2 RETURNING id, provider",
     [integrationId, agentId],
   );
   if (!result.rows[0]) throw new Error("Integration not found");
+  return result.rows[0];
 }
 
 async function testIntegration(integrationId, agentId) {
@@ -1365,6 +1386,7 @@ module.exports = {
   testIntegration,
   getIntegrationsForSync,
   getIntegrationEnvVars,
+  integrationProviderAffectsLlmAuth,
   INTEGRATION_ENV_MAP,
   INTEGRATION_CONFIG_ENV_MAP,
   stripSensitiveConfig,

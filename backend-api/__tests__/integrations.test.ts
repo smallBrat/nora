@@ -26,6 +26,14 @@ describe("integration secret handling", () => {
     global.fetch = nativeFetch;
   });
 
+  it("identifies which integration providers require auth-profile refresh", () => {
+    expect(integrations.integrationProviderAffectsLlmAuth("openai")).toBe(true);
+    expect(integrations.integrationProviderAffectsLlmAuth("anthropic")).toBe(true);
+    expect(integrations.integrationProviderAffectsLlmAuth("huggingface")).toBe(true);
+    expect(integrations.integrationProviderAffectsLlmAuth("github")).toBe(false);
+    expect(integrations.integrationProviderAffectsLlmAuth("slack")).toBe(false);
+  });
+
   it("redacts sensitive config and does not return access_token after create", async () => {
     mockDb.query.mockResolvedValueOnce({
       rows: [
