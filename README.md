@@ -1,6 +1,6 @@
 <div align="center">
   <h1>Nora</h1>
-  <p><strong>The self-hosted operations platform for autonomous agent fleets.</strong></p>
+  <p><strong>The self-hosted AI agent ops platform.</strong></p>
   <p>
     Deploy, monitor, and operate OpenClaw and Hermes runtimes from one operator surface — runtime-neutral, Apache 2.0, and on infrastructure you control. Grow from a single Docker host to Kubernetes, Proxmox, or NemoClaw sandboxes without replacing your ops layer.
   </p>
@@ -31,7 +31,7 @@
 
 ## What Is Nora?
 
-Nora is the open-source operations platform for running autonomous agent fleets on infrastructure you control, whether you standardize on OpenClaw, Hermes, or keep both available in the same operator surface.
+Nora is the self-hosted AI agent ops platform for running autonomous agent fleets on infrastructure you control, whether you standardize on OpenClaw, Hermes, or keep both available in the same operator surface.
 
 Most teams running agents in production eventually rebuild the same layer around the runtime itself: deploy workflows, secrets, monitoring, logs, terminal, Agent Hub templating, and a separate admin surface. Nora exists so that layer doesn't have to be rewritten every time the runtime conversation changes.
 

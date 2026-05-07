@@ -1,6 +1,6 @@
 # Contributing to Nora
 
-Thanks for contributing. Nora is an open-source control plane for AI agent operations, and useful contributions are not limited to code. Bug reports, docs fixes, testing improvements, runtime adapters, UX polish, and operational hardening all matter.
+Thanks for contributing. Nora is the self-hosted AI agent ops platform, and useful contributions are not limited to code. Bug reports, docs fixes, testing improvements, runtime adapters, UX polish, and operational hardening all matter.
 
 By participating in this project, you agree to follow the [Code of Conduct](./CODE_OF_CONDUCT.md).
 

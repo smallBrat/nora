@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Repo Is
 
-Nora is a self-hosted control plane for AI agent runtimes. It manages, deploys, monitors, and operates agent runtimes across multiple backends (Docker, Kubernetes, Proxmox, NemoClaw, Hermes). Node 24 LTS across all services.
+Nora is the self-hosted AI agent ops platform — an operator-facing control plane that manages, deploys, monitors, and operates agent runtimes across multiple backends (Docker, Kubernetes, Proxmox, NemoClaw, Hermes). Node 24 LTS across all services.
 
 ## Development Commands
 

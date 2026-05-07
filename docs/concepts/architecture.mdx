@@ -2,7 +2,7 @@
 
 > Canonical public overview of how Nora's control plane is wired together — frontends, API, queues, workers, backend adapters, and the runtime contract package.
 
-Nora is an operator-facing control plane for AI agent runtimes. Three browser surfaces sit behind one nginx ingress, platform state lives in PostgreSQL, background work is coordinated through Redis and BullMQ, and runtimes are provisioned (or proxied) through backend adapters that share the runtime contract package in `agent-runtime/`.
+Nora is the self-hosted AI agent ops platform — an operator-facing control plane for OpenClaw, Hermes, and supported sandboxed runtimes. Three browser surfaces sit behind one nginx ingress, platform state lives in PostgreSQL, background work is coordinated through Redis and BullMQ, and runtimes are provisioned (or proxied) through backend adapters that share the runtime contract package in `agent-runtime/`.
 
 The public repo centers on a single control-plane host. Agent workloads can stay on the local Docker host or be placed onto supported external execution targets — Kubernetes (k3s/k8s), Proxmox, NemoClaw — without changing the operator workflow.
 
