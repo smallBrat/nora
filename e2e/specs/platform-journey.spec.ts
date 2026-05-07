@@ -1,4 +1,4 @@
-import { expect, request as playwrightRequest, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import {
   DEFAULT_PASSWORD,
   apiJson,
@@ -7,6 +7,7 @@ import {
   extractIdFromUrl,
   getCurrentUser,
   getPreferredProvider,
+  loginInFreshContext,
   uniqueEmail,
   uniqueName,
   waitForAdminAuditEvent,
@@ -14,8 +15,6 @@ import {
   waitForOwnedListingByName,
   waitForUserEvent,
 } from "./support/app";
-
-const E2E_BASE_URL = process.env.BASE_URL || "http://127.0.0.1:18080";
 
 test.describe("Complete platform journey", () => {
   test.describe.configure({ mode: "serial" });
@@ -36,25 +35,8 @@ test.describe("Complete platform journey", () => {
   let workspaceName = "";
   const authCookieName = "nora_auth";
 
-  // Login in a throwaway APIRequestContext so the response's HttpOnly auth
-  // cookie (`nora_auth`) does not stick to the caller's `request` jar. The
-  // backend prefers cookie over Bearer (auth.ts:9-15), so a leaked cookie
-  // would silently override later `apiJson(_, _, { token })` calls and
-  // identify the wrong user — see the preferredLocale regression hunt.
   async function loginAndCaptureToken(_requestContext, email, password) {
-    const ctx = await playwrightRequest.newContext({ baseURL: E2E_BASE_URL });
-    try {
-      const loginRes = await ctx.post("/api/auth/login", {
-        data: { email, password },
-      });
-      expect(loginRes.ok()).toBeTruthy();
-
-      const loginData = await loginRes.json().catch(() => ({}));
-      expect(typeof loginData?.token).toBe("string");
-      return loginData.token;
-    } finally {
-      await ctx.dispose();
-    }
+    return loginInFreshContext(email, password);
   }
 
   test("the first operator can sign up and become the admin", async ({ page, request }) => {

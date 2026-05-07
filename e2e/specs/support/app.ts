@@ -1,6 +1,32 @@
+import { request as playwrightRequest } from "@playwright/test";
 import type { APIRequestContext, APIResponse, Page } from "@playwright/test";
 
 export const DEFAULT_PASSWORD = "SmokePassword123!";
+
+const E2E_BASE_URL = process.env.BASE_URL || "http://127.0.0.1:18080";
+
+// /auth/login responses include a Set-Cookie for `nora_auth`; if that cookie
+// lands in the shared test `request` jar, every subsequent apiJson(_, _,
+// { token }) call will silently authenticate as the cookie's user (the
+// backend prefers cookie over Bearer in middleware/auth.ts). Keeping the
+// cookie in a throwaway context isolates it.
+async function loginInFreshContext(email: string, password: string): Promise<string> {
+  const ctx = await playwrightRequest.newContext({ baseURL: E2E_BASE_URL });
+  try {
+    const res = await ctx.post("/api/auth/login", { data: { email, password } });
+    if (!res.ok()) {
+      const detail = await res.text().catch(() => "");
+      throw new Error(`POST /api/auth/login failed with ${res.status()}: ${detail}`);
+    }
+    const body = (await res.json().catch(() => ({}))) as { token?: unknown };
+    if (typeof body.token !== "string" || !body.token) {
+      throw new Error(`POST /api/auth/login did not return a token`);
+    }
+    return body.token;
+  } finally {
+    await ctx.dispose();
+  }
+}
 
 type ApiJsonOptions = {
   method?: string;
@@ -34,10 +60,6 @@ type UserSession = {
   token: string;
 };
 
-type LoginResponse = JsonRecord & {
-  token?: unknown;
-};
-
 type CurrentUser = JsonRecord & {
   email?: string;
   role?: string;
@@ -47,28 +69,12 @@ function isJsonRecord(value: unknown): value is JsonRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function assertJsonRecord<T extends JsonRecord>(
-  value: T | string | null,
-  description: string
-): T {
+function assertJsonRecord<T extends JsonRecord>(value: T | string | null, description: string): T {
   if (!isJsonRecord(value)) {
     throw new Error(`Expected JSON object for ${description}`);
   }
 
   return value as T;
-}
-
-function readRequiredStringField(
-  value: JsonRecord,
-  key: string,
-  description: string
-) {
-  const field = value[key];
-  if (typeof field !== "string" || !field) {
-    throw new Error(`Expected "${key}" string in ${description}`);
-  }
-
-  return field;
 }
 
 function uniqueSuffix() {
@@ -86,7 +92,7 @@ function uniqueName(prefix = "Nora E2E") {
 async function apiJson<T = unknown>(
   request: APIRequestContext,
   path: string,
-  { method = "GET", token = null, data, failOnStatus = true }: ApiJsonOptions = {}
+  { method = "GET", token = null, data, failOnStatus = true }: ApiJsonOptions = {},
 ): Promise<ApiJsonResult<T>> {
   const headers: Record<string, string> = {};
   if (token) headers.Authorization = `Bearer ${token}`;
@@ -118,29 +124,20 @@ async function apiJson<T = unknown>(
 
 async function createUserSession(
   request: APIRequestContext,
-  { email = uniqueEmail("nora-e2e-user"), password = DEFAULT_PASSWORD } = {}
+  { email = uniqueEmail("nora-e2e-user"), password = DEFAULT_PASSWORD } = {},
 ): Promise<UserSession> {
+  // Signup runs on the shared request context — it doesn't set cookies.
+  // Login runs in a throwaway context so its Set-Cookie doesn't poison the
+  // shared jar (see loginInFreshContext for the rationale).
   await apiJson(request, "/api/auth/signup", {
     method: "POST",
     data: { email, password },
   });
-  const login = await apiJson<{ token: string }>(request, "/api/auth/login", {
-    method: "POST",
-    data: { email, password },
-  });
-  const loginBody = assertJsonRecord<LoginResponse>(login.body, "/api/auth/login");
-
-  return {
-    email,
-    password,
-    token: readRequiredStringField(loginBody, "token", "/api/auth/login"),
-  };
+  const token = await loginInFreshContext(email, password);
+  return { email, password, token };
 }
 
-async function getCurrentUser(
-  request: APIRequestContext,
-  token: string
-): Promise<CurrentUser> {
+async function getCurrentUser(request: APIRequestContext, token: string): Promise<CurrentUser> {
   const { body } = await apiJson<CurrentUser>(request, "/api/auth/me", { token });
   return assertJsonRecord(body, "/api/auth/me");
 }
@@ -159,7 +156,7 @@ async function getPreferredProvider(request: APIRequestContext, token: string) {
 
 async function waitForCondition<T>(
   action: () => Promise<T | null | undefined | false>,
-  { timeoutMs = 15000, intervalMs = 250, description = "condition" }: WaitForConditionOptions = {}
+  { timeoutMs = 15000, intervalMs = 250, description = "condition" }: WaitForConditionOptions = {},
 ): Promise<T> {
   const startedAt = Date.now();
   let lastError: unknown = null;
@@ -188,7 +185,7 @@ async function waitForOwnedListingByName(
   request: APIRequestContext,
   token: string,
   name: string,
-  options: WaitForConditionOptions = {}
+  options: WaitForConditionOptions = {},
 ) {
   return waitForCondition(
     async () => {
@@ -199,7 +196,7 @@ async function waitForOwnedListingByName(
     {
       ...options,
       description: `owned listing "${name}"`,
-    }
+    },
   );
 }
 
@@ -207,7 +204,7 @@ async function waitForAgentHubListingByName(
   request: APIRequestContext,
   token: string,
   name: string,
-  options: WaitForConditionOptions = {}
+  options: WaitForConditionOptions = {},
 ) {
   return waitForCondition(
     async () => {
@@ -218,7 +215,7 @@ async function waitForAgentHubListingByName(
     {
       ...options,
       description: `Agent Hub listing "${name}"`,
-    }
+    },
   );
 }
 
@@ -226,7 +223,7 @@ async function waitForUserEvent(
   request: APIRequestContext,
   token: string,
   matcher: (event: Record<string, unknown>) => boolean,
-  options: WaitForConditionOptions = {}
+  options: WaitForConditionOptions = {},
 ) {
   return waitForCondition(
     async () => {
@@ -239,7 +236,7 @@ async function waitForUserEvent(
     {
       ...options,
       description: "user activity event",
-    }
+    },
   );
 }
 
@@ -247,24 +244,25 @@ async function waitForAdminAuditEvent(
   request: APIRequestContext,
   token: string,
   matcher: (event: Record<string, unknown>) => boolean,
-  options: WaitForConditionOptions = {}
+  options: WaitForConditionOptions = {},
 ) {
   return waitForCondition(
     async () => {
       const { body } = await apiJson(request, "/api/admin/audit?limit=100", {
         token,
       });
-      const events = isJsonRecord(body) && Array.isArray(body.events)
-        ? body.events
-        : Array.isArray(body)
-          ? body
-          : [];
+      const events =
+        isJsonRecord(body) && Array.isArray(body.events)
+          ? body.events
+          : Array.isArray(body)
+            ? body
+            : [];
       return events.find((event) => matcher(event)) || null;
     },
     {
       ...options,
       description: "admin audit event",
-    }
+    },
   );
 }
 
@@ -294,6 +292,7 @@ export {
   getCurrentUser,
   getPreferredProvider,
   isJsonRecord,
+  loginInFreshContext,
   uniqueEmail,
   uniqueName,
   waitForAdminAuditEvent,
