@@ -1,8 +1,8 @@
 <div align="center">
   <h1>Nora</h1>
-  <p><strong>The self-hosted control plane for Hermes and OpenClaw fleets.</strong></p>
+  <p><strong>The self-hosted operations platform for autonomous agent fleets.</strong></p>
   <p>
-    Nora is an open-source, runtime-neutral operations platform for autonomous agent fleets. Deploy Hermes and OpenClaw agents from the same surface, keep the control plane on infrastructure you control, and grow from a single Docker host to broader execution targets without replacing your ops layer.
+    Deploy, monitor, and operate OpenClaw and Hermes runtimes from one operator surface — runtime-neutral, Apache 2.0, and on infrastructure you control. Grow from a single Docker host to Kubernetes, Proxmox, or NemoClaw sandboxes without replacing your ops layer.
   </p>
 </div>
 

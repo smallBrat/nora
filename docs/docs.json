@@ -9,12 +9,6 @@
   },
   "favicon": "/favicon.svg",
   "navbar": {
-    "links": [
-      {
-        "label": "Contact",
-        "href": "mailto:me@solomontsao.com"
-      }
-    ],
     "primary": {
       "type": "github",
       "href": "https://github.com/solomon2773/nora"
@@ -76,7 +70,7 @@
       },
       {
         "group": "Support",
-        "pages": ["support/faq", "support/troubleshooting"]
+        "pages": ["support/faq", "support/troubleshooting", "support/contact"]
       }
     ]
   },
