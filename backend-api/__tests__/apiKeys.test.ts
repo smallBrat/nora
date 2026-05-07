@@ -471,9 +471,7 @@ describe("auth middleware: API key intake", () => {
       { id: "ws-B", name: "B", role: "member" },
     ]);
 
-    const res = await request(app)
-      .get("/workspaces")
-      .set("Authorization", "Bearer nora_listing");
+    const res = await request(app).get("/workspaces").set("Authorization", "Bearer nora_listing");
     expect(res.status).toBe(200);
     expect(res.body).toEqual([{ id: "ws-A", name: "A", role: "owner" }]);
   });

@@ -13,7 +13,11 @@ const {
   buildWorkspaceContext,
   createMutationFailureAuditMiddleware,
 } = require("../auditLog");
-const { apiKeyWorkspaceId, findOwnedAgent, requireWorkspaceRole } = require("../middleware/ownership");
+const {
+  apiKeyWorkspaceId,
+  findOwnedAgent,
+  requireWorkspaceRole,
+} = require("../middleware/ownership");
 const { requireSession, scopeByMethod } = require("../middleware/auth");
 
 const router = express.Router();
