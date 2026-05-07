@@ -29,6 +29,7 @@
       {
         "group": "Concepts",
         "pages": [
+          "concepts/architecture",
           "concepts/agents",
           "concepts/runtimes",
           "concepts/workspaces",
