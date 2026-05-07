@@ -1,0 +1,127 @@
+# Self-hosted vs PaaS platform modes
+
+> Understand the difference between Nora's selfhosted and paas modes, how resource limits and Stripe billing apply to each, and how to switch between them.
+
+Nora operates in one of two platform modes, controlled by the `PLATFORM_MODE` environment variable. In `selfhosted` mode (the default), you define the resource envelope your users can draw from and no billing system is involved. In `paas` mode, Stripe billing is enabled and each user's resource allocation is determined by their subscription plan tier. Choose the mode that matches how you intend to operate Nora.
+
+<Note>
+  You can check which mode is currently active by calling the `/config/platform` endpoint on your backend API. It returns a JSON object with the current `platform_mode` value.
+</Note>
+
+## Comparing modes
+
+|                              | Self-hosted                             | PaaS                                                         |
+| ---------------------------- | --------------------------------------- | ------------------------------------------------------------ |
+| **`PLATFORM_MODE` value**    | `selfhosted`                            | `paas`                                                       |
+| **Resource limits**          | Set by operator via env vars            | Locked to Stripe subscription plan tier                      |
+| **Billing**                  | None                                    | Stripe (when `BILLING_ENABLED=true`)                         |
+| **Agent limit source**       | `MAX_AGENTS` env var                    | Subscription plan                                            |
+| **vCPU / RAM / disk source** | `MAX_VCPU`, `MAX_RAM_MB`, `MAX_DISK_GB` | Subscription plan tier                                       |
+| **Free tier**                | All users share operator limits         | Automatic free plan (3 agents, 2 vCPU, 2 GB RAM, 20 GB disk) |
+
+## Self-hosted mode
+
+Self-hosted is the default mode. When `PLATFORM_MODE=selfhosted`, Nora reads a set of maximum resource values from environment variables and enforces them for every user on the platform. There is no billing system involved.
+
+```bash theme={null}
+PLATFORM_MODE=selfhosted
+```
+
+### Configuring resource limits
+
+Set the following variables to define what users can allocate when deploying agents:
+
+```bash theme={null}
+MAX_VCPU=16
+MAX_RAM_MB=32768
+MAX_DISK_GB=500
+MAX_AGENTS=50
+```
+
+| Variable      | Default | Description                                            |
+| ------------- | ------- | ------------------------------------------------------ |
+| `MAX_VCPU`    | `16`    | Maximum vCPUs any user may allocate to a single agent. |
+| `MAX_RAM_MB`  | `32768` | Maximum RAM in megabytes (32 GB default).              |
+| `MAX_DISK_GB` | `500`   | Maximum disk space in gigabytes.                       |
+| `MAX_AGENTS`  | `50`    | Maximum number of agents a single user may deploy.     |
+
+<Tip>
+  Size these limits to your host's available capacity. On a modest server, reducing `MAX_VCPU` and `MAX_RAM_MB` prevents any single user from exhausting shared resources.
+</Tip>
+
+When a user reaches `MAX_AGENTS`, the deployment request is rejected with the message:
+
+> Agent limit reached (N/N). Contact your administrator.
+
+To increase the limit, update `MAX_AGENTS` in your `.env` and restart the stack.
+
+## PaaS mode
+
+PaaS mode is designed for operators who want to offer Nora as a hosted service with metered billing. When `PLATFORM_MODE=paas`, Stripe billing is integrated and each user's resource allocation is tied to their active subscription plan.
+
+```bash theme={null}
+PLATFORM_MODE=paas
+BILLING_ENABLED=true
+```
+
+### Plan tiers
+
+Three tiers are defined in the billing module:
+
+| Plan         | Agents | vCPU | RAM   | Disk   |
+| ------------ | ------ | ---- | ----- | ------ |
+| `free`       | 3      | 2    | 2 GB  | 20 GB  |
+| `pro`        | 10     | 8    | 16 GB | 200 GB |
+| `enterprise` | 100    | 16   | 32 GB | 500 GB |
+
+New users are automatically placed on the `free` plan when they first deploy an agent.
+
+### Required Stripe variables
+
+You must configure all four Stripe variables before enabling billing:
+
+```bash theme={null}
+STRIPE_SECRET_KEY=sk_live_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+STRIPE_PRICE_PRO=price_...
+STRIPE_PRICE_ENTERPRISE=price_...
+```
+
+| Variable                  | Description                                                                                   |
+| ------------------------- | --------------------------------------------------------------------------------------------- |
+| `STRIPE_SECRET_KEY`       | Your Stripe secret key. Use `sk_test_...` during development and `sk_live_...` in production. |
+| `STRIPE_WEBHOOK_SECRET`   | Webhook signing secret from the Stripe dashboard, used to verify incoming events.             |
+| `STRIPE_PRICE_PRO`        | Stripe Price ID for the Pro plan.                                                             |
+| `STRIPE_PRICE_ENTERPRISE` | Stripe Price ID for the Enterprise plan.                                                      |
+
+<Warning>
+  Set `BILLING_ENABLED=false` while testing in PaaS mode. With billing disabled, users in PaaS mode can deploy unlimited agents and the Stripe limit enforcement is bypassed. Only set `BILLING_ENABLED=true` when your Stripe integration is fully configured and tested.
+</Warning>
+
+### How billing enforcement works
+
+When `PLATFORM_MODE=paas` and `BILLING_ENABLED=true`:
+
+1. Each deployment request checks the user's active subscription plan.
+2. If the user has no subscription, a free-tier record is created automatically.
+3. If the user has reached their plan's agent limit, the deployment is rejected with an upgrade prompt.
+4. Successful Stripe Checkout completions create or update the subscription via webhook.
+5. Canceled subscriptions downgrade the user to the free plan automatically.
+
+## Switching modes
+
+To switch from `selfhosted` to `paas` (or back), update `PLATFORM_MODE` in your `.env` and restart the stack:
+
+```bash theme={null}
+# In .env
+PLATFORM_MODE=paas
+BILLING_ENABLED=true
+```
+
+```bash theme={null}
+docker compose up -d
+```
+
+<Note>
+  Existing agents are not affected when you switch modes. The mode change only affects how new deployment requests are evaluated and what resource limits are applied.
+</Note>

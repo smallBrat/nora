@@ -1,0 +1,69 @@
+# Organize agents with workspaces
+
+> Learn how Nora workspaces let you group and organize agents by project, team, or environment, and how to create, populate, and delete them.
+
+A workspace in Nora is a named group that lets you organize your agents however makes sense for your team. Instead of managing a flat list of agents, you can create workspaces to reflect the structure of your projects, teams, or deployment environments — and add the relevant agents to each one. Workspaces are purely organizational: they do not change how agents run or affect their resources.
+
+## Creating a workspace
+
+You can create a workspace from the dashboard at any time. Workspace names must be between 1 and 100 characters.
+
+<Steps>
+  <Step title="Open the Workspaces section">
+    Navigate to the Workspaces area in the Nora dashboard sidebar.
+  </Step>
+
+  <Step title="Create a new workspace">
+    Click **New workspace**, enter a descriptive name, and confirm. The workspace appears immediately in your list.
+  </Step>
+
+  <Step title="Add agents to the workspace">
+    Open the workspace and add agents from your existing agent list. You can add the same agent to multiple workspaces.
+  </Step>
+</Steps>
+
+## Adding agents to a workspace
+
+Once a workspace exists, you can add any agent you own to it. An agent can belong to more than one workspace, which is useful when a single agent is relevant to multiple projects or teams.
+
+<Note>
+  You can only add agents that you own. Agents owned by other users cannot be added to your workspaces.
+</Note>
+
+## Workspace use cases
+
+Workspaces are flexible — there is no single right way to structure them. Here are three common patterns:
+
+<AccordionGroup>
+  <Accordion title="Group by project" icon="folder">
+    Create one workspace per project or product area. Add all agents that belong to that project — for example, a research agent, a summarization agent, and a code-review agent — to the same workspace so your team can find and manage them together.
+  </Accordion>
+
+  <Accordion title="Group by team" icon="users">
+    Create a workspace for each team in your organization. Each team's members can see and manage only the agents relevant to their work, reducing noise from unrelated deployments.
+  </Accordion>
+
+  <Accordion title="Group by environment" icon="layers">
+    Create workspaces for `development`, `staging`, and `production`. This makes it easy to see which agents are live in each environment and avoids accidental changes to production agents.
+  </Accordion>
+</AccordionGroup>
+
+## Deleting a workspace
+
+Deleting a workspace removes the workspace and all its agent memberships. It does **not** delete the agents themselves — they remain in your agent list and can be added to other workspaces.
+
+<Warning>
+  Workspace deletion is permanent. The workspace and its agent associations are removed immediately.
+</Warning>
+
+## Related concepts
+
+<CardGroup cols={2}>
+  <Card title="Agents" icon="cpu" href="/concepts/agents">
+    Learn about agent lifecycle, statuses, and resources.
+  </Card>
+
+  <Card title="LLM providers" icon="key" href="/concepts/llm-providers">
+    Manage provider API keys and sync them to agents.
+  </Card>
+</CardGroup>

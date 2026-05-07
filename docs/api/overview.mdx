@@ -1,0 +1,146 @@
+# Nora REST API overview and base URLs
+
+> A complete reference for the Nora REST API: base URLs, authentication, rate limiting, content type, health check, and public config endpoints.
+
+The Nora REST API is a JSON-over-HTTP interface that lets you deploy agents, manage LLM providers, configure channels, and observe platform health programmatically. Every request must include a valid Bearer token in the `Authorization` header — except for the public health, config, and webhook endpoints listed below. All request and response bodies use `application/json`.
+
+## Base URL
+
+The Nora API is served under the `/api` path of your Nora origin. In local mode this is:
+
+```
+http://localhost:8080/api
+```
+
+If you configured a public domain, replace `http://localhost:8080` with your origin — for example:
+
+```
+https://app.example.com/api
+```
+
+<Note>
+  All paths in this reference omit the `/api` prefix for brevity. When making real requests, include `/api` — for example `http://localhost:8080/api/agents`.
+</Note>
+
+## Authentication
+
+All protected endpoints require a JWT in the `Authorization` header:
+
+```
+Authorization: Bearer <token>
+```
+
+Obtain a token via `POST /auth/login`. Tokens are valid for **7 days**. See the [Authentication](/api/authentication) page for the full login flow.
+
+## Rate limiting
+
+Two rate-limit tiers apply to every request:
+
+| Tier                       | Limit          | Window     |
+| -------------------------- | -------------- | ---------- |
+| Global (all endpoints)     | 1 000 requests | 15 minutes |
+| Auth endpoints (`/auth/*`) | 20 requests    | 15 minutes |
+
+When you exceed a limit the API returns `429 Too Many Requests` with:
+
+```json theme={null}
+{ "error": "Too many attempts, please try again later" }
+```
+
+## Content type
+
+All request bodies must be sent as JSON. Set the header on every mutating request:
+
+```
+Content-Type: application/json
+```
+
+## Public endpoints
+
+These endpoints do not require authentication.
+
+### Health check
+
+```
+GET /health
+```
+
+Returns `{"status":"ok"}` once the server has finished its startup sequence (database migrations, catalog seeding). During startup it returns `503` with `{"status":"starting"}`.
+
+<CodeGroup>
+  ```bash curl theme={null}
+  curl http://localhost:8080/api/health
+  ```
+</CodeGroup>
+
+```json theme={null}
+{ "status": "ok" }
+```
+
+### Platform config
+
+```
+GET /config/platform
+```
+
+Returns the platform mode and, in self-hosted deployments, the operator-configured resource limits.
+
+<ResponseField name="mode" type="string">
+  Platform mode. One of `selfhosted` or `paas`.
+</ResponseField>
+
+<ResponseField name="selfhosted" type="object | null">
+  Resource limits when `mode` is not `paas`, otherwise `null`.
+
+  <Expandable title="properties">
+    <ResponseField name="max_vcpu" type="number">Maximum vCPU per agent.</ResponseField>
+    <ResponseField name="max_ram_mb" type="number">Maximum RAM in MB per agent.</ResponseField>
+    <ResponseField name="max_disk_gb" type="number">Maximum disk in GB per agent.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="billingEnabled" type="boolean">
+  Whether Stripe billing is active.
+</ResponseField>
+
+### NemoClaw config
+
+```
+GET /config/nemoclaw
+```
+
+Returns the NemoClaw sandbox configuration for the current deployment.
+
+<ResponseField name="enabled" type="boolean">
+  Whether the NemoClaw sandbox is enabled on this server.
+</ResponseField>
+
+<ResponseField name="defaultModel" type="string">
+  Default NVIDIA model identifier.
+</ResponseField>
+
+<ResponseField name="sandboxImage" type="string">
+  OCI image used for NemoClaw sandboxes.
+</ResponseField>
+
+<ResponseField name="models" type="string[]">
+  List of supported NVIDIA model identifiers.
+</ResponseField>
+
+## Quick example
+
+The following request authenticates and lists your agents:
+
+<CodeGroup>
+  ```bash curl theme={null}
+  # 1. Get a token
+  TOKEN=$(curl -s -X POST http://localhost:8080/api/auth/login \
+    -H "Content-Type: application/json" \
+    -d '{"email":"you@example.com","password":"yourpassword"}' \
+    | jq -r .token)
+
+  # 2. Call a protected endpoint
+  curl http://localhost:8080/api/agents \
+    -H "Authorization: Bearer $TOKEN"
+  ```
+</CodeGroup>

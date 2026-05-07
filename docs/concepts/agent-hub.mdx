@@ -1,0 +1,66 @@
+# Agent Hub
+
+> A catalog of reusable agent templates that operators can publish to their workspace, share to a community hub, and install with one click.
+
+Agent Hub is Nora's template marketplace. A **listing** captures everything needed to recreate an agent — runtime family, deploy target, sandbox profile, image, environment overrides, integrations, and bootstrap files — and exposes it as a one-click install in any workspace that has access. Operators publish listings from existing agents; consumers install listings into their own workspace.
+
+## Listing types
+
+| Source type    | Where it lives                                       | Visibility                                 |
+| -------------- | ---------------------------------------------------- | ------------------------------------------ |
+| Built-in       | Seeded by Nora at startup                            | Visible to every workspace.                |
+| Workspace      | Published by an operator from one of their agents    | Visible to the publishing workspace.        |
+| Community      | Synced from the configured upstream Agent Hub source | Visible to every workspace once approved.   |
+
+Built-in templates ship with the platform. Workspace listings are private until you also share them outward. Community listings are pulled from the upstream catalog at `NORA_AGENT_HUB_URL` (default `https://nora.solomontsao.com`).
+
+## Sharing model
+
+Each workspace listing has a `shareTarget`:
+
+| Share target | Internal workspaces | Community catalog |
+| ------------ | ------------------- | ----------------- |
+| `internal`   | ✅                  | ❌                |
+| `community`  | ❌                  | ✅                |
+| `both`       | ✅                  | ✅                |
+
+Switching to `community` or `both` triggers a sync to the upstream hub. The upstream review state is mirrored back into `centralShareStatus` (`not_shared`, `pending`, `approved`, `rejected`). Reviewers in the upstream hub can request changes, and the listing's `centralError` surfaces the reason.
+
+## Versions
+
+A listing has one or more versions. Each version captures:
+
+- A reference to the source agent's snapshot (image, env, files, integrations).
+- A `cloneMode`: `files_only` (recommended) or `image_and_files`.
+- A monotonic `versionNumber`.
+
+When a consumer installs a listing, Nora materializes the latest version into a new agent in the consumer's workspace.
+
+## Reports and moderation
+
+Workspaces can report community listings for abuse or licensing concerns. Reports go through the upstream hub's moderation queue. Rejected listings are hidden from the catalog but stay visible to the publishing workspace for context.
+
+## Permissions
+
+| Capability                                        | Required role |
+| ------------------------------------------------- | ------------- |
+| Browse internal + community listings              | viewer        |
+| Install a listing into the workspace              | editor        |
+| Publish, edit, or unpublish a workspace's listing | admin         |
+| Manage the source-catalog API key                 | admin         |
+
+<Note>
+  Agent Hub source-catalog API keys are stored hashed (HMAC with `NORA_AGENT_HUB_API_KEY_HASH_SECRET`). Rotating the secret invalidates every issued key.
+</Note>
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Workspaces" icon="folders" href="/concepts/workspaces">
+    Workspace ownership and RBAC roles.
+  </Card>
+
+  <Card title="Agent Hub guide" icon="store" href="/guides/agent-hub">
+    Walk through publishing and installing a listing.
+  </Card>
+</CardGroup>

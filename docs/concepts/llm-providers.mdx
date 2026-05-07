@@ -1,0 +1,87 @@
+# LLM providers and API key management
+
+> Learn which LLM providers Nora supports, how your API keys are encrypted with AES-256-GCM, and how to sync credentials to running agent runtimes.
+
+Nora centralizes your LLM provider API keys so you do not have to configure them individually on each agent. You save a key once in Settings, and Nora stores it with AES-256-GCM encryption. When you are ready to use a provider with a running agent, you sync the keys from the dashboard — Nora pushes the relevant credentials to the agent's runtime environment without exposing them in plaintext anywhere in the UI.
+
+## Supported providers
+
+Nora supports the following LLM providers. You can save a key for any of them from **Settings → Providers**.
+
+| Provider       | ID               |
+| -------------- | ---------------- |
+| Anthropic      | `anthropic`      |
+| OpenAI         | `openai`         |
+| Google AI      | `google`         |
+| Groq           | `groq`           |
+| Mistral AI     | `mistral`        |
+| DeepSeek       | `deepseek`       |
+| OpenRouter     | `openrouter`     |
+| Together AI    | `together`       |
+| Cohere         | `cohere`         |
+| xAI            | `xai`            |
+| Moonshot AI    | `moonshot`       |
+| Z.AI           | `zai`            |
+| Ollama         | `ollama`         |
+| MiniMax        | `minimax`        |
+| GitHub Copilot | `github-copilot` |
+| Hugging Face   | `huggingface`    |
+| Cerebras       | `cerebras`       |
+| NVIDIA         | `nvidia`         |
+
+## How key storage works
+
+When you save an API key, Nora encrypts it immediately using AES-256-GCM before writing it to the database. The raw key is never stored in plaintext and is never returned to the UI. When you view your saved providers in Settings, Nora shows a masked version of each key — the first four and last four characters only.
+
+<Note>
+  Your `ENCRYPTION_KEY` environment variable is required for key storage to work. If it is not set, Nora will refuse to save provider credentials. Generate one with `openssl rand -hex 32`.
+</Note>
+
+## Syncing keys to agents
+
+Saving a key in Nora does not automatically push it to your running agents. You sync keys explicitly from the agent detail page when you want to make them available to a specific agent's runtime.
+
+<Steps>
+  <Step title="Add a provider key">
+    Go to **Settings → Providers**, choose a provider, and paste your API key. Nora encrypts and saves it.
+  </Step>
+
+  <Step title="Deploy or open an agent">
+    Navigate to the agent you want to configure. The agent must be in `running` status for a sync to succeed.
+  </Step>
+
+  <Step title="Sync provider keys">
+    Click **Sync keys** on the agent detail page. Nora decrypts your stored keys and pushes them to the agent's runtime environment.
+  </Step>
+</Steps>
+
+## Default provider
+
+The first provider key you save is automatically marked as your default provider. When you have multiple providers configured, you can change the default from **Settings → Providers** — only one provider can be the default at a time. The default provider is used by agents that do not have a specific provider configured.
+
+<Tip>
+  If you are just getting started, save one key from Anthropic, OpenAI, or Google AI and deploy your first agent. You can add more providers at any time without redeploying your agents.
+</Tip>
+
+## Provider key safety
+
+* Keys are stored encrypted at rest (AES-256-GCM).
+* Keys are masked in the UI — you will never see a raw key after saving it.
+* Keys are scoped to your account and are never shared across users.
+* Deleting a provider removes the encrypted key record from the database.
+
+<Warning>
+  Treat your provider API keys with the same care as passwords. If a key is compromised, revoke it with the provider directly and save a new key in Nora.
+</Warning>
+
+## Related concepts
+
+<CardGroup cols={2}>
+  <Card title="Agents" icon="cpu" href="/concepts/agents">
+    Deploy and manage agent runtimes.
+  </Card>
+
+  <Card title="Runtimes" icon="box" href="/concepts/runtimes">
+    Learn about sandbox types and the OpenClaw runtime.
+  </Card>
+</CardGroup>

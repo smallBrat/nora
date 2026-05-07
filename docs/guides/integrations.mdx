@@ -1,0 +1,116 @@
+# Connect integrations to your agents
+
+> Browse the integration catalog, connect third-party services to your agents, test connections, and manage credentials securely in Nora.
+
+Integrations let your agents interact with external services — from source control and communication tools to cloud infrastructure and databases. When you connect an integration to an agent, Nora encrypts the credentials and injects them as environment variables into the agent's container at deployment time (or on the next sync). The agent runtime can then use those variables to call external APIs without you needing to hard-code any credentials.
+
+## How integrations work
+
+Each integration maps to one or more environment variables. For example, connecting GitHub injects `GITHUB_TOKEN` into the agent environment. Many integrations also accept additional configuration fields — such as an organization name or project key — which are mapped to their own environment variables alongside the primary credential.
+
+Sensitive fields (tokens, passwords, webhook URLs, and similar values) are encrypted with AES-256-GCM before storage. Non-sensitive config values (hostnames, usernames, IDs) are stored as plain text. All sensitive values are redacted in API responses — you will see `[REDACTED]` instead of the raw value after saving.
+
+## Browse the integration catalog
+
+The integration catalog lists all available integrations. You can browse the full catalog or filter by category.
+
+To view the catalog from the dashboard, open the **Integrations** section on an agent's detail page. You can also call the catalog API directly:
+
+```http theme={null}
+GET /api/integrations/catalog
+```
+
+To filter by category:
+
+```http theme={null}
+GET /api/integrations/catalog?category=developer-tools
+```
+
+## Connect an integration to an agent
+
+<Steps>
+  <Step title="Open the agent's integrations tab">
+    Navigate to the agent's detail page and select the **Integrations** tab.
+  </Step>
+
+  <Step title="Browse the catalog and select an integration">
+    Find the integration you want in the catalog list. Each entry shows the service name, category, and a description of what credentials it needs.
+  </Step>
+
+  <Step title="Enter the credentials">
+    Fill in the required fields. The primary credential (such as an API key or token) goes in the main credential field. Additional config fields (such as a site URL, email address, or organization name) appear below.
+  </Step>
+
+  <Step title="Save the integration">
+    Click **Connect** or **Save**. Nora encrypts the credentials and stores the integration record. The integration status is set to `active`.
+  </Step>
+
+  <Step title="Sync to the running agent">
+    If the agent is already running, use the **Sync** button to push the new integration's environment variables into the container. For agents deployed after the integration was added, the variables are baked in at container creation time.
+  </Step>
+</Steps>
+
+## Test a connection
+
+After connecting an integration, you can verify the credentials are valid:
+
+1. Open the agent's **Integrations** tab.
+2. Find the integration and click **Test**.
+
+Nora calls the provider's API using the stored credentials and reports success or an error message. For example, a GitHub test calls `GET /user` and returns the authenticated username on success.
+
+<Note>
+  Not all providers have automated connectivity tests. For providers without a specific test, Nora confirms that credentials are stored but cannot verify they work against the live API.
+</Note>
+
+## Remove an integration
+
+1. Open the agent's **Integrations** tab.
+2. Find the integration you want to remove.
+3. Click **Remove** or the trash icon and confirm.
+
+Removing an integration deletes the stored credentials. It does not restart the agent — the environment variables will no longer be injected on the next deployment or sync.
+
+## Popular integrations by category
+
+<AccordionGroup>
+  <Accordion title="Developer tools">
+    GitHub, GitLab, Jira, Linear, Bitbucket, Confluence, Jenkins, CircleCI, Vercel, Terraform
+  </Accordion>
+
+  <Accordion title="Communication">
+    Slack, Discord, Twilio, SendGrid, Email (SMTP)
+  </Accordion>
+
+  <Accordion title="Data and AI">
+    Hugging Face, Pinecone, Weaviate, Elasticsearch, Supabase
+  </Accordion>
+
+  <Accordion title="Cloud infrastructure">
+    AWS, Azure, DigitalOcean, S3
+  </Accordion>
+
+  <Accordion title="CRM and sales">
+    HubSpot, Salesforce, Pipedrive
+  </Accordion>
+
+  <Accordion title="Analytics and monitoring">
+    Datadog, Sentry, Grafana, Segment, Mixpanel
+  </Accordion>
+</AccordionGroup>
+
+For the full list of supported integrations, browse the catalog from the **Integrations** tab on any agent's detail page, or call `GET /integrations/catalog`.
+
+## Inbound webhooks
+
+Some integrations can also send events into Nora from an external service. Nora exposes a public webhook receiver endpoint for each channel:
+
+```
+POST /webhooks/:channelId
+```
+
+External services (such as GitHub Actions, Stripe, or PagerDuty) can POST event payloads to this URL. Nora logs the inbound payload and forwards it to the agent runtime if the agent is running.
+
+<Note>
+  The inbound webhook endpoint is public and does not require an `Authorization` header. Use a signing secret or verify token in your integration's config to validate inbound payloads on the agent side.
+</Note>

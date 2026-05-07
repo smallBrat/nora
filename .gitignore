@@ -21,7 +21,5 @@ nginx.public.conf
 nginx.conf.tls
 
 # documentation, plans, and testing reports
-docs/
-plans/
 testing-report/
 e2e/artifacts/

@@ -1,0 +1,90 @@
+# Deploy and manage AI agents in Nora
+
+> Learn how to deploy, configure, start, stop, and delete AI agents from the Nora dashboard, including sandbox types and lifecycle states.
+
+Nora gives you a single place to deploy and operate AI agent runtimes. From the Deploy page you configure a name, resource allocation, and sandbox type, then Nora queues the deployment, provisions the container, and brings the agent online. Once an agent is running, you can chat with it, inspect its logs, and open an interactive terminal — all from the same dashboard.
+
+## Before you start
+
+Make sure you have at least one LLM provider key saved in **Settings** before deploying. Agents need a provider key to run chat workflows. See [Add and sync LLM provider keys](/guides/manage-providers) to set one up.
+
+## Deploy an agent
+
+<Steps>
+  <Step title="Open the Deploy page">
+    Navigate to **Deploy** in the sidebar. This is the starting point for every new agent.
+  </Step>
+
+  <Step title="Enter a name">
+    Type a name for your agent. Names are limited to 100 characters. If you leave the field blank, Nora generates a default name such as `OpenClaw-Agent-472`.
+  </Step>
+
+  <Step title="Choose a sandbox type">
+    Select the sandbox that will run your agent. See the [sandbox comparison table](#sandbox-types) below for details on each option.
+  </Step>
+
+  <Step title="Set resource limits">
+    Specify the vCPU count, RAM (MB), and disk size (GB) for the agent container. In self-hosted mode these values are clamped to the operator-configured limits. In PaaS mode they are fixed to your subscription plan.
+  </Step>
+
+  <Step title="Confirm and deploy">
+    Click **Confirm & Deploy Agent**. Nora creates the agent record with a `queued` status and adds a deployment job to the queue.
+  </Step>
+</Steps>
+
+## What happens during deployment
+
+After you click **Confirm & Deploy Agent**, the deployment moves through two stages:
+
+1. **Queued** — The agent record is created and a deployment job is queued. The status is set to `queued` immediately so you can track progress.
+2. **Running** — Nora provisions the container and starts the agent runtime. The status transitions to `running` once the container is live.
+
+<Note>
+  If the container cannot start, the status transitions to `error` or `warning`. From either of those states you can redeploy the agent (see below).
+</Note>
+
+## Lifecycle actions
+
+Once an agent exists you can manage it from its detail page. The following actions are available:
+
+| Action       | When available                                     | What it does                                                                          |
+| ------------ | -------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| **Start**    | Agent has a container but is stopped               | Starts the existing container and sets status to `running`                            |
+| **Stop**     | Agent is running                                   | Stops the container and sets status to `stopped`                                      |
+| **Restart**  | Agent has a container                              | Restarts the container in place and keeps status `running`                            |
+| **Redeploy** | Agent is in `warning`, `error`, or `stopped` state | Clears the old container assignment and queues a fresh deployment with the same specs |
+| **Delete**   | Any state                                          | Destroys the container (if any) and permanently removes the agent record              |
+
+<Warning>
+  Deleting an agent is irreversible. The container is destroyed and all associated data is removed.
+</Warning>
+
+## Access chat, logs, and terminal
+
+From an agent's detail page you can:
+
+* **Chat** — Send messages to the agent runtime using the OpenClaw chat interface with streaming responses.
+* **Logs** — View live and historical log output from the agent container.
+* **Terminal** — Open an interactive terminal session connected to the running agent.
+
+The chat and terminal tabs are only available while the agent status is `running`. Logs are accessible regardless of status.
+
+## Sandbox types
+
+Nora supports two sandbox types. Choose the one that fits your security and model requirements.
+
+| Feature                  | Standard sandbox            | NemoClaw sandbox                           |
+| ------------------------ | --------------------------- | ------------------------------------------ |
+| **Runtime**              | OpenClaw + Docker           | NemoClaw + OpenClaw                        |
+| **Underlying runtime**   | Docker container            | Docker-hosted NemoClaw container           |
+| **Policy controls**      | None                        | OpenShell allow/deny policies              |
+| **Supported models**     | Any configured LLM provider | NVIDIA Nemotron models only                |
+| **Approval workflow**    | No                          | Yes — operator reviews flagged actions     |
+| **Operator requirement** | None                        | `NEMOCLAW_ENABLED=true` must be set        |
+| **Use case**             | General-purpose agents      | Security-sensitive or compliance workflows |
+
+<Tip>
+  If you select the NemoClaw sandbox and `NEMOCLAW_ENABLED` is not set to `true` in your environment, deployment will return an error. Ask your operator to enable it first.
+</Tip>
+
+For a full guide to NemoClaw agents, see [Run secure agents with NemoClaw sandboxes](/guides/nemoclaw).

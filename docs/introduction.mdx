@@ -1,0 +1,110 @@
+# Nora: the open-source AI agent control plane
+
+> Nora is an open-source AI agent control plane. Deploy runtimes, manage LLM keys, and monitor operations — self-hosted and commercially usable under Apache 2.0
+
+Nora is an open-source control plane for self-hosted agent operations. It gives technical teams a single place to deploy agent runtimes into isolated environments, manage LLM provider keys, access chat, logs, and terminal workflows, connect integrations and channels, and monitor runtime activity — all from one dashboard. Nora is licensed under **Apache 2.0**, which means you can self-host it, modify it, use it commercially, and build on top of it without restriction.
+
+The core value proposition is straightforward: if you care about infrastructure control, observability, repeatable operations, and a trustworthy operator surface, Nora helps you stand up a usable agent control plane faster than building your own. It is designed to be credible for serious operator use — individual builders can run it on a single machine, internal platform teams can standardize on it, and larger teams can keep full infrastructure control without giving up the open-source trust model.
+
+## Key capabilities
+
+<CardGroup cols={2}>
+  <Card title="Deploy agent runtimes" icon="rocket">
+    Launch agent runtimes into isolated environments with configurable CPU, RAM, and disk. Manage agent lifecycle — deploy, restart, and remove — from a single operator surface.
+  </Card>
+
+  <Card title="Manage LLM provider keys" icon="key">
+    Store API keys for Anthropic, OpenAI, Google, and other providers, encrypted at rest with AES-256-GCM. Sync keys to running runtimes on demand.
+  </Card>
+
+  <Card title="Monitor operations" icon="chart-line">
+    Track agent health, queue state, logs, metrics, and runtime activity in real time. Inspect individual agents or get a system-wide overview from the dashboard.
+  </Card>
+
+  <Card title="Integrations and channels" icon="plug">
+    Wire external tools and configure communication channels directly from the control plane. Manage the full integration surface from one place.
+  </Card>
+</CardGroup>
+
+## Who Nora is for
+
+Nora is built for the teams that care about how agent infrastructure runs, not just that it runs.
+
+<CardGroup cols={2}>
+  <Card title="Internal AI platform teams" icon="building">
+    Teams that need a repeatable, auditable way to deploy and operate agents across their organization without building a control plane from scratch.
+  </Card>
+
+  <Card title="Technical product teams" icon="code">
+    Teams that want infrastructure control and observability as first-class features while keeping the full stack open and inspectable.
+  </Card>
+
+  <Card title="Ops-minded operators" icon="sliders">
+    Operators running agent infrastructure who need lifecycle management, logs, terminal access, and runtime monitoring in one surface.
+  </Card>
+
+  <Card title="Service providers" icon="server">
+    Teams that want to host and operate agent control planes for clients on infrastructure they control.
+  </Card>
+</CardGroup>
+
+## Positioning pillars
+
+Nora is built around five properties that define what kind of product it is and who it is credible for.
+
+<CardGroup cols={2}>
+  <Card title="Security built in" icon="shield">
+    Key encryption, JWT auth, secret generation, and CORS controls are baked in — not bolted on. Nora is designed to feel trustworthy in real operator environments.
+  </Card>
+
+  <Card title="Easy to use" icon="circle-check">
+    The fastest path to first proof is short: install, create an operator account, add one provider, deploy one runtime, and validate the workflow. The installer handles dependencies, secrets, and stack startup in one pass.
+  </Card>
+
+  <Card title="Expandable" icon="arrows-split-up-and-left">
+    [OpenClaw](https://github.com/openclaw/openclaw) is the best-supported runtime today. Nora is designed to stay runtime-friendly by direction — the product and interfaces are kept open for broader runtime integration over time.
+  </Card>
+
+  <Card title="Self-hostable" icon="hard-drive">
+    The repo, install scripts, and Docker Compose flow are the primary trust path. Everything you need to run Nora is in the open repo. You own the infrastructure.
+  </Card>
+
+  <Card title="Enterprise-capable" icon="buildings">
+    Nora makes sense from single-host evaluation through Proxmox, private cloud, on-prem, and AWS / Azure / GCP rollouts. It is not a toy dashboard — it is designed to grow with operator requirements.
+  </Card>
+
+  <Card title="Apache 2.0 licensed" icon="file-certificate">
+    Self-host, modify, use commercially, host for clients, or build integrations on top of Nora. The open-source repo and self-hosted workflow are the center of the product, not a free tier.
+  </Card>
+</CardGroup>
+
+## Deployment footprint
+
+Nora is designed to grow with your infrastructure requirements. The same Docker Compose workflow is the foundation for every deployment path.
+
+| Footprint                   | When to use it                                                                |
+| --------------------------- | ----------------------------------------------------------------------------- |
+| **Single-host**             | First proof, lean teams, local evaluation                                     |
+| **Proxmox**                 | Stronger isolation, private fleet control, self-hosted VM environments        |
+| **Private cloud / on-prem** | Security-conscious internal platforms that need full infrastructure ownership |
+| **AWS, Azure, GCP**         | Larger cloud-native or enterprise rollouts                                    |
+
+## Get started
+
+<CardGroup cols={2}>
+  <Card title="Quick start" icon="bolt" href="/quickstart">
+    Install Nora, create your operator account, add an LLM provider, and deploy your first agent runtime in under 15 minutes.
+  </Card>
+
+  <Card title="Self-hosting" icon="server" href="/self-hosting">
+    Run Nora on your own infrastructure with the installer script or manual Docker Compose setup.
+  </Card>
+
+  <Card title="API reference" icon="code" href="/api/overview">
+    Explore the REST API for agents, providers, integrations, channels, workspaces, and monitoring.
+  </Card>
+
+  <Card title="Guides" icon="book-open" href="/guides/deploy-agent">
+    Step-by-step walkthroughs for deploying agents, managing providers, wiring integrations, and more.
+  </Card>
+</CardGroup>

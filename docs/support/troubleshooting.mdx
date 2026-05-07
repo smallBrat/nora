@@ -1,0 +1,180 @@
+# Troubleshoot common Nora issues
+
+> Solutions for the most common Nora installation, agent deployment, LLM provider, authentication, and dashboard loading problems you may encounter.
+
+If something is not working as expected, this page covers the most frequent problems operators encounter when self-hosting Nora and explains exactly what to check or change. Work through the category that matches your situation, and use the log commands below to gather more context when the cause is unclear.
+
+<AccordionGroup>
+  <Accordion title="Installation issues">
+    **Docker not found**
+
+    The Nora setup script can install Docker, Docker Compose, and Git for you if they are missing. Run the installer and follow the prompts:
+
+    ```bash theme={null}
+    curl -fsSL https://storage.solomontsao.com/setup.sh | bash
+    ```
+
+    If you prefer to install Docker manually, follow the [official Docker installation guide](https://docs.docker.com/engine/install/) for your operating system, then re-run setup.
+
+    ***
+
+    **Port 8080 already in use**
+
+    By default, Nora binds nginx to port 8080. If another process is using that port, set `NGINX_HTTP_PORT` to a free port in your `.env` file before starting the stack:
+
+    ```bash theme={null}
+    NGINX_HTTP_PORT=9090
+    ```
+
+    Restart the stack after saving the change:
+
+    ```bash theme={null}
+    docker compose down && docker compose up -d
+    ```
+
+    ***
+
+    **Stack fails to start**
+
+    Check the backend API logs for the error that caused the failure:
+
+    ```bash theme={null}
+    docker compose logs -f backend-api
+    ```
+
+    Common causes include a missing or malformed `JWT_SECRET`, a missing `ENCRYPTION_KEY`, or a database connection failure. Verify that your `.env` file contains valid 64-character hex values for both required secrets:
+
+    ```bash theme={null}
+    openssl rand -hex 32
+    ```
+
+    Run that command twice — once for `JWT_SECRET` and once for `ENCRYPTION_KEY`.
+  </Accordion>
+
+  <Accordion title="Agent deployment issues">
+    **Agent stuck in "queued" state**
+
+    A queued agent that never transitions to running usually means the provisioner cannot reach the Docker socket. Check the backend logs for provisioning errors:
+
+    ```bash theme={null}
+    docker compose logs -f backend-api
+    ```
+
+    Verify that the Docker socket is mounted correctly in your `docker-compose.yml` and that the user running the backend has permission to access it.
+
+    ***
+
+    **Agent in "error" state**
+
+    If an agent lands in the error state after deployment, use the **Redeploy** button on the agent detail page to attempt a fresh deployment. If the error persists, inspect the backend logs to identify what failed during provisioning:
+
+    ```bash theme={null}
+    docker compose logs -f backend-api
+    ```
+
+    ***
+
+    **NemoClaw sandbox fails to start**
+
+    NemoClaw is disabled by default. To enable it, you must set both variables in your `.env` file:
+
+    ```bash theme={null}
+    NEMOCLAW_ENABLED=true
+    NVIDIA_API_KEY=your-nvidia-api-key
+    ```
+
+    Restart the stack after making these changes. If NemoClaw still fails, confirm that your NVIDIA API key is active and has access to the NVIDIA NIM endpoints Nora uses.
+
+    <Warning>
+      Do not paste your NVIDIA API key into GitHub Issues or Discussions. Share only masked or redacted values when asking for help.
+    </Warning>
+  </Accordion>
+
+  <Accordion title="LLM provider issues">
+    **API keys are not reaching the agent**
+
+    Provider keys saved in Settings are not automatically pushed to running agents. After adding or updating a key, open the agent detail page and click the **Sync** button to inject the current keys into the running runtime.
+
+    <Tip>
+      If you just deployed a new agent, always sync your provider keys before testing chat to avoid "no provider configured" errors.
+    </Tip>
+
+    ***
+
+    **Invalid API key errors from the agent**
+
+    If the agent reports that a key is invalid or unauthorized, verify the key directly with the provider before troubleshooting Nora. Keys are stored using AES-256-GCM encryption and are never returned in API responses, so the value Nora holds is the exact value you entered. If the key itself is correct, confirm that you selected the right provider in Settings.
+  </Accordion>
+
+  <Accordion title="Authentication issues">
+    **Cannot log in**
+
+    The most common login failure in self-hosted deployments is a mismatch between `NEXTAUTH_URL` and the URL you are actually using to access Nora. The value in your `.env` file must exactly match the origin your browser is loading:
+
+    ```bash theme={null}
+    # Local mode
+    NEXTAUTH_URL=http://localhost:8080
+
+    # Public domain mode
+    NEXTAUTH_URL=https://app.example.com
+    ```
+
+    After correcting the value, restart the stack:
+
+    ```bash theme={null}
+    docker compose down && docker compose up -d
+    ```
+
+    ***
+
+    **OAuth login button is missing or disabled**
+
+    OAuth login (Google, GitHub) is disabled by default. To enable it, set the following variable and provide your OAuth client credentials in `.env`:
+
+    ```bash theme={null}
+    OAUTH_LOGIN_ENABLED=true
+    GOOGLE_CLIENT_ID=...
+    GOOGLE_CLIENT_SECRET=...
+    GITHUB_CLIENT_ID=...
+    GITHUB_CLIENT_SECRET=...
+    ```
+
+    <Note>
+      You only need to set credentials for the OAuth providers you want to enable. Leave the others blank.
+    </Note>
+  </Accordion>
+
+  <Accordion title="Dashboard not loading">
+    If the dashboard returns a CORS error or a blank page, your `CORS_ORIGINS` value likely does not include the origin your browser is using. Add your origin to the variable as a comma-separated value:
+
+    ```bash theme={null}
+    # Single origin
+    CORS_ORIGINS=http://localhost:8080
+
+    # Multiple origins
+    CORS_ORIGINS=https://app.example.com,http://localhost:8080
+    ```
+
+    Restart the stack after saving the change:
+
+    ```bash theme={null}
+    docker compose down && docker compose up -d
+    ```
+
+    To confirm the backend is healthy, check its logs directly:
+
+    ```bash theme={null}
+    docker compose logs -f backend-api
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Getting more help
+
+If you cannot resolve your issue with the steps above, the following resources are available:
+
+* **Reproducible bugs** — open an issue at [github.com/solomon2773/nora/issues](https://github.com/solomon2773/nora/issues)
+* **Setup and rollout questions** — start a discussion at [github.com/solomon2773/nora/discussions](https://github.com/solomon2773/nora/discussions)
+* **Enterprise and managed paths** — see [nora.solomontsao.com/pricing](https://nora.solomontsao.com/pricing)
+
+When asking for help, include your deployment mode (self-hosted, rollout-help, or hosted), your OS, which setup script you used, and any relevant log output. Do not include secrets, API keys, or `.env` file contents.

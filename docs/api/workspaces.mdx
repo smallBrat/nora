@@ -1,0 +1,219 @@
+# Workspaces API: group and organize agents
+
+> Create workspaces to group Nora agents by project or team, assign agent roles, list workspace members, and delete workspaces you own.
+
+Workspaces let you organise agents into logical groups — for example by project, team, or environment. You create a workspace, add agents to it with optional roles, and query which agents belong to a given workspace. Every workspace belongs to the user who created it, and only you can manage or delete your own workspaces.
+
+***
+
+## List workspaces
+
+Return all workspaces belonging to the authenticated user.
+
+```
+GET /workspaces
+```
+
+### Response
+
+<ResponseField name="id" type="string">Workspace UUID.</ResponseField>
+<ResponseField name="name" type="string">Workspace display name.</ResponseField>
+<ResponseField name="user_id" type="string">UUID of the owning user.</ResponseField>
+<ResponseField name="created_at" type="string">ISO 8601 creation timestamp.</ResponseField>
+
+<CodeGroup>
+  ```bash curl theme={null}
+  curl http://localhost:8080/api/workspaces \
+    -H "Authorization: Bearer $TOKEN"
+  ```
+</CodeGroup>
+
+```json theme={null}
+[
+  {
+    "id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+    "name": "Production",
+    "user_id": "d4e5f6a7-b8c9-4d01-a234-56789bcdef01",
+    "created_at": "2025-02-15T14:00:00.000Z"
+  }
+]
+```
+
+***
+
+## Create a workspace
+
+Create a new workspace.
+
+```
+POST /workspaces
+```
+
+### Request body
+
+<ParamField body="name" type="string" required>
+  Workspace name, 1–100 characters.
+</ParamField>
+
+### Response
+
+<ResponseField name="id" type="string">New workspace UUID.</ResponseField>
+<ResponseField name="name" type="string">Workspace name.</ResponseField>
+<ResponseField name="user_id" type="string">UUID of the owning user.</ResponseField>
+<ResponseField name="created_at" type="string">ISO 8601 creation timestamp.</ResponseField>
+
+<CodeGroup>
+  ```bash curl theme={null}
+  curl -X POST http://localhost:8080/api/workspaces \
+    -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"name":"Production"}'
+  ```
+</CodeGroup>
+
+```json theme={null}
+{
+  "id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+  "name": "Production",
+  "user_id": "d4e5f6a7-b8c9-4d01-a234-56789bcdef01",
+  "created_at": "2025-03-10T09:00:00.000Z"
+}
+```
+
+| Status | Condition                                    |
+| ------ | -------------------------------------------- |
+| `400`  | Missing name, or name exceeds 100 characters |
+
+***
+
+## List agents in a workspace
+
+Return all agents that have been added to a specific workspace.
+
+```
+GET /workspaces/:id/agents
+```
+
+### Path parameters
+
+<ParamField path="id" type="string" required>
+  Workspace UUID.
+</ParamField>
+
+### Response
+
+Returns an array of agent records joined with their workspace membership details.
+
+<ResponseField name="id" type="string">Agent UUID.</ResponseField>
+<ResponseField name="name" type="string">Agent display name.</ResponseField>
+<ResponseField name="status" type="string">Current agent status.</ResponseField>
+<ResponseField name="role" type="string">Role assigned to this agent in the workspace, if any.</ResponseField>
+
+<CodeGroup>
+  ```bash curl theme={null}
+  curl http://localhost:8080/api/workspaces/b2c3d4e5-f6a7-8901-bcde-f12345678901/agents \
+    -H "Authorization: Bearer $TOKEN"
+  ```
+</CodeGroup>
+
+```json theme={null}
+[
+  {
+    "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "name": "My Research Agent",
+    "status": "running",
+    "role": "primary"
+  }
+]
+```
+
+***
+
+## Add an agent to a workspace
+
+Associate one of your agents with a workspace. The agent must belong to the same user as the workspace.
+
+```
+POST /workspaces/:id/agents
+```
+
+### Path parameters
+
+<ParamField path="id" type="string" required>
+  Workspace UUID.
+</ParamField>
+
+### Request body
+
+<ParamField body="agentId" type="string" required>
+  UUID of the agent to add. Must be one of your agents.
+</ParamField>
+
+<ParamField body="role" type="string">
+  Optional role label for this agent within the workspace, e.g. `primary`, `observer`.
+</ParamField>
+
+### Response
+
+Returns the workspace membership record.
+
+<ResponseField name="workspace_id" type="string">Workspace UUID.</ResponseField>
+<ResponseField name="agent_id" type="string">Agent UUID.</ResponseField>
+<ResponseField name="role" type="string">Assigned role, or `null`.</ResponseField>
+
+<CodeGroup>
+  ```bash curl theme={null}
+  curl -X POST http://localhost:8080/api/workspaces/b2c3d4e5-f6a7-8901-bcde-f12345678901/agents \
+    -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"agentId":"a1b2c3d4-e5f6-7890-abcd-ef1234567890","role":"primary"}'
+  ```
+</CodeGroup>
+
+```json theme={null}
+{
+  "workspace_id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+  "agent_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "role": "primary"
+}
+```
+
+| Status | Condition                                 |
+| ------ | ----------------------------------------- |
+| `400`  | Missing `agentId`                         |
+| `404`  | Agent not found or does not belong to you |
+
+***
+
+## Delete a workspace
+
+Permanently delete a workspace. All agent memberships within the workspace are removed. The agents themselves are not affected.
+
+```
+DELETE /workspaces/:id
+```
+
+### Path parameters
+
+<ParamField path="id" type="string" required>
+  Workspace UUID.
+</ParamField>
+
+### Response
+
+<ResponseField name="success" type="boolean">`true` when the workspace was deleted.</ResponseField>
+
+<CodeGroup>
+  ```bash curl theme={null}
+  curl -X DELETE http://localhost:8080/api/workspaces/b2c3d4e5-f6a7-8901-bcde-f12345678901 \
+    -H "Authorization: Bearer $TOKEN"
+  ```
+</CodeGroup>
+
+```json theme={null}
+{ "success": true }
+```
+
+<Warning>
+  Deleting a workspace is irreversible. All agent memberships are removed immediately. The agents themselves continue to run and remain accessible through the Agents API.
+</Warning>

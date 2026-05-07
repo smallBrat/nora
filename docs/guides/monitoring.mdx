@@ -1,0 +1,155 @@
+# Monitor agent health and performance in Nora
+
+> View platform metrics, agent-level CPU and memory stats, activity events, cost tracking, and historical performance data for your agents in Nora.
+
+Nora collects runtime metrics, activity events, and cost data for every agent you deploy. You can view a live snapshot of an agent's resource usage, pull historical stats over configurable time windows, browse the activity event log, and check accumulated cost data — all from the dashboard or the monitoring API. This page explains what data is collected, how to read it, and the available time ranges for historical queries.
+
+## Platform metrics overview
+
+The platform-level monitoring endpoint returns aggregate statistics across all agents on your account, including totals for running agents, queued jobs, and recent activity.
+
+```http theme={null}
+GET /api/monitoring/metrics
+```
+
+Use this endpoint to get a high-level picture of your deployment before drilling into individual agents.
+
+## Agent-level metrics
+
+Each agent exposes a live stats snapshot and a historical stats series. Stats are collected every **10 seconds** and retained for **24 hours**.
+
+### Live stats
+
+To fetch the current resource usage for a running agent:
+
+```http theme={null}
+GET /api/agents/:id/stats
+```
+
+The response includes the following fields:
+
+| Field             | Type    | Description                                                         |
+| ----------------- | ------- | ------------------------------------------------------------------- |
+| `cpu_percent`     | number  | Current CPU usage as a percentage across all cores                  |
+| `memory_usage_mb` | number  | Actual memory in use (excluding cache), in megabytes                |
+| `memory_limit_mb` | number  | Container memory limit, in megabytes                                |
+| `memory_percent`  | number  | Memory usage as a percentage of the limit                           |
+| `network_rx_mb`   | number  | Total bytes received across all network interfaces, in megabytes    |
+| `network_tx_mb`   | number  | Total bytes transmitted across all network interfaces, in megabytes |
+| `disk_read_mb`    | number  | Total block device read bytes, in megabytes                         |
+| `disk_write_mb`   | number  | Total block device write bytes, in megabytes                        |
+| `pids`            | number  | Current number of processes (PIDs) in the container                 |
+| `uptime_seconds`  | number  | Seconds since the container last started                            |
+| `running`         | boolean | Whether the container is currently running                          |
+
+<Note>
+  Live stats require a running container. If the agent is stopped or has no container, the endpoint returns a `409` error.
+</Note>
+
+### Historical stats
+
+To fetch a time series of stats for an agent, use the history endpoint with a time range:
+
+```http theme={null}
+GET /api/agents/:id/stats/history?range=15m
+```
+
+**Supported time ranges:**
+
+| Parameter | Window                    |
+| --------- | ------------------------- |
+| `5m`      | Last 5 minutes            |
+| `15m`     | Last 15 minutes (default) |
+| `30m`     | Last 30 minutes           |
+| `1h`      | Last 1 hour               |
+| `6h`      | Last 6 hours              |
+| `24h`     | Last 24 hours             |
+
+You can also query a custom window using ISO timestamps:
+
+```http theme={null}
+GET /api/agents/:id/stats/history?from=2026-04-10T08:00:00Z&to=2026-04-10T09:00:00Z
+```
+
+Each data point in the history response contains the same metric fields as the live stats endpoint, plus a `recorded_at` timestamp. Results are ordered by `recorded_at` ascending and capped at 2000 rows per query.
+
+**Historical stat fields:**
+
+| Field             | Description                                     |
+| ----------------- | ----------------------------------------------- |
+| `cpu_percent`     | CPU usage at that sample point                  |
+| `memory_usage_mb` | Memory in use at that sample point              |
+| `memory_limit_mb` | Memory limit at that sample point               |
+| `memory_percent`  | Memory usage percentage at that sample point    |
+| `network_rx_mb`   | Cumulative network receive bytes                |
+| `network_tx_mb`   | Cumulative network transmit bytes               |
+| `disk_read_mb`    | Cumulative disk read bytes                      |
+| `disk_write_mb`   | Cumulative disk write bytes                     |
+| `pids`            | Process count at that sample point              |
+| `recorded_at`     | ISO 8601 timestamp of when the sample was taken |
+
+## Activity events
+
+The events log records actions taken on agents and by agents — deployments, redeployments, errors, and other lifecycle events.
+
+```http theme={null}
+GET /api/monitoring/events
+```
+
+To filter events to a specific agent:
+
+```http theme={null}
+GET /api/monitoring/events?agentId=<agent-id>
+```
+
+You can also control the number of results returned:
+
+```http theme={null}
+GET /api/monitoring/events?limit=100
+```
+
+The default limit is 50 events, ordered by `created_at` descending (newest first).
+
+## Agent metrics summary
+
+For a summarized view of an agent's metrics over the default 24-hour window:
+
+```http theme={null}
+GET /api/agents/:id/metrics/summary
+```
+
+This returns aggregated highs, lows, and averages rather than individual data points — useful for a quick health check.
+
+For the full time-series data with optional type and date filters:
+
+```http theme={null}
+GET /api/agents/:id/metrics?type=cpu&since=2026-04-09T00:00:00Z
+```
+
+## Agent cost tracking
+
+Nora tracks token usage and associated costs for each agent. To view the accumulated cost data for an agent:
+
+```http theme={null}
+GET /api/agents/:id/cost
+```
+
+The response includes cost totals and usage breakdowns. If the agent has no recorded usage, the endpoint returns a `404`.
+
+## Performance data
+
+Platform-level API performance metrics are available for the last 24 hours by default:
+
+```http theme={null}
+GET /api/monitoring/performance
+```
+
+You can narrow the window with a `since` parameter:
+
+```http theme={null}
+GET /api/monitoring/performance?since=2026-04-10T06:00:00Z
+```
+
+<Tip>
+  Use the 24-hour historical stats window combined with the activity events log to correlate performance dips with specific deployment or lifecycle events.
+</Tip>

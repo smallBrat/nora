@@ -1,0 +1,73 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "name": "Nora",
+  "theme": "mint",
+  "colors": {
+    "primary": "#1a73e8",
+    "light": "#5b9dff",
+    "dark": "#0b3d91"
+  },
+  "favicon": "/favicon.svg",
+  "navigation": {
+    "groups": [
+      {
+        "group": "Getting started",
+        "pages": ["introduction", "quickstart", "self-hosting"]
+      },
+      {
+        "group": "Concepts",
+        "pages": [
+          "concepts/agents",
+          "concepts/runtimes",
+          "concepts/workspaces",
+          "concepts/llm-providers",
+          "concepts/agent-hub"
+        ]
+      },
+      {
+        "group": "Configuration",
+        "pages": [
+          "configuration/environment-variables",
+          "configuration/platform-modes",
+          "configuration/provisioner-backends",
+          "configuration/tls-domains"
+        ]
+      },
+      {
+        "group": "Guides",
+        "pages": [
+          "guides/deploy-agent",
+          "guides/manage-providers",
+          "guides/integrations",
+          "guides/channels",
+          "guides/monitoring",
+          "guides/alert-rules",
+          "guides/backups",
+          "guides/agent-hub",
+          "guides/nemoclaw"
+        ]
+      },
+      {
+        "group": "API Reference",
+        "pages": [
+          "api/overview",
+          "api/authentication",
+          "api/workspaces",
+          "api/agents",
+          "api/llm-providers",
+          "api/integrations",
+          "api/channels",
+          "api/alert-rules",
+          "api/monitoring"
+        ]
+      },
+      {
+        "group": "Support",
+        "pages": ["support/faq", "support/troubleshooting"]
+      }
+    ]
+  },
+  "footerSocials": {
+    "github": "https://github.com/solomon2773/nora"
+  }
+}

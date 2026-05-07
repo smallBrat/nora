@@ -1,0 +1,107 @@
+# Publish and install Agent Hub templates
+
+> Convert an existing agent into a reusable Agent Hub listing, optionally share it to the community catalog, and install listings into any workspace with one click.
+
+Agent Hub turns a working agent into a reusable template. This guide covers the end-to-end flow: install a listing, publish your own, share to the community catalog, and roll out a new version.
+
+See [Agent Hub concepts](/concepts/agent-hub) for the underlying model — listing types, share targets, and versions.
+
+## Install a listing
+
+<Steps>
+  <Step title="Open Agent Hub">
+    From the dashboard, open **Agent Hub** in the workspace navigation. The catalog shows three filters: **Internal** (your workspace's listings), **Community** (synced from the upstream hub), and **Built-in** (platform-seeded templates).
+  </Step>
+
+  <Step title="Select a listing">
+    Click any listing to open its detail page. You'll see the runtime family, deploy target, sandbox profile, default image, and any bootstrap files or integrations the template wires up.
+  </Step>
+
+  <Step title="Click Install">
+    Choose the workspace (defaults to the current one) and an agent name. Nora materializes the latest version of the listing into a new agent in `queued` status. The deployment job runs the same path as a manual deploy.
+
+    <Note>
+      Installing requires the `editor` role on the destination workspace.
+    </Note>
+  </Step>
+</Steps>
+
+## Publish a workspace listing
+
+<Steps>
+  <Step title="Pick a working agent">
+    Open the agent detail page for the agent you want to template. Make sure it's healthy — the listing snapshot reflects the agent's current image, env, files, and integrations.
+  </Step>
+
+  <Step title="Click Publish to Agent Hub">
+    The publish dialog asks for:
+
+    - **Name** — display name for the listing.
+    - **Description** — short description shown in the catalog.
+    - **Category** — free-form label used for filtering.
+    - **Share target** — `internal` (your workspace only), `community` (push to the upstream hub), or `both`.
+  </Step>
+
+  <Step title="Confirm">
+    Nora captures a snapshot of the agent and creates the listing. If you chose `community` or `both`, the listing is also queued for upstream review; its status shows as **Pending review** until the upstream hub approves it.
+
+    <Tip>
+      Use `internal` first to verify the listing installs cleanly in another workspace before sharing it publicly.
+    </Tip>
+  </Step>
+</Steps>
+
+## Roll out a new version
+
+When the source agent's image, env, or files change, you can capture a new version on top of the existing listing instead of publishing a fresh one.
+
+1. Open the listing detail page.
+2. Click **Capture new version**.
+3. Choose `files_only` (recommended) or `image_and_files`.
+4. Confirm.
+
+Existing installs keep running their previous version. Any future install picks up the latest version automatically.
+
+## Share to the community catalog
+
+Workspace listings published with share target `community` or `both` sync to the upstream Agent Hub at `NORA_AGENT_HUB_URL` (default `https://nora.solomontsao.com`). The flow:
+
+1. Listing is created locally with `centralShareStatus = pending`.
+2. Nora pushes the listing payload to the upstream hub using the workspace's source-catalog API key.
+3. Upstream reviewers approve, request changes, or reject. The result is mirrored to `centralShareStatus`.
+4. Approved listings appear in every workspace's **Community** filter.
+
+If sharing fails (network error, missing key, validation rejection), the listing's `centralError` shows the cause and the listing stays in `pending`. Click **Retry sync** from the listing detail page to push again.
+
+## Manage source-catalog keys
+
+The Agent Hub source-catalog API key authenticates Nora to the upstream hub. Manage keys under **Admin Settings → Agent Hub**.
+
+- Keys are stored hashed using `NORA_AGENT_HUB_API_KEY_HASH_SECRET`. Rotating the secret invalidates every issued key.
+- Each key has a label, status (`active` / `revoked`), and a 6-character prefix shown in the UI.
+- Self-hosters can either use the upstream community hub or run their own and point `NORA_AGENT_HUB_URL` at it.
+
+## Permissions
+
+| Capability                       | Required role |
+| -------------------------------- | ------------- |
+| Browse listings                  | viewer        |
+| Install a listing                | editor        |
+| Publish, edit, unpublish listing | admin         |
+| Manage source-catalog API keys   | admin         |
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Install fails immediately">
+    Check the agent detail page for the new agent — the deploy job's `failedReason` shows up there. Common causes: the destination workspace lacks the runtime family, deploy target, or sandbox profile the listing requires.
+  </Accordion>
+
+  <Accordion title="Community sync stays in pending">
+    Open the listing detail page and check `centralError`. If it mentions auth, regenerate the source-catalog API key. If it mentions validation, the upstream hub rejected the payload — usually for a missing description or an unsupported runtime ID.
+  </Accordion>
+
+  <Accordion title="Reports aren't visible to me">
+    Reports are reviewed in the upstream hub. The publishing workspace sees the report's resolution mirrored back; reporters see their own report status under **Settings → My reports**.
+  </Accordion>
+</AccordionGroup>

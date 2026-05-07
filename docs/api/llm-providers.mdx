@@ -1,0 +1,289 @@
+# LLM Providers API: manage and sync API keys
+
+> Store, update, and sync LLM provider API keys to your running Nora agents. Keys are masked in all API responses and never returned in plain text.
+
+The LLM Providers API lets you associate API keys for language model services (OpenAI, Anthropic, and others) with your Nora account. When you add or update a provider key, Nora automatically syncs it to any running agents so they can immediately start using the new credential. Keys are encrypted at rest and **never returned in plain text** — all responses show a masked version of the key.
+
+<Note>
+  After adding or updating a provider, Nora automatically calls the sync endpoint in the background. You can also trigger a manual sync with `POST /llm-providers/sync`.
+</Note>
+
+***
+
+## List available providers
+
+Return the full catalog of LLM providers that Nora supports, including their supported models.
+
+```
+GET /llm-providers/available
+```
+
+This endpoint is available to all authenticated users and does not depend on which providers you have configured.
+
+### Response
+
+Returns an array of provider descriptors.
+
+<ResponseField name="id" type="string">Provider identifier, e.g. `openai`, `anthropic`.</ResponseField>
+<ResponseField name="name" type="string">Human-readable provider name.</ResponseField>
+<ResponseField name="models" type="string[]">Supported model identifiers for this provider.</ResponseField>
+
+<CodeGroup>
+  ```bash curl theme={null}
+  curl http://localhost:8080/api/llm-providers/available \
+    -H "Authorization: Bearer $TOKEN"
+  ```
+</CodeGroup>
+
+```json theme={null}
+[
+  {
+    "id": "anthropic",
+    "name": "Anthropic",
+    "models": ["claude-opus-4-6", "claude-sonnet-4-5"]
+  },
+  {
+    "id": "openai",
+    "name": "OpenAI",
+    "models": ["gpt-5.4", "gpt-5.4-pro"]
+  },
+  {
+    "id": "nvidia",
+    "name": "NVIDIA",
+    "models": ["nvidia/nemotron-3-super-120b-a12b", "nvidia/llama-3.1-nemotron-ultra-253b-v1"]
+  }
+]
+```
+
+***
+
+## List your saved providers
+
+Return the LLM provider configurations saved to your account. API keys are masked.
+
+```
+GET /llm-providers
+```
+
+### Response
+
+<ResponseField name="id" type="string">Provider record UUID.</ResponseField>
+<ResponseField name="provider" type="string">Provider identifier.</ResponseField>
+<ResponseField name="api_key_masked" type="string">Masked key, e.g. `sk-...abc123`. The full key is never returned.</ResponseField>
+<ResponseField name="model" type="string">Default model selected for this provider.</ResponseField>
+<ResponseField name="config" type="object">Additional provider-specific configuration.</ResponseField>
+<ResponseField name="is_default" type="boolean">Whether this is the default provider for new agents.</ResponseField>
+<ResponseField name="created_at" type="string">ISO 8601 creation timestamp.</ResponseField>
+
+<CodeGroup>
+  ```bash curl theme={null}
+  curl http://localhost:8080/api/llm-providers \
+    -H "Authorization: Bearer $TOKEN"
+  ```
+</CodeGroup>
+
+```json theme={null}
+[
+{
+  "id": "f1e2d3c4-b5a6-7890-abcd-012345678901",
+  "provider": "anthropic",
+  "api_key_masked": "sk-a••••••••xyz9",
+  "model": "claude-opus-4-6",
+  "config": {},
+  "is_default": true,
+  "created_at": "2025-02-01T12:00:00.000Z"
+}
+]
+```
+
+***
+
+## Add a provider
+
+Save a new LLM provider API key to your account. After the record is saved, Nora syncs the key to all your running agents in the background.
+
+```
+POST /llm-providers
+```
+
+### Request body
+
+<ParamField body="provider" type="string" required>
+  Provider identifier, e.g. `openai`, `anthropic`. Must match a value from `GET /llm-providers/available`.
+</ParamField>
+
+<ParamField body="apiKey" type="string" required>
+  The API key issued by the provider.
+</ParamField>
+
+<ParamField body="model" type="string">
+  Default model to use for this provider, e.g. `claude-opus-4-6` for Anthropic or `gpt-5.4` for OpenAI.
+</ParamField>
+
+<ParamField body="config" type="object">
+  Optional provider-specific configuration object (e.g. base URL overrides).
+</ParamField>
+
+### Response
+
+Returns the saved provider record with the API key masked.
+
+<CodeGroup>
+  ```bash curl theme={null}
+  curl -X POST http://localhost:8080/api/llm-providers \
+    -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"provider":"anthropic","apiKey":"sk-ant-abc123","model":"claude-opus-4-6"}'
+  ```
+</CodeGroup>
+
+```json theme={null}
+{
+  "id": "f1e2d3c4-b5a6-7890-abcd-012345678901",
+  "provider": "anthropic",
+  "api_key_masked": "sk-a••••••••ntc",
+  "model": "claude-opus-4-6",
+  "config": {},
+  "is_default": false,
+  "created_at": "2025-03-10T09:00:00.000Z"
+}
+```
+
+| Status | Condition                                                |
+| ------ | -------------------------------------------------------- |
+| `400`  | Missing `provider` or `apiKey`, or unrecognised provider |
+
+***
+
+## Update a provider
+
+Update the API key, model, or config for an existing provider record.
+
+```
+PUT /llm-providers/:id
+```
+
+### Path parameters
+
+<ParamField path="id" type="string" required>
+  Provider record UUID.
+</ParamField>
+
+### Request body
+
+<ParamField body="apiKey" type="string">
+  New API key.
+</ParamField>
+
+<ParamField body="model" type="string">
+  New default model.
+</ParamField>
+
+<ParamField body="config" type="object">
+  Updated provider-specific configuration.
+</ParamField>
+
+<ParamField body="is_default" type="boolean">
+  Set this provider as the default.
+</ParamField>
+
+### Response
+
+Returns the updated provider record with the key masked.
+
+<CodeGroup>
+  ```bash curl theme={null}
+  curl -X PUT http://localhost:8080/api/llm-providers/f1e2d3c4-b5a6-7890-abcd-012345678901 \
+    -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"model":"claude-sonnet-4-5"}'
+  ```
+</CodeGroup>
+
+***
+
+## Delete a provider
+
+Remove a provider record from your account. Running agents will lose access to the key on their next sync.
+
+```
+DELETE /llm-providers/:id
+```
+
+### Path parameters
+
+<ParamField path="id" type="string" required>
+  Provider record UUID.
+</ParamField>
+
+### Response
+
+<ResponseField name="success" type="boolean">`true` when the record was deleted.</ResponseField>
+
+<CodeGroup>
+  ```bash curl theme={null}
+  curl -X DELETE http://localhost:8080/api/llm-providers/f1e2d3c4-b5a6-7890-abcd-012345678901 \
+    -H "Authorization: Bearer $TOKEN"
+  ```
+</CodeGroup>
+
+```json theme={null}
+{ "success": true }
+```
+
+***
+
+## Sync keys to agents
+
+Push the current set of provider keys to all running agents, or to a single specified agent. This writes updated `auth-profiles.json` credentials and sets the active model inside each agent runtime.
+
+```
+POST /llm-providers/sync
+```
+
+### Request body
+
+<ParamField body="agentId" type="string">
+  UUID of a specific agent to sync. When omitted, all running agents owned by you are synced.
+</ParamField>
+
+### Response
+
+<ResponseField name="synced" type="number">Number of agents that were successfully synced.</ResponseField>
+<ResponseField name="total" type="number">Total number of agents attempted.</ResponseField>
+
+<ResponseField name="results" type="object[]">
+  Per-agent sync results.
+
+  <Expandable title="properties">
+    <ResponseField name="agentId" type="string">Agent UUID.</ResponseField>
+    <ResponseField name="status" type="string">`synced` or `skipped` or `error`.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+<CodeGroup>
+  ```bash curl (all agents) theme={null}
+  curl -X POST http://localhost:8080/api/llm-providers/sync \
+    -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{}'
+  ```
+
+  ```bash curl (single agent) theme={null}
+  curl -X POST http://localhost:8080/api/llm-providers/sync \
+    -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"agentId":"a1b2c3d4-e5f6-7890-abcd-ef1234567890"}'
+  ```
+</CodeGroup>
+
+```json theme={null}
+{
+  "synced": 2,
+  "total": 2,
+  "results": [
+    { "agentId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890", "status": "synced" },
+    { "agentId": "b2c3d4e5-f6a7-8901-bcde-f12345678901", "status": "synced" }
+  ]
+}
+```

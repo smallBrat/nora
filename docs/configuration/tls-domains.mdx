@@ -1,0 +1,131 @@
+# Configure a public domain and TLS for Nora
+
+> Step-by-step guide to exposing Nora on a public domain with HTTP or Let's Encrypt TLS, including nginx config, CORS, and NextAuth URL setup.
+
+By default, Nora listens on `localhost:8080` and is only reachable from the machine it runs on. To make your deployment accessible over the internet — whether for a staging environment, a production rollout, or a PaaS offering — you need to update several environment variables, create an nginx configuration file for your domain, and optionally provision a TLS certificate. This page walks through each step.
+
+## Deployment mode comparison
+
+|                     | Local (default)         | Public domain (HTTP)     | Public domain (TLS)               |
+| ------------------- | ----------------------- | ------------------------ | --------------------------------- |
+| `NGINX_CONFIG_FILE` | `nginx.conf`            | `nginx.public.conf`      | `nginx.public.conf` (TLS version) |
+| `NGINX_HTTP_PORT`   | `8080`                  | `80`                     | `80` and `443`                    |
+| `NEXTAUTH_URL`      | `http://localhost:8080` | `http://app.example.com` | `https://app.example.com`         |
+| `CORS_ORIGINS`      | `http://localhost:8080` | `http://app.example.com` | `https://app.example.com`         |
+| TLS certificate     | None                    | None                     | Let's Encrypt via `setup-tls.sh`  |
+| DNS required        | No                      | Yes                      | Yes                               |
+
+## Set up public-domain access with HTTP
+
+<Steps>
+  <Step title="Update your .env file">
+    Open your `.env` file and change the access and URL variables to match your public domain. Replace `app.example.com` with your actual domain.
+
+    ```bash theme={null}
+    NGINX_CONFIG_FILE=nginx.public.conf
+    NGINX_HTTP_PORT=80
+    NEXTAUTH_URL=http://app.example.com
+    CORS_ORIGINS=http://app.example.com
+    ```
+
+    <Note>
+      `CORS_ORIGINS` accepts a comma-separated list. If your domain is reachable on multiple origins (for example, with and without `www`), include all of them:
+
+      ```bash theme={null}
+      CORS_ORIGINS=https://app.example.com,https://www.app.example.com
+      ```
+    </Note>
+  </Step>
+
+  <Step title="Create the nginx configuration file">
+    Copy the public-domain nginx template from the `infra/` directory to produce `nginx.public.conf` in your project root:
+
+    ```bash theme={null}
+    cp infra/nginx_public.conf.template nginx.public.conf
+    ```
+
+    Open `nginx.public.conf` and replace the placeholder server name with your domain:
+
+    ```nginx theme={null}
+    server_name app.example.com;
+    ```
+
+    This file is volume-mounted into the nginx container at startup using the `NGINX_CONFIG_FILE` value you set above.
+  </Step>
+
+  <Step title="Start the stack">
+    Bring the stack up (or restart it if it is already running):
+
+    ```bash theme={null}
+    docker compose up -d
+    ```
+
+    Nora is now accessible at `http://app.example.com` (port 80 must be open on your host firewall and the DNS A record must point to your server's public IP).
+  </Step>
+</Steps>
+
+## Add TLS with Let's Encrypt
+
+<Steps>
+  <Step title="Ensure DNS is resolving">
+    Before running the TLS setup script, confirm your domain's DNS A record points to your server's public IP address. Let's Encrypt performs a domain ownership check that requires the domain to resolve correctly.
+
+    ```bash theme={null}
+    dig +short app.example.com
+    # Should return your server's public IP
+    ```
+  </Step>
+
+  <Step title="Run the TLS setup script">
+    The `infra/setup-tls.sh` script requests a Let's Encrypt certificate, writes a TLS-ready `nginx.public.conf`, and creates a `docker-compose.override.yml` that mounts the certificate files.
+
+    ```bash theme={null}
+    DOMAIN=app.example.com EMAIL=admin@example.com ./infra/setup-tls.sh
+    ```
+
+    Replace `app.example.com` with your domain and `admin@example.com` with an address that should receive Let's Encrypt expiry notices.
+
+    The script produces:
+
+    * An updated `nginx.public.conf` with `ssl_certificate` and `ssl_certificate_key` directives
+    * A `docker-compose.override.yml` that mounts the certificate files into the nginx container
+  </Step>
+
+  <Step title="Update .env for HTTPS">
+    Update `NEXTAUTH_URL` and `CORS_ORIGINS` to use `https://`:
+
+    ```bash theme={null}
+    NGINX_CONFIG_FILE=nginx.public.conf
+    NGINX_HTTP_PORT=80
+    NEXTAUTH_URL=https://app.example.com
+    CORS_ORIGINS=https://app.example.com
+    ```
+
+    <Warning>
+      `NEXTAUTH_URL` must exactly match the origin your browser uses. If it is set to `http://` but your site loads over `https://`, NextAuth redirect flows will fail.
+    </Warning>
+  </Step>
+
+  <Step title="Restart the stack">
+    Bring the stack down and back up to apply the new nginx config and the override file:
+
+    ```bash theme={null}
+    docker compose up -d
+    ```
+
+    Nora is now available at `https://app.example.com` with a valid Let's Encrypt certificate.
+  </Step>
+</Steps>
+
+## Certificate renewal
+
+Let's Encrypt certificates expire after 90 days. Set up a cron job on your host to renew the certificate and reload nginx:
+
+```bash theme={null}
+# Run at 3 AM on the 1st and 15th of each month
+0 3 1,15 * * DOMAIN=app.example.com EMAIL=admin@example.com /path/to/nora/infra/setup-tls.sh && docker compose -f /path/to/nora/docker-compose.yml up -d
+```
+
+<Tip>
+  If you prefer to terminate TLS at a load balancer or reverse proxy in front of Nora (for example, AWS ALB or Cloudflare), keep `NEXTAUTH_URL` and `CORS_ORIGINS` set to your `https://` origin but use the plain HTTP nginx config internally. Nora does not need to handle TLS itself when termination happens upstream.
+</Tip>

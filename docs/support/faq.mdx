@@ -1,0 +1,117 @@
+# Frequently asked questions about Nora
+
+> Answers to common questions about Nora's license, production readiness, supported LLM providers, API key security, and Kubernetes support.
+
+If you are evaluating Nora or have just started self-hosting it, the questions below cover the topics that come up most often. If your question is not answered here, check the [troubleshooting guide](/support/troubleshooting) or open a [GitHub Discussion](https://github.com/solomon2773/nora/discussions).
+
+<AccordionGroup>
+  <Accordion title="Is Nora free to use?">
+    Yes. Nora is licensed under the **Apache 2.0** license, which means you can self-host it, modify it, use it commercially inside your company, host it for clients, and build services or integrations on top of it — all at no cost and without a commercial agreement.
+
+    The center of the product is the fully open-source repository and self-hosted control-plane workflow. There is no proprietary core or usage-gated tier hidden behind the open-source version.
+  </Accordion>
+
+  <Accordion title="Can I use Nora in production?">
+    Yes. Nora is designed for serious operator use. Individual builders, internal AI platform teams, and larger enterprise environments can all run it. It is built to stay credible from single-host evaluation through Proxmox, private cloud, and AWS/Azure/GCP rollout footprints.
+
+    If you need rollout help, deployment review, or paid support for a production environment, the [GitHub Discussions](https://github.com/solomon2773/nora/discussions) path and the [deployment and support options](https://nora.solomontsao.com/pricing) page are the right starting points.
+  </Accordion>
+
+  <Accordion title="What LLM providers are supported?">
+    Nora supports the following LLM providers. You can save API keys for any of them in **Settings** and sync them to your running agents.
+
+    * Anthropic
+    * OpenAI
+    * Google AI
+    * Groq
+    * Mistral AI
+    * DeepSeek
+    * OpenRouter
+    * Together AI
+    * Cohere
+    * xAI
+    * Moonshot AI
+    * Z.AI
+    * Ollama
+    * MiniMax
+    * GitHub Copilot
+    * Hugging Face
+    * Cerebras
+    * NVIDIA
+
+    <Tip>
+      After saving or updating a key in Settings, use the **Sync** button on the agent detail page to push the key to any running agents.
+    </Tip>
+  </Accordion>
+
+  <Accordion title="Is my API key data safe?">
+    Yes. All API keys you save in Nora are encrypted at rest using **AES-256-GCM** before being stored in the database. Raw key values are never returned in any API response — only masked versions (showing the first and last four characters) are surfaced in the UI.
+
+    Keys are decrypted only at the moment they need to be injected into a running agent runtime, and that operation happens server-side. The `ENCRYPTION_KEY` environment variable you set during setup controls this encryption. Keep it secret and back it up securely.
+
+    <Warning>
+      Never post your API keys, `.env` file contents, or `ENCRYPTION_KEY` value in GitHub Issues or Discussions.
+    </Warning>
+  </Accordion>
+
+  <Accordion title="Can I run multiple agents at the same time?">
+    Yes. Self-hosted Nora supports running multiple agents concurrently. The default limit is **50 agents**, controlled by the `MAX_AGENTS` environment variable. You can raise or lower this limit by setting the variable in your `.env` file:
+
+    ```bash theme={null}
+    MAX_AGENTS=100
+    ```
+
+    Restart the stack after changing the value.
+  </Accordion>
+
+  <Accordion title="What is NemoClaw?">
+    NemoClaw is a Docker-hosted sandbox backend with OpenShell policy controls, powered by NVIDIA Nemotron models. It provides a secure, isolated execution environment for agent runtimes that require tighter operational controls.
+
+    NemoClaw is disabled by default. To enable it, set `NEMOCLAW_ENABLED=true` and provide a valid `NVIDIA_API_KEY` in your `.env` file. See the [troubleshooting guide](/support/troubleshooting) if NemoClaw fails to start after enabling it.
+  </Accordion>
+
+  <Accordion title="What is OpenClaw?">
+    OpenClaw is the primary supported agent runtime in Nora today and the fastest path to a working deployment. It is an open-source project maintained separately at [github.com/openclaw/openclaw](https://github.com/openclaw/openclaw).
+
+    When you deploy an agent in Nora, the default runtime path uses OpenClaw. Nora's architecture is designed to support additional runtimes over time, so OpenClaw is the best-supported option today but not the only one the platform will support.
+  </Accordion>
+
+  <Accordion title="Can I run Nora on Kubernetes?">
+    Yes. Nora supports Kubernetes as a provisioner backend. Set the following variable in your `.env` file to switch from the default Docker backend to Kubernetes:
+
+    ```bash theme={null}
+    PROVISIONER_BACKEND=k8s
+    ```
+
+    For local Kubernetes verification using `kind`, also set:
+
+    ```bash theme={null}
+    K8S_EXPOSURE_MODE=node-port
+    ```
+
+    This allows the Compose-hosted control plane to reach the runtime and gateway through Docker-mapped host ports during local testing.
+  </Accordion>
+
+  <Accordion title="How do I get support?">
+    There are several paths depending on what you need:
+
+    * **Bug reports and documentation errors** — open an issue at [github.com/solomon2773/nora/issues](https://github.com/solomon2773/nora/issues)
+    * **Setup guidance, onboarding help, and rollout questions** — start a discussion at [github.com/solomon2773/nora/discussions](https://github.com/solomon2773/nora/discussions)
+    * **Paid support, managed PaaS, or enterprise deployments** — see the options at [nora.solomontsao.com/pricing](https://nora.solomontsao.com/pricing)
+
+    When asking for help in Issues or Discussions, include your deployment mode, OS, setup method, and any relevant logs. Do not include secrets or private credentials.
+  </Accordion>
+
+  <Accordion title="Can I contribute to Nora?">
+    Yes. Nora is in active development and welcomes contributions. Good areas to contribute include frontend operator workflows, backend provisioning and lifecycle management, testing and CI hardening, integrations and channel support, and self-hosted deployment ergonomics.
+
+    To contribute:
+
+    1. Fork the repository at [github.com/solomon2773/nora](https://github.com/solomon2773/nora)
+    2. Create a feature branch
+    3. Commit your changes
+    4. Open a pull request
+
+    For larger changes, consider opening a [GitHub Discussion](https://github.com/solomon2773/nora/discussions) first to align on direction before investing significant time.
+  </Accordion>
+</AccordionGroup>

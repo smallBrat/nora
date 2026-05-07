@@ -1,0 +1,304 @@
+# Integrations API: connect tools to agents
+
+> Browse the integration catalog, connect third-party tools to Nora agents, test connections, and receive inbound webhook events from external services.
+
+The Integrations API connects external tools and services to your agent runtimes. You browse a catalog of available integrations, attach them to specific agents with their credentials, and verify that the connection works. When a token or config changes, Nora pushes the updated values to the running agent in the background. You can also expose a public webhook URL that external services POST events to.
+
+<Tip>
+  After you connect an integration, Nora automatically syncs the credentials to the agent runtime and, where relevant, updates environment variables in the live gateway process. You do not need to restart the agent.
+</Tip>
+
+***
+
+## List integration catalog
+
+Return all available integrations. Optionally filter by category.
+
+```
+GET /integrations/catalog
+```
+
+### Query parameters
+
+<ParamField query="category" type="string">
+  Filter by category, e.g. `storage`, `communication`, `data`. When omitted, all categories are returned.
+</ParamField>
+
+### Response
+
+Returns an array of catalog items.
+
+<ResponseField name="id" type="string">Unique catalog identifier, e.g. `github`, `slack`.</ResponseField>
+<ResponseField name="name" type="string">Human-readable integration name.</ResponseField>
+<ResponseField name="icon" type="string">Icon identifier or URL.</ResponseField>
+<ResponseField name="category" type="string">Integration category.</ResponseField>
+<ResponseField name="description" type="string">Short description of what the integration does.</ResponseField>
+<ResponseField name="auth_type" type="string">Authentication mechanism required: `token`, `oauth`, `apikey`, etc.</ResponseField>
+<ResponseField name="config_schema" type="object">JSON Schema describing the optional `config` object for this integration.</ResponseField>
+<ResponseField name="enabled" type="boolean">Whether the integration is available for connection.</ResponseField>
+
+<CodeGroup>
+  ```bash curl theme={null}
+  curl "http://localhost:8080/api/integrations/catalog?category=communication" \
+    -H "Authorization: Bearer $TOKEN"
+  ```
+</CodeGroup>
+
+```json theme={null}
+[
+  {
+    "id": "slack",
+    "name": "Slack",
+    "icon": "slack",
+    "category": "communication",
+    "description": "Send and receive messages through Slack channels.",
+    "auth_type": "token",
+    "config_schema": { "type": "object", "properties": { "channel": { "type": "string" } } },
+    "enabled": true
+  }
+]
+```
+
+***
+
+## Get catalog item
+
+Fetch the full detail for a single integration catalog entry.
+
+```
+GET /integrations/catalog/:catalogId
+```
+
+### Path parameters
+
+<ParamField path="catalogId" type="string" required>
+  Catalog entry ID, e.g. `slack`, `github`.
+</ParamField>
+
+<CodeGroup>
+  ```bash curl theme={null}
+  curl http://localhost:8080/api/integrations/catalog/slack \
+    -H "Authorization: Bearer $TOKEN"
+  ```
+</CodeGroup>
+
+| Status | Condition              |
+| ------ | ---------------------- |
+| `404`  | Catalog item not found |
+
+***
+
+## List agent integrations
+
+Return all integrations connected to a specific agent.
+
+```
+GET /agents/:id/integrations
+```
+
+### Path parameters
+
+<ParamField path="id" type="string" required>
+  Agent UUID.
+</ParamField>
+
+### Response
+
+<ResponseField name="id" type="string">Integration record UUID.</ResponseField>
+<ResponseField name="agent_id" type="string">Agent UUID.</ResponseField>
+<ResponseField name="provider" type="string">Integration provider identifier.</ResponseField>
+<ResponseField name="catalog_id" type="string">Catalog entry this integration maps to.</ResponseField>
+<ResponseField name="config" type="object">Provider-specific configuration (non-sensitive).</ResponseField>
+<ResponseField name="status" type="string">Connection status, e.g. `active`.</ResponseField>
+
+<CodeGroup>
+  ```bash curl theme={null}
+  curl http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/integrations \
+    -H "Authorization: Bearer $TOKEN"
+  ```
+</CodeGroup>
+
+```json theme={null}
+[
+  {
+    "id": "c3d4e5f6-a7b8-9012-cdef-234567890123",
+    "agent_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "provider": "slack",
+    "catalog_id": "slack",
+    "config": { "channel": "#alerts" },
+    "status": "active"
+  }
+]
+```
+
+***
+
+## Connect an integration
+
+Attach a third-party integration to an agent. The credentials are encrypted and synced to the agent runtime immediately.
+
+```
+POST /agents/:id/integrations
+```
+
+### Path parameters
+
+<ParamField path="id" type="string" required>
+  Agent UUID.
+</ParamField>
+
+### Request body
+
+<ParamField body="provider" type="string" required>
+  Integration provider identifier. Must exist in the catalog.
+</ParamField>
+
+<ParamField body="token" type="string">
+  API token or access token for the integration. Required for `token` and `apikey` auth types.
+</ParamField>
+
+<ParamField body="config" type="object">
+  Provider-specific configuration. Structure is defined by the catalog item's `config_schema`.
+</ParamField>
+
+### Response
+
+Returns the created integration record. Tokens are not included in the response.
+
+<CodeGroup>
+  ```bash curl theme={null}
+  curl -X POST http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/integrations \
+    -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"provider":"slack","token":"xoxb-your-slack-bot-token","config":{"channel":"#alerts"}}'
+  ```
+</CodeGroup>
+
+```json theme={null}
+{
+  "id": "c3d4e5f6-a7b8-9012-cdef-234567890123",
+  "agent_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "provider": "slack",
+  "catalog_id": "slack",
+  "config": { "channel": "#alerts" },
+  "status": "active"
+}
+```
+
+| Status | Condition          |
+| ------ | ------------------ |
+| `400`  | Missing `provider` |
+
+***
+
+## Remove an integration
+
+Disconnect an integration from an agent. The credentials are purged from the agent runtime on the next sync.
+
+```
+DELETE /agents/:id/integrations/:iid
+```
+
+### Path parameters
+
+<ParamField path="id" type="string" required>
+  Agent UUID.
+</ParamField>
+
+<ParamField path="iid" type="string" required>
+  Integration record UUID.
+</ParamField>
+
+### Response
+
+<ResponseField name="success" type="boolean">`true` when the integration was removed.</ResponseField>
+
+<CodeGroup>
+  ```bash curl theme={null}
+  curl -X DELETE \
+    http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/integrations/c3d4e5f6-a7b8-9012-cdef-234567890123 \
+    -H "Authorization: Bearer $TOKEN"
+  ```
+</CodeGroup>
+
+```json theme={null}
+{ "success": true }
+```
+
+***
+
+## Test an integration
+
+Verify that a connected integration can reach the remote service. Returns the test result without modifying any data.
+
+```
+POST /agents/:id/integrations/:iid/test
+```
+
+### Path parameters
+
+<ParamField path="id" type="string" required>
+  Agent UUID.
+</ParamField>
+
+<ParamField path="iid" type="string" required>
+  Integration record UUID.
+</ParamField>
+
+### Response
+
+<ResponseField name="success" type="boolean">`true` when the connection test passed.</ResponseField>
+<ResponseField name="message" type="string">Human-readable result description.</ResponseField>
+
+<CodeGroup>
+  ```bash curl theme={null}
+  curl -X POST \
+    http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/integrations/c3d4e5f6-a7b8-9012-cdef-234567890123/test \
+    -H "Authorization: Bearer $TOKEN"
+  ```
+</CodeGroup>
+
+```json theme={null}
+{
+  "success": true,
+  "message": "Connection verified successfully"
+}
+```
+
+***
+
+## Inbound webhook receiver
+
+Receive events from external services that do not support OAuth callbacks. This endpoint is **public** — no authentication is required. You configure the external service to POST to this URL.
+
+```
+POST /webhooks/:channelId
+```
+
+### Path parameters
+
+<ParamField path="channelId" type="string" required>
+  The UUID of the Nora channel that should handle the inbound event. Obtain this from `GET /agents/:id/channels`.
+</ParamField>
+
+The request body can be any JSON payload from the external service. Headers are forwarded to the channel handler for signature verification.
+
+### Response
+
+<ResponseField name="received" type="boolean">`true` when the webhook was accepted.</ResponseField>
+
+<CodeGroup>
+  ```bash curl theme={null}
+  curl -X POST http://localhost:8080/api/webhooks/d5e6f7a8-b9c0-1234-defa-123456789012 \
+    -H "Content-Type: application/json" \
+    -d '{"event":"push","ref":"refs/heads/main"}'
+  ```
+</CodeGroup>
+
+```json theme={null}
+{ "received": true }
+```
+
+| Status | Condition                                                    |
+| ------ | ------------------------------------------------------------ |
+| `400`  | Channel not found or payload rejected by the channel handler |

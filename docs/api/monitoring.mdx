@@ -1,0 +1,296 @@
+# Monitoring API: metrics, events, and cost
+
+> Query platform-level metrics, activity event logs, API performance data, per-agent metrics and summaries, and agent cost data from the Nora Monitoring API.
+
+The Monitoring API gives you observability into both the Nora platform and your individual agents. You can pull a high-level platform metrics summary, page through the activity event log, query detailed per-agent metrics with time range filters, retrieve pre-aggregated summary statistics, and fetch cost data. All metrics are scoped to agents you own — you cannot query data for another user's agents.
+
+***
+
+## Platform metrics summary
+
+Return aggregate health and usage metrics for the entire platform as seen by the authenticated user.
+
+```
+GET /monitoring/metrics
+```
+
+### Response
+
+<ResponseField name="agents_total" type="number">Total number of agents owned by the user.</ResponseField>
+<ResponseField name="agents_running" type="number">Agents currently in `running` state.</ResponseField>
+<ResponseField name="agents_stopped" type="number">Agents in `stopped` state.</ResponseField>
+<ResponseField name="agents_error" type="number">Agents in `error` or `warning` state.</ResponseField>
+<ResponseField name="events_today" type="number">Number of activity events recorded in the last 24 hours.</ResponseField>
+
+<CodeGroup>
+  ```bash curl theme={null}
+  curl http://localhost:8080/api/monitoring/metrics \
+    -H "Authorization: Bearer $TOKEN"
+  ```
+</CodeGroup>
+
+```json theme={null}
+{
+  "agents_total": 4,
+  "agents_running": 2,
+  "agents_stopped": 1,
+  "agents_error": 1,
+  "events_today": 37
+}
+```
+
+***
+
+## Activity event log
+
+Return a chronological log of activity events. When you supply `agentId` the results are filtered to that agent; otherwise all events across your agents are returned.
+
+```
+GET /monitoring/events
+```
+
+### Query parameters
+
+<ParamField query="agentId" type="string">
+  Filter events to a specific agent UUID.
+</ParamField>
+
+<ParamField query="limit" type="number" default="50">
+  Maximum number of events to return, ordered newest first.
+</ParamField>
+
+### Response
+
+<ResponseField name="id" type="string">Event UUID.</ResponseField>
+<ResponseField name="type" type="string">Event type slug, e.g. `agent_deployed`, `agent_redeployed`.</ResponseField>
+<ResponseField name="message" type="string">Human-readable description of the event.</ResponseField>
+
+<ResponseField name="metadata" type="object">
+  Additional context for the event.
+
+  <Expandable title="properties">
+    <ResponseField name="agentId" type="string">Related agent UUID, when applicable.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="created_at" type="string">ISO 8601 event timestamp.</ResponseField>
+
+<CodeGroup>
+  ```bash curl (all events) theme={null}
+  curl "http://localhost:8080/api/monitoring/events?limit=20" \
+    -H "Authorization: Bearer $TOKEN"
+  ```
+
+  ```bash curl (by agent) theme={null}
+  curl "http://localhost:8080/api/monitoring/events?agentId=a1b2c3d4-e5f6-7890-abcd-ef1234567890&limit=10" \
+    -H "Authorization: Bearer $TOKEN"
+  ```
+</CodeGroup>
+
+```json theme={null}
+[
+  {
+    "id": "g8h9i0j1-k2l3-4567-mnop-456789012345",
+    "type": "agent_deployed",
+    "message": "Agent \"My Agent\" (OpenClaw + Docker) queued for deployment",
+    "metadata": { "agentId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890" },
+    "created_at": "2025-03-10T09:00:05.000Z"
+  }
+]
+```
+
+***
+
+## API performance data
+
+Return raw API performance metric records. Useful for building latency dashboards or debugging slow endpoints.
+
+```
+GET /monitoring/performance
+```
+
+### Query parameters
+
+<ParamField query="since" type="string">
+  ISO 8601 start timestamp. Defaults to 24 hours ago.
+</ParamField>
+
+### Response
+
+Each record represents a single API call that was instrumented.
+
+<ResponseField name="value" type="number">Measured value (typically response time in ms).</ResponseField>
+<ResponseField name="metadata" type="object">Context for the measurement, such as path and method.</ResponseField>
+<ResponseField name="recorded_at" type="string">ISO 8601 timestamp when the metric was recorded.</ResponseField>
+
+<CodeGroup>
+  ```bash curl theme={null}
+  curl "http://localhost:8080/api/monitoring/performance?since=2025-03-10T00:00:00Z" \
+    -H "Authorization: Bearer $TOKEN"
+  ```
+</CodeGroup>
+
+```json theme={null}
+[
+  {
+    "value": 42,
+    "metadata": { "method": "GET", "path": "/agents", "status": 200 },
+    "recorded_at": "2025-03-10T09:01:00.000Z"
+  }
+]
+```
+
+***
+
+## Agent metrics
+
+Return time-series metric records for a specific agent. You can filter by metric type and specify an exact time range.
+
+```
+GET /agents/:id/metrics
+```
+
+### Path parameters
+
+<ParamField path="id" type="string" required>
+  Agent UUID.
+</ParamField>
+
+### Query parameters
+
+<ParamField query="type" type="string">
+  Metric type filter, e.g. `cpu`, `memory`, `tokens`. When omitted, all types are returned.
+</ParamField>
+
+<ParamField query="since" type="string">
+  ISO 8601 start of the time range. Defaults to 24 hours ago.
+</ParamField>
+
+<ParamField query="until" type="string">
+  ISO 8601 end of the time range. Defaults to now.
+</ParamField>
+
+### Response
+
+<ResponseField name="id" type="string">Metric record UUID.</ResponseField>
+<ResponseField name="agent_id" type="string">Agent UUID.</ResponseField>
+<ResponseField name="metric_type" type="string">Metric category slug.</ResponseField>
+<ResponseField name="value" type="number">Numeric metric value.</ResponseField>
+<ResponseField name="metadata" type="object">Additional context for the metric.</ResponseField>
+<ResponseField name="recorded_at" type="string">ISO 8601 timestamp.</ResponseField>
+
+<CodeGroup>
+  ```bash curl theme={null}
+  curl "http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/metrics?type=tokens&since=2025-03-10T00:00:00Z" \
+    -H "Authorization: Bearer $TOKEN"
+  ```
+</CodeGroup>
+
+```json theme={null}
+[
+  {
+    "id": "h9i0j1k2-l3m4-5678-nopq-567890123456",
+    "agent_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "metric_type": "tokens",
+    "value": 1240,
+    "metadata": { "model": "gpt-4o", "direction": "completion" },
+    "recorded_at": "2025-03-10T09:10:00.000Z"
+  }
+]
+```
+
+***
+
+## Agent metrics summary
+
+Return pre-aggregated summary statistics for an agent. Useful for dashboards that need totals without querying the full time-series.
+
+```
+GET /agents/:id/metrics/summary
+```
+
+### Path parameters
+
+<ParamField path="id" type="string" required>
+  Agent UUID.
+</ParamField>
+
+### Response
+
+<ResponseField name="total_tokens" type="number">Total LLM tokens consumed by this agent.</ResponseField>
+<ResponseField name="total_requests" type="number">Total LLM API requests made.</ResponseField>
+<ResponseField name="avg_response_ms" type="number">Average LLM response latency in milliseconds.</ResponseField>
+<ResponseField name="last_active_at" type="string">ISO 8601 timestamp of the most recent metric record.</ResponseField>
+
+<CodeGroup>
+  ```bash curl theme={null}
+  curl http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/metrics/summary \
+    -H "Authorization: Bearer $TOKEN"
+  ```
+</CodeGroup>
+
+```json theme={null}
+{
+  "total_tokens": 48200,
+  "total_requests": 312,
+  "avg_response_ms": 1840,
+  "last_active_at": "2025-03-10T09:10:00.000Z"
+}
+```
+
+***
+
+## Agent cost
+
+Return cost data for a specific agent. Costs are computed from token usage and any other billable resource consumption.
+
+```
+GET /agents/:id/cost
+```
+
+### Path parameters
+
+<ParamField path="id" type="string" required>
+  Agent UUID.
+</ParamField>
+
+### Response
+
+<ResponseField name="agent_id" type="string">Agent UUID.</ResponseField>
+<ResponseField name="total_cost_usd" type="number">Total estimated cost in USD.</ResponseField>
+
+<ResponseField name="breakdown" type="object">
+  Cost breakdown by resource type.
+
+  <Expandable title="properties">
+    <ResponseField name="tokens_usd" type="number">Estimated cost from LLM token usage.</ResponseField>
+    <ResponseField name="compute_usd" type="number">Estimated cost from compute time.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="period_start" type="string">Start of the billing period (ISO 8601).</ResponseField>
+<ResponseField name="period_end" type="string">End of the billing period (ISO 8601).</ResponseField>
+
+<CodeGroup>
+  ```bash curl theme={null}
+  curl http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/cost \
+    -H "Authorization: Bearer $TOKEN"
+  ```
+</CodeGroup>
+
+```json theme={null}
+{
+  "agent_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "total_cost_usd": 0.87,
+  "breakdown": {
+    "tokens_usd": 0.62,
+    "compute_usd": 0.25
+  },
+  "period_start": "2025-03-01T00:00:00.000Z",
+  "period_end": "2025-03-31T23:59:59.000Z"
+}
+```
+
+| Status | Condition       |
+| ------ | --------------- |
+| `404`  | Agent not found |

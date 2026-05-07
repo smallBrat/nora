@@ -1,0 +1,279 @@
+# Authenticate with the Nora API
+
+> Sign up, log in, and manage your Nora account via the Auth API. Includes JWT token usage, profile updates, and password management.
+
+Every protected Nora API endpoint verifies your identity with a JSON Web Token (JWT). You obtain the token by signing up and then logging in. The token is valid for **7 days** and must be included in the `Authorization` header of every subsequent request. This page covers all authentication endpoints and shows you exactly what each one returns.
+
+<Note>
+  Auth endpoints are rate-limited to **20 requests per 15-minute window** per IP. If you hit this limit you will receive a `429` response.
+</Note>
+
+## Sign up
+
+Create a new user account.
+
+```
+POST /auth/signup
+```
+
+### Request body
+
+<ParamField body="email" type="string" required>
+  A valid email address, maximum 255 characters.
+</ParamField>
+
+<ParamField body="password" type="string" required>
+  Password, minimum 8 characters and maximum 128 characters.
+</ParamField>
+
+### Response
+
+<ResponseField name="id" type="string">
+  The new user's UUID.
+</ResponseField>
+
+<ResponseField name="email" type="string">
+  The registered email address.
+</ResponseField>
+
+<CodeGroup>
+  ```bash curl theme={null}
+  curl -X POST http://localhost:8080/api/auth/signup \
+    -H "Content-Type: application/json" \
+    -d '{"email":"you@example.com","password":"securepassword"}'
+  ```
+</CodeGroup>
+
+```json theme={null}
+{
+  "id": "d4e5f6a7-b8c9-4d01-a234-56789bcdef01",
+  "email": "you@example.com"
+}
+```
+
+### Error responses
+
+| Status | Condition                         |
+| ------ | --------------------------------- |
+| `400`  | Missing or invalid email/password |
+| `429`  | Rate limit exceeded               |
+
+***
+
+## Log in
+
+Exchange email and password for a JWT.
+
+```
+POST /auth/login
+```
+
+### Request body
+
+<ParamField body="email" type="string" required>
+  Your registered email address.
+</ParamField>
+
+<ParamField body="password" type="string" required>
+  Your password.
+</ParamField>
+
+### Response
+
+<ResponseField name="token" type="string">
+  A signed JWT valid for 7 days. Include this value in the `Authorization: Bearer <token>` header on all subsequent requests.
+</ResponseField>
+
+<CodeGroup>
+  ```bash curl theme={null}
+  curl -X POST http://localhost:8080/api/auth/login \
+    -H "Content-Type: application/json" \
+    -d '{"email":"you@example.com","password":"securepassword"}'
+  ```
+</CodeGroup>
+
+```json theme={null}
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+}
+```
+
+### Error responses
+
+| Status | Condition                                        |
+| ------ | ------------------------------------------------ |
+| `400`  | Email or password missing                        |
+| `401`  | Invalid credentials, or account uses OAuth login |
+| `429`  | Rate limit exceeded                              |
+
+***
+
+## Using the token
+
+Pass the token you received from `/auth/login` in every request to a protected endpoint:
+
+```
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+<Warning>
+  Tokens expire after 7 days. Your client should catch `401` responses and redirect the user to log in again.
+</Warning>
+
+***
+
+## Get current user
+
+Verify a token and retrieve the authenticated user's profile.
+
+```
+GET /auth/me
+```
+
+**Requires authentication.**
+
+### Response
+
+<ResponseField name="id" type="string">
+  User UUID.
+</ResponseField>
+
+<ResponseField name="email" type="string">
+  Email address.
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Display name, may be `null` if not set.
+</ResponseField>
+
+<ResponseField name="role" type="string">
+  Account role. Typically `user` or `admin`.
+</ResponseField>
+
+<ResponseField name="provider" type="string">
+  OAuth provider (`github`, `google`, etc.) or `null` for password accounts.
+</ResponseField>
+
+<ResponseField name="avatar" type="string">
+  Base64-encoded `data:image/...` avatar, or `null`.
+</ResponseField>
+
+<ResponseField name="created_at" type="string">
+  ISO 8601 timestamp of account creation.
+</ResponseField>
+
+<CodeGroup>
+  ```bash curl theme={null}
+  curl http://localhost:8080/api/auth/me \
+    -H "Authorization: Bearer $TOKEN"
+  ```
+</CodeGroup>
+
+```json theme={null}
+{
+  "id": "d4e5f6a7-b8c9-4d01-a234-56789bcdef01",
+  "email": "you@example.com",
+  "name": "Alex Smith",
+  "role": "user",
+  "provider": null,
+  "avatar": null,
+  "created_at": "2025-01-15T10:30:00.000Z"
+}
+```
+
+***
+
+## Update profile
+
+Update your display name and/or avatar.
+
+```
+PATCH /auth/profile
+```
+
+**Requires authentication.**
+
+### Request body
+
+<ParamField body="name" type="string">
+  Display name, 1–100 characters.
+</ParamField>
+
+<ParamField body="avatar" type="string">
+  Base64-encoded image (`data:image/png;base64,...`), maximum 500 KB. Pass `null` to remove the avatar.
+</ParamField>
+
+### Response
+
+<ResponseField name="name" type="string">
+  Updated display name.
+</ResponseField>
+
+<ResponseField name="avatar" type="string">
+  Updated avatar value or `null`.
+</ResponseField>
+
+<CodeGroup>
+  ```bash curl theme={null}
+  curl -X PATCH http://localhost:8080/api/auth/profile \
+    -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"name":"Alex Smith"}'
+  ```
+</CodeGroup>
+
+```json theme={null}
+{
+  "name": "Alex Smith",
+  "avatar": null
+}
+```
+
+***
+
+## Change password
+
+Replace your current password with a new one.
+
+```
+PATCH /auth/password
+```
+
+**Requires authentication.** Not available for OAuth-only accounts.
+
+### Request body
+
+<ParamField body="currentPassword" type="string" required>
+  Your existing password.
+</ParamField>
+
+<ParamField body="newPassword" type="string" required>
+  New password, minimum 8 characters and maximum 128 characters.
+</ParamField>
+
+### Response
+
+<ResponseField name="success" type="boolean">
+  `true` when the password was updated successfully.
+</ResponseField>
+
+<CodeGroup>
+  ```bash curl theme={null}
+  curl -X PATCH http://localhost:8080/api/auth/password \
+    -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"currentPassword":"oldpass","newPassword":"newpass123"}'
+  ```
+</CodeGroup>
+
+```json theme={null}
+{ "success": true }
+```
+
+### Error responses
+
+| Status | Condition                                                  |
+| ------ | ---------------------------------------------------------- |
+| `400`  | Missing fields, or account has no password (OAuth account) |
+| `401`  | Current password is incorrect                              |
+| `404`  | User record not found                                      |

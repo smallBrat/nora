@@ -121,13 +121,10 @@ Each folder has its own `AGENTS.md` that narrows ownership, data-flow rules, and
 - `frontend-marketing/` — public site + auth entrypoints at `/`
 - `e2e/` — Playwright smoke coverage and local stack bootstrapping
 - `infra/` — public-domain nginx template (`nginx_public.conf.template`), TLS setup (`setup-tls.sh`), Kind config, backup image, public/prod compose overlays
+- `docs/` — Mintlify source for the public docs site at `noradocs.solomontsao.com`
 - `.github/` — CI and deploy workflows
 
 Note: the **active** nginx configs (`nginx.conf`, `nginx.e2e.conf`, `nginx.public.conf`) live at the **repo root** — that's what compose mounts. `infra/nginx_public.conf.template` is a template used by `setup-tls.sh`.
-
-## Public / Private Split
-
-This repo (`/home/projects/nora`) is the public OSS tree. Private material (internal docs, proofs, customer content) lives in the paired private repo at `/home/projects/nora-private`. If a task references missing context, check the private repo before recreating docs.
 
 ## Environment
 

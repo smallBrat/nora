@@ -1,0 +1,110 @@
+# Alert rules API
+
+> Workspace-scoped CRUD for alert rules. Webhook deliveries are queued with retry; email deliveries dispatch inline.
+
+All endpoints are mounted under `/api/workspaces/:workspaceId/alert-rules`. Use a workspace-scoped API key (`agents:read` or `agents:write` scope, matched to the role each route requires) or an authenticated session cookie.
+
+See the [Alert rules guide](/guides/alert-rules) for event patterns, channel shapes, and how delivery retry works.
+
+## List rules
+
+```http theme={null}
+GET /api/workspaces/{workspaceId}/alert-rules
+```
+
+**Required role:** `viewer`.
+
+**Response 200:**
+
+```json theme={null}
+[
+  {
+    "id": "rule-uuid",
+    "workspaceId": "workspace-uuid",
+    "createdBy": "user-uuid",
+    "name": "Production errors",
+    "eventPattern": "agent.*",
+    "channels": [{ "type": "webhook", "url": "https://hooks.example.com/nora" }],
+    "enabled": true,
+    "lastFiredAt": "2026-05-07T00:00:00Z",
+    "lastError": null,
+    "createdAt": "2026-04-01T00:00:00Z",
+    "updatedAt": "2026-05-01T00:00:00Z"
+  }
+]
+```
+
+## Create a rule
+
+```http theme={null}
+POST /api/workspaces/{workspaceId}/alert-rules
+Content-Type: application/json
+```
+
+**Required role:** `admin`.
+
+**Body:**
+
+```json theme={null}
+{
+  "name": "Production errors",
+  "eventPattern": "agent.*",
+  "channels": [
+    { "type": "webhook", "url": "https://hooks.example.com/nora", "headers": { "Authorization": "Bearer ..." } },
+    { "type": "email", "to": ["ops@example.com"], "subjectPrefix": "PROD" }
+  ],
+  "enabled": true
+}
+```
+
+| Field          | Type    | Required | Notes                                                                                                |
+| -------------- | ------- | -------- | ---------------------------------------------------------------------------------------------------- |
+| `name`         | string  | Yes      | Display name; trimmed and capped at 100 characters.                                                  |
+| `eventPattern` | string  | Yes      | Literal (`agent.error`), suffix glob (`agent.*`), or `*`. Capped at 100 characters.                  |
+| `channels`     | array   | Yes      | At least one channel. Each entry is an object with a `type` and type-specific fields. See the guide. |
+| `enabled`      | boolean | No       | Defaults to `true`.                                                                                  |
+
+**Response 200:** the serialized rule (same shape as the list endpoint entries).
+
+**Errors:**
+- `400` — validation failure (empty channels, malformed URL, unsupported channel type, too many email recipients).
+- `403` — caller lacks the `admin` role on this workspace.
+
+## Update a rule
+
+```http theme={null}
+PATCH /api/workspaces/{workspaceId}/alert-rules/{ruleId}
+Content-Type: application/json
+```
+
+**Required role:** `admin`.
+
+Body fields are all optional; supply only the ones you want to change. Same validation rules as create.
+
+```json theme={null}
+{
+  "enabled": false
+}
+```
+
+## Delete a rule
+
+```http theme={null}
+DELETE /api/workspaces/{workspaceId}/alert-rules/{ruleId}
+```
+
+**Required role:** `admin`.
+
+**Response 200:** `{ "success": true }`.
+
+## Send a test event
+
+```http theme={null}
+POST /api/workspaces/{workspaceId}/alert-rules/{ruleId}/test
+```
+
+**Required role:** `admin`.
+
+Fires a synthetic event matching the rule's pattern through the same delivery pipeline. Webhooks are queued with retry; emails are sent inline. Use this to verify channel configuration without waiting for a real event.
+
+**Response 200:** `{ "success": true }`. Delivery results land asynchronously on the rule's `lastFiredAt` and `lastError`.
