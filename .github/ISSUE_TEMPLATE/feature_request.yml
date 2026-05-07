@@ -1,0 +1,59 @@
+name: Feature request
+description: Suggest a new feature, enhancement, or backend integration for Nora.
+title: "[feature] "
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for proposing an idea. Please describe the problem first, then the suggested solution — that helps us evaluate alternatives without anchoring on the implementation.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What operator workflow or use case is hard or impossible today?
+      placeholder: I run Nora on Proxmox and there is no way to surface VM-level CPU pressure inside the agent monitoring view.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: How would you like Nora to behave? Specific UI/API/CLI shape welcome but not required.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What workarounds exist today, and why are they insufficient?
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      multiple: true
+      options:
+        - backend-api
+        - worker-provisioner
+        - agent-runtime
+        - frontend-dashboard
+        - admin-dashboard
+        - frontend-marketing
+        - new provisioner backend / runtime family
+        - docs
+        - CLI / API
+        - other
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Confirmation
+      options:
+        - label: I have searched existing issues and discussions for similar proposals.
+          required: true

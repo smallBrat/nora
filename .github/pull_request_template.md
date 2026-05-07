@@ -8,5 +8,5 @@
 
 ## Release And Docs Checklist
 
-- [ ] Updated public architecture docs (`architecture.md`) if this PR changes architecture, deployment topology, component responsibilities, or major data flow.
-- [ ] If this is a release-prep PR, updated the `Reviewed for release:` marker in `architecture.md`.
+- [ ] Updated the relevant `AGENTS.md` if this PR changes a subtree's responsibilities, data flow, or boundaries.
+- [ ] Updated public docs under `docs/` (e.g. `docs/concepts/architecture.mdx`) if this PR changes architecture, deployment topology, component responsibilities, or major data flow.

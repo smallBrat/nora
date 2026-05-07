@@ -1,0 +1,122 @@
+name: Bug report
+description: Report a defect in Nora (control plane, worker, runtime, dashboards, or setup script).
+title: "[bug] "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Please fill in as much as you can — the more we know, the faster we can fix it.
+
+        Before opening: please search [existing issues](https://github.com/solomon2773/nora/issues?q=is%3Aissue) to avoid duplicates.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: One or two sentences describing what went wrong.
+      placeholder: Deploying an agent on Kubernetes fails after readiness probe times out.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Minimal, ordered steps so we can reproduce the bug locally.
+      placeholder: |
+        1. Run `./setup.sh --install` on Ubuntu 24.04
+        2. Open http://localhost:8080/app and log in
+        3. Click "Deploy agent" with backend = k8s
+        4. Observe …
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+      description: Include error messages, screenshots, or relevant log lines (`docker compose logs backend-api worker-provisioner`).
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      multiple: true
+      options:
+        - backend-api
+        - worker-provisioner
+        - agent-runtime
+        - frontend-dashboard
+        - admin-dashboard
+        - frontend-marketing
+        - setup script (setup.sh / setup.ps1)
+        - docs
+        - CI / release
+        - other / unsure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: backend
+    attributes:
+      label: Provisioner backend in use
+      multiple: true
+      options:
+        - docker (default)
+        - kubernetes / k3s
+        - proxmox
+        - nemoclaw
+        - hermes
+        - not applicable
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Nora version / commit
+      description: Output of `git rev-parse --short HEAD` or release tag.
+      placeholder: v1.4.0
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Docker version, Node version, deployment mode (selfhosted/paas), enabled backends.
+      placeholder: |
+        - OS: Ubuntu 24.04
+        - Docker: 27.3.1
+        - Node: 24.5.0
+        - PLATFORM_MODE: selfhosted
+        - ENABLED_BACKENDS: docker,k8s
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Paste relevant logs. Wrap them in a collapsible block if long.
+      render: shell
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Confirmation
+      options:
+        - label: I have searched existing issues and this is not a duplicate.
+          required: true
+        - label: I have removed any secrets, tokens, or PII from logs and screenshots.
+          required: true

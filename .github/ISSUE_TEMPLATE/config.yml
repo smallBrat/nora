@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://noradocs.solomontsao.com
+    about: Quickstart, configuration, guides, and API reference. Check here first.
+  - name: Security report
+    url: https://github.com/solomon2773/nora/security/advisories/new
+    about: Privately disclose a vulnerability via GitHub Security Advisories. Do not open a public issue.
+  - name: Question or discussion
+    url: https://github.com/solomon2773/nora/discussions
+    about: Operator questions, deployment help, and ideas that aren't bug reports.
