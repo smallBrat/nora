@@ -66,14 +66,14 @@ For manual setup, environment variables, public-domain mode, TLS, and Kubernetes
 
 Full docs live at **[noradocs.solomontsao.com](https://noradocs.solomontsao.com)**. The MDX source is in [`docs/`](./docs).
 
-| Section                                                                          | What's there                                                                |
-| -------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| [Quick Start](https://noradocs.solomontsao.com/quickstart)                       | Install and validate your first agent in 15 minutes                         |
-| [Concepts](https://noradocs.solomontsao.com/concepts/architecture)               | Architecture, agents, runtimes, workspaces, LLM providers, Agent Hub        |
-| [Configuration](https://noradocs.solomontsao.com/configuration/platform-modes)   | Platform modes, env vars, provisioner backends, TLS / public domains        |
-| [Guides](https://noradocs.solomontsao.com/guides/deploy-agent)                   | Deploy agent, providers, integrations, channels, monitoring, alert rules, backups, Agent Hub, NemoClaw |
-| [API Reference](https://noradocs.solomontsao.com/api/overview)                   | Auth, workspaces, agents, channels, integrations, providers, monitoring, alert rules |
-| [Support](https://noradocs.solomontsao.com/support/faq)                          | FAQ, troubleshooting                                                        |
+| Section                                                                        | What's there                                                                                           |
+| ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| [Quick Start](https://noradocs.solomontsao.com/quickstart)                     | Install and validate your first agent in 15 minutes                                                    |
+| [Concepts](https://noradocs.solomontsao.com/concepts/architecture)             | Architecture, agents, runtimes, workspaces, LLM providers, Agent Hub                                   |
+| [Configuration](https://noradocs.solomontsao.com/configuration/platform-modes) | Platform modes, env vars, provisioner backends, TLS / public domains                                   |
+| [Guides](https://noradocs.solomontsao.com/guides/deploy-agent)                 | Deploy agent, providers, integrations, channels, monitoring, alert rules, backups, Agent Hub, NemoClaw |
+| [API Reference](https://noradocs.solomontsao.com/api/overview)                 | Auth, workspaces, agents, channels, integrations, providers, monitoring, alert rules                   |
+| [Support](https://noradocs.solomontsao.com/support/faq)                        | FAQ, troubleshooting                                                                                   |
 
 ## Architecture
 

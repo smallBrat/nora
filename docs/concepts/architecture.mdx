@@ -41,7 +41,7 @@ flowchart LR
 | Admin workspace          | `admin-dashboard/`                          | Fleet-wide administration, moderation, audit, platform settings, release upgrades.                                                                                                |
 | Reverse proxy            | `nginx.conf`, `nginx.public.conf`, `infra/` | Routes browser traffic to the correct UI or API surface and carries WebSocket / SSE traffic.                                                                                      |
 | Control-plane API        | `backend-api/`                              | Auth, persistence, workspace RBAC, API keys, queue orchestration, monitoring, alert rules, Agent Hub logic, runtime coordination, and runtime proxy endpoints.                    |
-| Durable state            | PostgreSQL 15                               | Accounts, agents, workspaces, members, invitations, API keys, deployments, migration drafts, snapshots, Agent Hub content, integrations, channels, metrics, events, alert rules. |
+| Durable state            | PostgreSQL 15                               | Accounts, agents, workspaces, members, invitations, API keys, deployments, migration drafts, snapshots, Agent Hub content, integrations, channels, metrics, events, alert rules.  |
 | Queue and worker handoff | Redis 7 + BullMQ                            | Carries deployment, ClawHub-install, backup, and alert-delivery jobs between the API and workers.                                                                                 |
 | Provisioning worker      | `workers/provisioner/`                      | Resolves backend choice, injects bootstrap state, applies imported managed state, waits for readiness, persists status. Also runs the ClawHub-install and alert-delivery workers. |
 | Backup worker            | `workers/backup/`                           | Captures encrypted backup archives, runs scheduled backups, prunes expired backups.                                                                                               |
@@ -83,10 +83,10 @@ WebSocket upgrades are handled at the nginx layer; the Express app attaches WS h
 
 ### State and queue boundaries
 
-| Service          | What it stores or carries                                                                                                                                                                                                           |
-| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| PostgreSQL       | Users, workspaces, workspace_members (RBAC), invitations, API keys (HMAC-hashed), agents, agent_versions, deployments, migration drafts, snapshots, Agent Hub listings/versions/reports, alert rules, backups, integrations, events. |
-| Redis + BullMQ   | Four queues: `deployments`, `clawhub-installs`, `backups`, `alert-deliveries`. Each has its own retry, backoff, and DLQ retention configured in `backend-api/redisQueue.ts`.                                                         |
+| Service        | What it stores or carries                                                                                                                                                                                                            |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| PostgreSQL     | Users, workspaces, workspace_members (RBAC), invitations, API keys (HMAC-hashed), agents, agent_versions, deployments, migration drafts, snapshots, Agent Hub listings/versions/reports, alert rules, backups, integrations, events. |
+| Redis + BullMQ | Four queues: `deployments`, `clawhub-installs`, `backups`, `alert-deliveries`. Each has its own retry, backoff, and DLQ retention configured in `backend-api/redisQueue.ts`.                                                         |
 
 The API persists desired state first, then hands long-running work to a queue-backed worker. That keeps provisioning failures, retries, and delayed readiness out of the synchronous browser request path.
 
@@ -146,11 +146,11 @@ Unsupported runtime-specific state is surfaced as draft warnings instead of bein
 
 Nora chooses a concrete backend through three layers of intent:
 
-| Layer           | Current values                | Meaning                                                                                                                  |
-| --------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| Runtime family  | `openclaw`, `hermes`          | Which operator contract the runtime satisfies.                                                                           |
-| Deploy target   | `docker`, `k8s`, `proxmox`    | Where the runtime should be scheduled. `k3s` is accepted as a user-facing id and normalizes to `k8s` internally.         |
-| Sandbox profile | `standard`, `nemoclaw`        | Which isolation profile should wrap the runtime.                                                                         |
+| Layer           | Current values             | Meaning                                                                                                          |
+| --------------- | -------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Runtime family  | `openclaw`, `hermes`       | Which operator contract the runtime satisfies.                                                                   |
+| Deploy target   | `docker`, `k8s`, `proxmox` | Where the runtime should be scheduled. `k3s` is accepted as a user-facing id and normalizes to `k8s` internally. |
+| Sandbox profile | `standard`, `nemoclaw`     | Which isolation profile should wrap the runtime.                                                                 |
 
 The worker resolves the final backend through shared metadata in `agent-runtime/lib/backendCatalog.ts`. See [Provisioner backends](/configuration/provisioner-backends) for the supported combinations and their maturity.
 
@@ -192,11 +192,11 @@ The worker and backend adapters share one runtime bootstrap package from `agent-
 
 Shared ports:
 
-| Port    | Purpose                                       |
-| ------- | --------------------------------------------- |
-| `9090`  | Nora runtime-side HTTP contract               |
-| `18789` | OpenClaw gateway port                         |
-| `9119`  | Hermes dashboard port                         |
+| Port    | Purpose                         |
+| ------- | ------------------------------- |
+| `9090`  | Nora runtime-side HTTP contract |
+| `18789` | OpenClaw gateway port           |
+| `9119`  | Hermes dashboard port           |
 
 ### Backend adapter code sharing
 
@@ -204,11 +204,11 @@ Compose mounts `./workers/provisioner/backends` into `backend-api` at `/app/back
 
 ## Background work
 
-| Queue              | Job type        | Concurrency                          | Retry                                 | Worker                          | What it does                                                                            |
-| ------------------ | --------------- | ------------------------------------ | ------------------------------------- | ------------------------------- | --------------------------------------------------------------------------------------- |
-| `deployments`      | `deploy-agent`  | `DEPLOYMENT_WORKER_CONCURRENCY` (6)  | 5 attempts, exponential 3 s base      | `workers/provisioner/worker.ts` | Provisions or redeploys an agent runtime through the chosen backend adapter.            |
-| `clawhub-installs` | `install-skill` | 1                                    | 1 attempt (operator drives retries)   | `workers/provisioner/worker.ts` | Runs `clawhub install` inside an OpenClaw agent and persists the installed-skill state. |
-| `backups`          | `run-backup`    | `BACKUP_WORKER_CONCURRENCY` (2)      | 2 attempts, exponential 5 s base      | `workers/backup/worker.ts`      | Captures, encrypts, and uploads an agent backup archive, then prunes expired backups.   |
+| Queue              | Job type          | Concurrency                             | Retry                                               | Worker                          | What it does                                                                            |
+| ------------------ | ----------------- | --------------------------------------- | --------------------------------------------------- | ------------------------------- | --------------------------------------------------------------------------------------- |
+| `deployments`      | `deploy-agent`    | `DEPLOYMENT_WORKER_CONCURRENCY` (6)     | 5 attempts, exponential 3 s base                    | `workers/provisioner/worker.ts` | Provisions or redeploys an agent runtime through the chosen backend adapter.            |
+| `clawhub-installs` | `install-skill`   | 1                                       | 1 attempt (operator drives retries)                 | `workers/provisioner/worker.ts` | Runs `clawhub install` inside an OpenClaw agent and persists the installed-skill state. |
+| `backups`          | `run-backup`      | `BACKUP_WORKER_CONCURRENCY` (2)         | 2 attempts, exponential 5 s base                    | `workers/backup/worker.ts`      | Captures, encrypts, and uploads an agent backup archive, then prunes expired backups.   |
 | `alert-deliveries` | `deliver-webhook` | `ALERT_DELIVERY_WORKER_CONCURRENCY` (5) | `ALERT_DELIVERY_ATTEMPTS` (5), exponential 1 s base | `workers/provisioner/worker.ts` | Posts a webhook delivery for an alert rule. Each job is one (rule, channel) pair.       |
 
 Failed jobs are retained on each queue for inspection. The DLQ surface for deployments is exposed via `getDLQJobs` / `retryDLQJob` in `backend-api/redisQueue.ts`.
@@ -225,12 +225,12 @@ Failed jobs are retained on each queue for inspection. The DLQ surface for deplo
 
 ## Deployment topologies
 
-| Topology                                 | Ingress owner                                         | Control plane placement | Agent placement                                       | Best fit                                                                       |
-| ---------------------------------------- | ----------------------------------------------------- | ----------------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------ |
-| Local single-host                        | Nora nginx on `NGINX_HTTP_PORT`                       | One Docker Compose host | Local Docker by default                               | Evaluation, local proof, small self-hosted installs                            |
-| Public domain, Nora-managed ingress      | Nora nginx on public ports                            | One Docker Compose host | Local Docker or supported external targets            | Straightforward public self-hosting                                            |
-| Public domain behind external proxy      | Host or upstream proxy terminates and forwards        | One Docker Compose host | Local Docker or supported external targets            | Existing nginx, Cloudflare, or host-managed TLS setups                         |
-| External runtime targets                 | Same ingress as above                                 | One Docker Compose host | Kubernetes (k3s/k8s), Proxmox, NemoClaw sandboxes     | Teams that need different runtime placement without changing operator workflow |
+| Topology                            | Ingress owner                                  | Control plane placement | Agent placement                                   | Best fit                                                                       |
+| ----------------------------------- | ---------------------------------------------- | ----------------------- | ------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Local single-host                   | Nora nginx on `NGINX_HTTP_PORT`                | One Docker Compose host | Local Docker by default                           | Evaluation, local proof, small self-hosted installs                            |
+| Public domain, Nora-managed ingress | Nora nginx on public ports                     | One Docker Compose host | Local Docker or supported external targets        | Straightforward public self-hosting                                            |
+| Public domain behind external proxy | Host or upstream proxy terminates and forwards | One Docker Compose host | Local Docker or supported external targets        | Existing nginx, Cloudflare, or host-managed TLS setups                         |
+| External runtime targets            | Same ingress as above                          | One Docker Compose host | Kubernetes (k3s/k8s), Proxmox, NemoClaw sandboxes | Teams that need different runtime placement without changing operator workflow |
 
 The clearest public path today is one host running the control plane, with agent runtimes launched locally through Docker by default. Public-domain setups can either let Nora own public ingress directly or put an external reverse proxy in front of Nora's internal nginx.
 
@@ -249,13 +249,13 @@ The clearest public path today is one host running the control plane, with agent
     Supported deploy targets, their maturity, and required configuration.
   </Card>
 
-  <Card title="Environment variables" icon="sliders" href="/configuration/environment-variables">
-    Every variable Nora reads, grouped by subsystem.
-  </Card>
+<Card title="Environment variables" icon="sliders" href="/configuration/environment-variables">
+  Every variable Nora reads, grouped by subsystem.
+</Card>
 
-  <Card title="Workspaces" icon="folders" href="/concepts/workspaces">
-    Workspace ownership, RBAC roles, and member invitations.
-  </Card>
+<Card title="Workspaces" icon="folders" href="/concepts/workspaces">
+  Workspace ownership, RBAC roles, and member invitations.
+</Card>
 
   <Card title="Agent Hub" icon="store" href="/concepts/agent-hub">
     Listing types, share targets, version model, source-catalog API keys.

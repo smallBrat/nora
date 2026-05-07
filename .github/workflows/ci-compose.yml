@@ -1,6 +1,7 @@
 name: CI Compose Pipeline
 
 on:
+  workflow_dispatch:
   pull_request:
     paths: &compose_paths
       - ".github/workflows/ci-compose.yml"

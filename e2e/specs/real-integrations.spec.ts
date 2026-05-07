@@ -15,6 +15,7 @@ import {
 import {
   deployAgent,
   waitForAgentStatus,
+  waitForOpenClawGateway,
   deleteAgent,
   connectIntegration,
   testIntegration,
@@ -35,14 +36,13 @@ test.describe("Integrations — real credentials", () => {
   /** @type {any} */
   let agent = null;
 
-  test.beforeAll(async ({ request }) => {
-    test.skip(
-      !real.llmApiKey,
-      "REAL_LLM_API_KEY (or provider-specific key) not set"
-    );
+  test.beforeAll(async ({ request }, testInfo) => {
+    testInfo.setTimeout(real.provisionTimeoutMs + 300000);
+
+    test.skip(!real.llmApiKey, "REAL_LLM_API_KEY (or provider-specific key) not set");
     test.skip(
       !real.enableOpenclawDocker,
-      "OpenClaw+Docker cell disabled; integrations spec needs a host agent"
+      "OpenClaw+Docker cell disabled; integrations spec needs a host agent",
     );
 
     operator = await createUserSession(request, {
@@ -64,16 +64,17 @@ test.describe("Integrations — real credentials", () => {
       backend: "docker",
       sandboxProfile: "standard",
     });
-    agent = await waitForAgentStatus(
-      request,
-      operator.token,
-      agent.id,
-      ["running", "warning"],
-      { timeoutMs: real.provisionTimeoutMs }
-    );
+    agent = await waitForAgentStatus(request, operator.token, agent.id, ["running", "warning"], {
+      timeoutMs: real.provisionTimeoutMs,
+    });
+    await waitForOpenClawGateway(request, operator.token, agent.id, {
+      timeoutMs: real.provisionTimeoutMs,
+    });
   });
 
-  test.afterAll(async ({ request }) => {
+  test.afterAll(async ({ request }, testInfo) => {
+    testInfo.setTimeout(120000);
+
     if (agent?.id) {
       await deleteAgent(request, operator.token, agent.id);
     }
@@ -88,12 +89,7 @@ test.describe("Integrations — real credentials", () => {
     });
     expect(integration?.id).toBeTruthy();
 
-    const result = await testIntegration(
-      request,
-      operator.token,
-      agent.id,
-      integration.id
-    );
+    const result = await testIntegration(request, operator.token, agent.id, integration.id);
     expect(result?.success, JSON.stringify(result)).toBe(true);
 
     await deleteIntegration(request, operator.token, agent.id, integration.id);
@@ -108,12 +104,7 @@ test.describe("Integrations — real credentials", () => {
     });
     expect(integration?.id).toBeTruthy();
 
-    const result = await testIntegration(
-      request,
-      operator.token,
-      agent.id,
-      integration.id
-    );
+    const result = await testIntegration(request, operator.token, agent.id, integration.id);
     expect(result?.success, JSON.stringify(result)).toBe(true);
 
     await deleteIntegration(request, operator.token, agent.id, integration.id);
@@ -121,10 +112,8 @@ test.describe("Integrations — real credentials", () => {
 
   test("[I3] URL-based integration succeeds on real host", async ({ request }) => {
     test.skip(
-      !real.urlIntegrationProvider ||
-        !real.urlIntegrationUrl ||
-        !real.urlIntegrationToken,
-      "REAL_URL_INTEGRATION_* not set"
+      !real.urlIntegrationProvider || !real.urlIntegrationUrl || !real.urlIntegrationToken,
+      "REAL_URL_INTEGRATION_* not set",
     );
 
     const urlField =
@@ -140,12 +129,7 @@ test.describe("Integrations — real credentials", () => {
       config: urlField,
     });
 
-    const result = await testIntegration(
-      request,
-      operator.token,
-      agent.id,
-      integration.id
-    );
+    const result = await testIntegration(request, operator.token, agent.id, integration.id);
     expect(result?.success, JSON.stringify(result)).toBe(true);
 
     await deleteIntegration(request, operator.token, agent.id, integration.id);
@@ -154,7 +138,7 @@ test.describe("Integrations — real credentials", () => {
   test("[I4] SSRF guard — internal URL is refused", async ({ request }) => {
     test.skip(
       !real.urlIntegrationProvider || !real.urlIntegrationToken,
-      "REAL_URL_INTEGRATION_* not set"
+      "REAL_URL_INTEGRATION_* not set",
     );
 
     // Intentionally point the URL at an internal-network destination. The
@@ -172,15 +156,10 @@ test.describe("Integrations — real credentials", () => {
       config: urlField,
     });
 
-    const result = await testIntegration(
-      request,
-      operator.token,
-      agent.id,
-      integration.id
-    );
+    const result = await testIntegration(request, operator.token, agent.id, integration.id);
     expect(result?.success).toBe(false);
     expect(String(result?.error || "")).toMatch(
-      /internal|private network|not a valid url|must use http/i
+      /internal|private network|not a valid url|must use http/i,
     );
 
     await deleteIntegration(request, operator.token, agent.id, integration.id);

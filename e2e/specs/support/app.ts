@@ -4,6 +4,7 @@ import type { APIRequestContext, APIResponse, Page } from "@playwright/test";
 export const DEFAULT_PASSWORD = "SmokePassword123!";
 
 const E2E_BASE_URL = process.env.BASE_URL || "http://127.0.0.1:18080";
+const IGNORE_HTTPS_ERRORS = process.env.ALLOW_LOCAL_HTTPS_ERRORS === "1";
 
 // /auth/login responses include a Set-Cookie for `nora_auth`; if that cookie
 // lands in the shared test `request` jar, every subsequent apiJson(_, _,
@@ -11,7 +12,10 @@ const E2E_BASE_URL = process.env.BASE_URL || "http://127.0.0.1:18080";
 // backend prefers cookie over Bearer in middleware/auth.ts). Keeping the
 // cookie in a throwaway context isolates it.
 async function loginInFreshContext(email: string, password: string): Promise<string> {
-  const ctx = await playwrightRequest.newContext({ baseURL: E2E_BASE_URL });
+  const ctx = await playwrightRequest.newContext({
+    baseURL: E2E_BASE_URL,
+    ignoreHTTPSErrors: IGNORE_HTTPS_ERRORS,
+  });
   try {
     const res = await ctx.post("/api/auth/login", { data: { email, password } });
     if (!res.ok()) {

@@ -1,6 +1,7 @@
 name: CI Quality
 
 on:
+  workflow_dispatch:
   pull_request:
     paths: &quality_paths
       - ".github/workflows/ci-quality.yml"

@@ -8,12 +8,21 @@ import { apiJson, assertJsonRecord, isJsonRecord } from "./app";
 type PlatformRuntimeFamily = {
   id?: string;
   runtimeFamily?: string;
+  available?: boolean;
+  configured?: boolean;
+};
+
+type PlatformExecutionTarget = {
+  id?: string;
+  available?: boolean;
+  configured?: boolean;
 };
 
 type PlatformConfig = {
   enabledBackends?: string[];
   enabledDeployTargets?: string[];
   runtimeFamilies?: PlatformRuntimeFamily[];
+  executionTargets?: PlatformExecutionTarget[];
   [key: string]: unknown;
 };
 
@@ -135,6 +144,9 @@ function normalizePlatformConfig(value: PlatformConfig | string | null): Platfor
     runtimeFamilies: Array.isArray(value.runtimeFamilies)
       ? (value.runtimeFamilies.filter(isJsonRecord) as PlatformRuntimeFamily[])
       : undefined,
+    executionTargets: Array.isArray(value.executionTargets)
+      ? (value.executionTargets.filter(isJsonRecord) as PlatformExecutionTarget[])
+      : undefined,
   };
 }
 
@@ -144,13 +156,25 @@ async function getPlatformConfig(request: APIRequestContext, token: string) {
 }
 
 function backendSupported(platform: PlatformConfig, backendId: string) {
+  if (Array.isArray(platform.executionTargets)) {
+    const target = platform.executionTargets.find((entry) => entry?.id === backendId);
+    if (target) {
+      return target.available !== false && target.configured !== false;
+    }
+  }
+
   const enabled = platform.enabledBackends || platform.enabledDeployTargets || [];
   return enabled.includes(backendId);
 }
 
 function runtimeSupported(platform: PlatformConfig, runtimeFamily: string) {
   const families = Array.isArray(platform.runtimeFamilies) ? platform.runtimeFamilies : [];
-  return families.some((fam) => (fam?.id || fam?.runtimeFamily) === runtimeFamily);
+  return families.some(
+    (fam) =>
+      (fam?.id || fam?.runtimeFamily) === runtimeFamily &&
+      fam.available !== false &&
+      fam.configured !== false,
+  );
 }
 
 async function deployAgent(
