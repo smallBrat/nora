@@ -187,13 +187,20 @@ router.get("/:id/invitations", requireWorkspaceRole("admin"), async (req, res) =
   }
 });
 
+function stripTrailingSlash(value) {
+  let end = value.length;
+  while (end > 0 && value.charCodeAt(end - 1) === 47 /* "/" */) end -= 1;
+  return value.slice(0, end);
+}
+
 function buildAcceptUrl(req, rawToken) {
   // Prefer NEXTAUTH_URL (the canonical public URL). Fall back to the request
-  // origin so local dev still produces a usable link without env config.
+  // origin so local dev still produces a usable link without env config. Cap
+  // the origin length before stripping — an attacker-controlled Origin header
+  // would otherwise feed an unbounded string into URL construction.
+  const rawOrigin = req.headers?.origin ? String(req.headers.origin).slice(0, 2048) : "";
   const base =
-    (process.env.NEXTAUTH_URL || "").replace(/\/+$/, "") ||
-    (req.headers && req.headers.origin && String(req.headers.origin).replace(/\/+$/, "")) ||
-    "";
+    stripTrailingSlash(process.env.NEXTAUTH_URL || "") || stripTrailingSlash(rawOrigin) || "";
   return `${base}/app/invitations/accept?token=${encodeURIComponent(rawToken)}`;
 }
 

@@ -514,6 +514,12 @@ function restoreRedactedConfigValue(nextValue, currentValue) {
   return nextValue;
 }
 
+// Reject `__proto__`, `constructor`, and `prototype` so a JSON payload can't
+// reach Object.prototype through this merge — JSON.parse exposes `__proto__`
+// as an own property, and our config patches flow from DB rows that
+// originated as user input.
+const FORBIDDEN_MERGE_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+
 function deepMerge(target, patch) {
   if (!isPlainObject(patch)) {
     return Array.isArray(patch) ? cloneJson(patch) : patch;
@@ -521,6 +527,7 @@ function deepMerge(target, patch) {
 
   const next = isPlainObject(target) ? { ...target } : {};
   for (const [key, value] of Object.entries(patch)) {
+    if (FORBIDDEN_MERGE_KEYS.has(key)) continue;
     if (Array.isArray(value)) {
       next[key] = cloneJson(value);
       continue;

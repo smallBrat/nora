@@ -315,9 +315,15 @@ function normalizeSmtpSettings(input = {}, fallback = DEFAULT_SMTP_SETTINGS) {
   };
 }
 
+// RFC 5321 caps an address at 254 chars; rejecting longer input first stops
+// the regex from chewing on attacker-supplied unbounded strings.
+const EMAIL_MAX_LENGTH = 254;
+
 function looksLikeEmail(value) {
   if (typeof value !== "string") return false;
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+  const trimmed = value.trim();
+  if (trimmed.length === 0 || trimmed.length > EMAIL_MAX_LENGTH) return false;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
 }
 
 function parseRequiredSmtpSettings(input = {}) {

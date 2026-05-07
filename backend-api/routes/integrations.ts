@@ -268,8 +268,12 @@ async function syncIntegrationsToAgent(agentId, { strict = false, strictHermes =
   } catch (e) {
     manifestStatus = "failed";
     manifestError = String(e?.message || e);
+    // Cap log output — error strings can echo arbitrarily large attacker- or
+    // runtime-supplied content back into the logs.
+    const truncatedError =
+      manifestError.length > 200 ? `${manifestError.slice(0, 200)}…` : manifestError;
     console.warn(
-      `[sync-integrations] Runtime sync failed for agent ${agentId} on port ${AGENT_RUNTIME_PORT}: ${manifestError}`,
+      `[sync-integrations] Runtime sync failed for agent ${agentId} on port ${AGENT_RUNTIME_PORT}: ${truncatedError}`,
     );
     if (strict) {
       const error = new Error(manifestError || "Failed to sync integrations to runtime");
@@ -278,21 +282,31 @@ async function syncIntegrationsToAgent(agentId, { strict = false, strictHermes =
     }
   }
 
-  // 2. Push decrypted tokens into the live gateway env via RPC
+  // 2. Push decrypted tokens into the live gateway env via RPC. Logging in
+  // this block deliberately omits the error message and env contents — the
+  // payload may include credentials, and an echoing runtime error would leak
+  // them into clear-text logs. Status code (success/failure) is enough.
   if (agent.status === "running") {
+    let envCount = 0;
+    let pushOk = false;
     try {
       const envVars = await integrations.getIntegrationEnvVars(agentId);
-      const count = Object.keys(envVars).length;
-      if (count > 0) {
+      envCount = Object.keys(envVars).length;
+      if (envCount > 0) {
         await rpcCall(agent, "config.set", { env: envVars });
-        console.log(
-          `[sync-integrations] Pushed ${count} integration env var(s) to agent ${agentId} gateway`,
-        );
+        pushOk = true;
+      } else {
+        pushOk = true;
       }
-    } catch (e) {
-      console.warn(
-        `[sync-integrations] Gateway env push failed for agent ${agentId}: ${String(e?.message || e)}`,
+    } catch {
+      pushOk = false;
+    }
+    if (pushOk && envCount > 0) {
+      console.log(
+        `[sync-integrations] Pushed ${envCount} integration env var(s) to agent ${agentId} gateway`,
       );
+    } else if (!pushOk) {
+      console.warn(`[sync-integrations] Gateway env push failed for agent ${agentId}`);
     }
   }
 

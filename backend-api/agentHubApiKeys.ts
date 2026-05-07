@@ -70,6 +70,10 @@ function apiKeyHashSecret() {
   return apiKeyHashSecrets()[0];
 }
 
+// HMAC-SHA256 is correct for high-entropy random tokens (see lib/apiTokens.ts
+// for the full rationale). CodeQL flags this as `js/insufficient-password-hash`
+// but the input is a 256-bit random token, not a password — there is no
+// offline brute-force surface.
 function hmacHashApiKey(rawKey, secret) {
   return crypto
     .createHmac("sha256", secret)
@@ -77,6 +81,8 @@ function hmacHashApiKey(rawKey, secret) {
     .digest("hex");
 }
 
+// Plain SHA-256, kept only to verify hashes written before the HMAC migration.
+// Any legacy hit triggers a rehash to the HMAC scheme on the next login.
 function legacySha256HashApiKey(rawKey) {
   return crypto
     .createHash("sha256")

@@ -63,6 +63,11 @@ function primarySecret() {
   return apiKeyHashSecrets()[0];
 }
 
+// HMAC-SHA256, not bcrypt/argon2, is the right primitive here: the input is
+// always a 256-bit random token (`crypto.randomBytes(32)` in generateRawKey,
+// or an equally-random invitation token), never a low-entropy password.
+// CodeQL's `js/insufficient-password-hash` flags this pattern but there is
+// no offline brute-force surface — guessing the token is 2^256.
 function hmac(rawValue, secret) {
   return crypto
     .createHmac("sha256", secret)
