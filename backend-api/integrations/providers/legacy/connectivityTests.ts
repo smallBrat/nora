@@ -43,14 +43,6 @@ function buildConnectivityTests(integration, token, deps) {
   const { assertSafeUrl } = deps;
 
   return {
-    github: async () => {
-      const res = await fetch("https://api.github.com/user", {
-        headers: { Authorization: `Bearer ${token}`, "User-Agent": "Nora-Platform" },
-      });
-      if (!res.ok) throw new Error(`GitHub API returned ${res.status}`);
-      const data = await res.json();
-      return { success: true, message: `Connected as ${data.login}` };
-    },
     gitlab: async () => {
       const config =
         typeof integration.config === "string"
@@ -67,15 +59,6 @@ function buildConnectivityTests(integration, token, deps) {
       const data = await res.json();
       return { success: true, message: `Connected as ${data.username}` };
     },
-    slack: async () => {
-      const res = await fetch("https://slack.com/api/auth.test", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      });
-      const data = await res.json();
-      if (!data.ok) throw new Error(`Slack: ${data.error}`);
-      return { success: true, message: `Connected to ${data.team}` };
-    },
     discord: async () => {
       const res = await fetch("https://discord.com/api/v10/users/@me", {
         headers: { Authorization: `Bot ${token}` },
@@ -91,37 +74,6 @@ function buildConnectivityTests(integration, token, deps) {
       if (!res.ok) throw new Error(`Notion API returned ${res.status}`);
       const data = await res.json();
       return { success: true, message: `Connected as ${data.name || data.id}` };
-    },
-    jira: async () => {
-      const config =
-        typeof integration.config === "string"
-          ? JSON.parse(integration.config)
-          : integration.config || {};
-      const domain = config.site_url || config.domain || config.base_url;
-      if (!domain) throw new Error("Jira site URL not configured");
-      const rawUrl = domain.includes("://") ? domain : `https://${domain}`;
-      const url = await assertSafeUrl(rawUrl, "Jira site URL");
-      const email = config.email;
-      if (!email) throw new Error("Jira email not configured");
-      const res = await fetch(`${url}/rest/api/3/myself`, {
-        headers: {
-          Authorization: `Basic ${Buffer.from(`${email}:${token}`).toString("base64")}`,
-          "Content-Type": "application/json",
-        },
-      });
-      if (!res.ok) throw new Error(`Jira API returned ${res.status}`);
-      const data = await res.json();
-      return { success: true, message: `Connected as ${data.displayName}` };
-    },
-    linear: async () => {
-      const res = await fetch("https://api.linear.app/graphql", {
-        method: "POST",
-        headers: { Authorization: token, "Content-Type": "application/json" },
-        body: JSON.stringify({ query: "{ viewer { id name } }" }),
-      });
-      if (!res.ok) throw new Error(`Linear API returned ${res.status}`);
-      const data = await res.json();
-      return { success: true, message: `Connected as ${data.data?.viewer?.name || "verified"}` };
     },
     datadog: async () => {
       const res = await fetch("https://api.datadoghq.com/api/v1/validate", {
@@ -551,14 +503,6 @@ function buildConnectivityTests(integration, token, deps) {
       });
       if (!res.ok) throw new Error(`Salesforce API returned ${res.status}`);
       return { success: true, message: "Connected to Salesforce" };
-    },
-    twitter: async () => {
-      const res = await fetch("https://api.x.com/2/users/me", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const { rawText, data } = await readProviderErrorResponse(res);
-      if (!res.ok) throw new Error(buildTwitterApiError(res.status, data, rawText));
-      return { success: true, message: `Connected as @${data.data?.username || "verified"}` };
     },
   };
 }

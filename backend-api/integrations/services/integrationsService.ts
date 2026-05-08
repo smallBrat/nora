@@ -25,9 +25,11 @@ const {
   INTEGRATION_CONFIG_ENV_MAP,
   integrationProviderAffectsLlmAuth,
 } = require("../providers/legacy/envMaps");
-
-const TWITTER_OAUTH_TOKEN_URL = "https://api.x.com/2/oauth2/token";
-const OAUTH_TOKEN_REFRESH_SKEW_MS = 5 * 60 * 1000;
+const { githubProvider } = require("../providers/github");
+const { slackProvider } = require("../providers/slack");
+const { linearProvider } = require("../providers/linear");
+const { jiraProvider } = require("../providers/jira");
+const { twitterProvider } = require("../providers/twitter");
 
 const repo = createIntegrationsRepository(db);
 const secretCrypto = createSecretEncryption({
@@ -51,8 +53,21 @@ const providerRegistry = createProviderRegistry((providerId) =>
   createLegacyProviderAdapter(providerId, legacyEnvMaps),
 );
 
+// Register concrete providers that have moved off the legacy adapter.
+// Adding a new provider is a single-line change here once its strategy
+// implementation lives in providers/<id>.ts.
+[
+  githubProvider,
+  slackProvider,
+  linearProvider,
+  jiraProvider,
+  twitterProvider,
+].forEach((p) => providerRegistry.register(p));
+
+// Resolve fetch at call time so test mocks reassigning `global.fetch`
+// after module load are honored.
 const providerDeps = {
-  fetch,
+  fetch: (...args) => globalThis.fetch(...args),
   assertSafeUrl: assertSafeUrlAsync,
   encrypt,
   decrypt,
@@ -77,82 +92,29 @@ async function getCatalogItem(catalogId) {
   return catalogLoader.getCatalogItem(repo, catalogId);
 }
 
-// ── OAuth refresh helpers ────────────────────────────────
-
-function stringValue(value) {
-  return typeof value === "string" ? value.trim() : "";
-}
-
-function tokenExpiresAt(tokenData = {}) {
-  const expiresIn = Number.parseInt(tokenData.expires_in, 10);
-  if (!Number.isFinite(expiresIn) || expiresIn <= 0) return null;
-  return new Date(Date.now() + expiresIn * 1000).toISOString();
-}
-
-function shouldRefreshOAuthToken(config = {}) {
-  const expiresAt = Date.parse(stringValue(config.expires_at || config.expiresAt));
-  if (!Number.isFinite(expiresAt)) return false;
-  return expiresAt <= Date.now() + OAUTH_TOKEN_REFRESH_SKEW_MS;
-}
+// ── OAuth refresh — delegates to provider.refreshCredentials ─────
 
 async function refreshTwitterOAuthRowIfNeeded(row = {}) {
   const provider = row.provider || row.catalog_id;
-  if (provider !== "twitter" || !row.id) return row;
+  if (!provider || !row.id) return row;
 
-  const config = decryptSensitiveConfig(provider, row.config);
-  if (!shouldRefreshOAuthToken(config)) return row;
+  const resolved = providerRegistry.resolve(provider);
+  if (typeof resolved.refreshCredentials !== "function") return row;
 
-  const refreshToken = stringValue(config.refresh_token);
-  const clientId = stringValue(config.client_id);
-  if (!refreshToken || !clientId) return row;
-
-  const clientSecret = stringValue(config.client_secret);
-  const body = new URLSearchParams({
-    grant_type: "refresh_token",
-    refresh_token: refreshToken,
-    client_id: clientId,
-  });
-  const headers = { "Content-Type": "application/x-www-form-urlencoded" };
-  if (clientSecret) {
-    headers.Authorization = `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString("base64")}`;
-  }
-
-  let tokenData = null;
-  try {
-    const response = await fetch(TWITTER_OAUTH_TOKEN_URL, {
-      method: "POST",
-      headers,
-      body,
-    });
-    tokenData = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      const message =
-        stringValue(tokenData?.error_description) ||
-        stringValue(tokenData?.error) ||
-        `HTTP ${response.status}`;
-      throw new Error(message);
-    }
-  } catch (error) {
-    console.warn(
-      `[integrations] Failed to refresh Twitter/X OAuth token for integration ${row.id}: ${error.message}`,
-    );
-    return row;
-  }
-
-  const accessToken = stringValue(tokenData.access_token);
-  if (!accessToken) return row;
-
-  ensureEncryptionConfigured("Twitter/X OAuth token refresh");
-  const nextConfig = {
-    ...config,
-    access_token: accessToken,
-    refresh_token: stringValue(tokenData.refresh_token) || refreshToken,
-    token_type: stringValue(tokenData.token_type) || config.token_type || "bearer",
-    scope: stringValue(tokenData.scope) || config.scope || "",
-    expires_at: tokenExpiresAt(tokenData) || config.expires_at || null,
+  // Decrypt the row's config first so the provider sees plaintext.
+  const decryptedRow = {
+    ...row,
+    config: decryptSensitiveConfig(provider, row.config),
   };
-  const { secured: securedConfig } = encryptSensitiveConfig(provider, nextConfig);
-  const encryptedToken = encrypt(accessToken);
+
+  const outcome = await resolved.refreshCredentials(decryptedRow, providerDeps);
+  if (!outcome?.refreshed) return row;
+
+  const newConfig = outcome.row.config || {};
+  const newAccessToken = outcome.row.access_token;
+
+  const { secured: securedConfig } = encryptSensitiveConfig(provider, newConfig);
+  const encryptedToken = encrypt(String(newAccessToken));
 
   await repo.updateAccessTokenAndConfig({
     id: row.id,
@@ -185,18 +147,13 @@ function buildIntegrationSyncEntry(row = {}) {
   const hydrated = hydrateRow(row);
   const provider = row.provider || row.catalog_id || row.id;
   const decryptedConfig = decryptSensitiveConfig(provider, row.config);
+  const resolved = providerRegistry.resolve(provider);
   const config =
-    provider === "twitter"
-      ? Object.fromEntries(
-          Object.entries(decryptedConfig).filter(
-            ([key]) => !["client_id", "client_secret", "refresh_token"].includes(key),
-          ),
-        )
+    typeof resolved.sanitizeForSync === "function"
+      ? resolved.sanitizeForSync(decryptedConfig)
       : decryptedConfig;
 
-  const envMapping = providerRegistry
-    .resolve(provider)
-    .mapToEnv({ row, token: null, config });
+  const envMapping = resolved.mapToEnv({ row, token: null, config });
 
   return {
     id: row.id,

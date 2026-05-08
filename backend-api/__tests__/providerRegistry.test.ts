@@ -89,13 +89,15 @@ describe("createProviderRegistry", () => {
       json: async () => ({}),
     });
     try {
-      const provider = registry.resolve("github");
+      // datadog is still in the legacy connectivity-test switch
+      // (github/slack/linear/jira/twitter migrated to strategy in PR 4).
+      const provider = registry.resolve("datadog");
       const result = await provider.test(
-        { row: { provider: "github" }, token: "bad-token", config: {} },
+        { row: { provider: "datadog" }, token: "bad-token", config: {} },
         { fetch, assertSafeUrl: async (u) => u },
       );
       expect(result.success).toBe(false);
-      expect(result.error).toContain("GitHub API returned 401");
+      expect(result.error).toContain("Datadog API returned 401");
     } finally {
       global.fetch = originalFetch;
     }
