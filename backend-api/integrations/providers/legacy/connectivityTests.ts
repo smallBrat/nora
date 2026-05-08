@@ -437,17 +437,6 @@ function buildConnectivityTests(integration, token, deps) {
       if (!res.ok) throw new Error(`WooCommerce API returned ${res.status}`);
       return { success: true, message: "Connected to WooCommerce" };
     },
-    linkedin: async () => {
-      const res = await fetch("https://api.linkedin.com/v2/userinfo", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) throw new Error(`LinkedIn API returned ${res.status}`);
-      const data = await res.json();
-      return {
-        success: true,
-        message: `Connected as ${data.name || data.given_name || "verified"}`,
-      };
-    },
     facebook: async () => {
       const res = await fetch(
         `https://graph.facebook.com/v18.0/me?access_token=${encodeURIComponent(token)}`,

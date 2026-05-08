@@ -42,6 +42,7 @@ export { slackProvider } from "./providers/slack";
 export { linearProvider } from "./providers/linear";
 export { jiraProvider } from "./providers/jira";
 export { twitterProvider } from "./providers/twitter";
+export { linkedinProvider } from "./providers/linkedin";
 
 // The orchestration service is the recommended import for callers that
 // need the high-level operations (connect, list, test, sync, env-vars).

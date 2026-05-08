@@ -30,6 +30,7 @@ const { slackProvider } = require("../providers/slack");
 const { linearProvider } = require("../providers/linear");
 const { jiraProvider } = require("../providers/jira");
 const { twitterProvider } = require("../providers/twitter");
+const { linkedinProvider } = require("../providers/linkedin");
 
 const repo = createIntegrationsRepository(db);
 const secretCrypto = createSecretEncryption({
@@ -62,6 +63,7 @@ const providerRegistry = createProviderRegistry((providerId) =>
   linearProvider,
   jiraProvider,
   twitterProvider,
+  linkedinProvider,
 ].forEach((p) => providerRegistry.register(p));
 
 // Resolve fetch at call time so test mocks reassigning `global.fetch`

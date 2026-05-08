@@ -36,7 +36,7 @@ const INTEGRATION_ENV_MAP = {
   twilio: "TWILIO_AUTH_TOKEN",
   telegram: "TELEGRAM_BOT_TOKEN",
   shopify: "SHOPIFY_ACCESS_TOKEN",
-  linkedin: "LINKEDIN_ACCESS_TOKEN",
+  // linkedin → migrated to providers/linkedin.ts
   instagram: "INSTAGRAM_ACCESS_TOKEN",
   salesforce: "SALESFORCE_ACCESS_TOKEN",
   // twitter → migrated to providers/twitter.ts
