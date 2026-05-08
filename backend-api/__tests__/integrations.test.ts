@@ -353,4 +353,74 @@ describe("integration secret handling", () => {
     expect(result.error).toContain("OAuth 2.0 user access token");
     expect(result.error).toContain("tweet.write");
   });
+
+  it("refreshes a near-expiry Twitter/X OAuth token before running the connectivity test", async () => {
+    const expiredAt = new Date(Date.now() - 60_000).toISOString();
+    mockDb.query
+      // findIntegration → returns row with an expired access token
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: "int-twitter",
+            agent_id: "agent-1",
+            provider: "twitter",
+            access_token: "enc(stale-access-token)",
+            config: JSON.stringify({
+              refresh_token: "enc(stored-refresh)",
+              client_id: "client-1",
+              expires_at: expiredAt,
+            }),
+            status: "active",
+          },
+        ],
+      })
+      // updateAccessTokenAndConfig → no-op; refresh persists the new token
+      .mockResolvedValueOnce({ rows: [] });
+
+    global.fetch = jest
+      .fn()
+      // 1. OAuth token refresh
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          access_token: "fresh-access-token",
+          refresh_token: "fresh-refresh-token",
+          token_type: "bearer",
+          scope: "tweet.read tweet.write users.read offline.access",
+          expires_in: 7200,
+        }),
+        text: async () => "",
+      })
+      // 2. /users/me connectivity probe
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ data: { username: "solomon" } }),
+      });
+
+    const result = await integrations.testIntegration("int-twitter", "agent-1");
+
+    expect(result).toEqual({ success: true, message: "Connected as @solomon" });
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+    expect(global.fetch).toHaveBeenNthCalledWith(
+      1,
+      "https://api.x.com/2/oauth2/token",
+      expect.objectContaining({ method: "POST" }),
+    );
+    // The connectivity probe must use the freshly minted access token
+    // (round-tripped through the mock encrypt → decrypt pair), not the
+    // stale one — otherwise the user sees a 401 even when refresh
+    // succeeded.
+    expect(global.fetch).toHaveBeenNthCalledWith(
+      2,
+      "https://api.x.com/2/users/me",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "Bearer dec(enc(fresh-access-token))",
+        }),
+      }),
+    );
+    expect(mockEncrypt).toHaveBeenCalledWith("fresh-access-token");
+  });
 });

@@ -245,12 +245,18 @@ async function testIntegration(integrationId, agentId) {
     return { success: false, error: "No access token configured" };
   }
 
-  const provider = integration.provider;
-  const token = decrypt(integration.access_token);
-  const decryptedConfig = decryptSensitiveConfig(provider, integration.config);
+  // Mirror the runtime sync path: refresh any OAuth token within the skew
+  // window of expiry before hitting the provider, so clicking "Test" after
+  // a token has expired doesn't surface a misleading 401 when we hold a
+  // valid refresh_token.
+  const refreshedRow = await refreshTwitterOAuthRowIfNeeded(integration);
+
+  const provider = refreshedRow.provider;
+  const token = decrypt(refreshedRow.access_token);
+  const decryptedConfig = decryptSensitiveConfig(provider, refreshedRow.config);
 
   const ctx = {
-    row: { ...integration, config: decryptedConfig },
+    row: { ...refreshedRow, config: decryptedConfig },
     token,
     config: decryptedConfig,
   };

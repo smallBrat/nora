@@ -623,6 +623,20 @@ router.post("/agents/:id/integrations/tools/invoke", async (req, res) => {
             !Array.isArray(req.body.arguments)
           ? req.body.arguments
           : {};
+
+    // Refresh OAuth tokens that are within the skew window of expiry and
+    // push the latest env to the gateway, so the runtime makes outbound
+    // API calls (e.g. X / Twitter) with an unexpired access token. Best-
+    // effort: a transient sync failure shouldn't block tool invocations
+    // whose providers don't require a refresh.
+    try {
+      await syncIntegrationsToAgent(req.params.id, { strict: false });
+    } catch (syncError) {
+      console.warn(
+        `[integrations/tools/invoke] pre-invoke sync failed for agent ${req.params.id}: ${syncError?.message ?? syncError}`,
+      );
+    }
+
     const result = await invokeAgentIntegrationTool(req.params.id, {
       toolName,
       input,
