@@ -1,16 +1,36 @@
-// @ts-nocheck
-// Re-export shim for backwards compatibility with existing
-// `require("./integrations")` callers (server.ts, gatewayProxy.ts,
-// agentMigrations.ts, agentPayloads.ts, authSync.ts, routes/integrations.ts,
-// __tests__). Real implementations live under
-// backend-api/integrations/{repository,catalog,crypto,providers,services}.
+// Legacy CommonJS re-export shim for backwards compatibility with
+// existing `require("./integrations")` callers (server.ts,
+// gatewayProxy.ts, agentMigrations.ts, agentPayloads.ts, authSync.ts,
+// routes/integrations.ts, and tests). New code should import from
+// `./integrations` (the directory + index.ts) instead.
 //
-// Keep this file's `module.exports` shape stable until consumers migrate
-// to import directly from integrations/services/integrationsService.
+// Real implementations live under
+// backend-api/integrations/{repository,catalog,crypto,providers,services}.
 
 const service = require("./integrations/services/integrationsService");
 
-module.exports = {
+type IntegrationsModule = {
+  buildCloneableIntegration: (...args: unknown[]) => unknown;
+  buildIntegrationSyncEntry: (...args: unknown[]) => unknown;
+  buildIntegrationToolCatalogEntries: (...args: unknown[]) => unknown;
+  seedCatalog: (...args: unknown[]) => Promise<unknown>;
+  getCatalog: (...args: unknown[]) => Promise<unknown>;
+  getCatalogItem: (...args: unknown[]) => Promise<unknown>;
+  connectIntegration: (...args: unknown[]) => Promise<unknown>;
+  replaceIntegration: (...args: unknown[]) => Promise<unknown>;
+  decryptSensitiveConfig: (...args: unknown[]) => unknown;
+  listIntegrations: (...args: unknown[]) => Promise<unknown>;
+  removeIntegration: (...args: unknown[]) => Promise<unknown>;
+  testIntegration: (...args: unknown[]) => Promise<unknown>;
+  getIntegrationsForSync: (...args: unknown[]) => Promise<unknown>;
+  getIntegrationEnvVars: (...args: unknown[]) => Promise<unknown>;
+  integrationProviderAffectsLlmAuth: (provider: string) => boolean;
+  INTEGRATION_ENV_MAP: Record<string, string>;
+  INTEGRATION_CONFIG_ENV_MAP: Record<string, string>;
+  stripSensitiveConfig: (...args: unknown[]) => unknown;
+};
+
+const exported: IntegrationsModule = {
   buildCloneableIntegration: service.buildCloneableIntegration,
   buildIntegrationSyncEntry: service.buildIntegrationSyncEntry,
   buildIntegrationToolCatalogEntries: service.buildIntegrationToolCatalogEntries,
@@ -30,3 +50,5 @@ module.exports = {
   INTEGRATION_CONFIG_ENV_MAP: service.INTEGRATION_CONFIG_ENV_MAP,
   stripSensitiveConfig: service.stripSensitiveConfig,
 };
+
+module.exports = exported;

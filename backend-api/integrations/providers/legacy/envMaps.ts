@@ -11,12 +11,12 @@ const llmProviders = require("../../../llmProviders");
 // password+required configField per provider.
 const INTEGRATION_ENV_MAP = {
   huggingface: "HF_TOKEN",
-  github: "GITHUB_TOKEN",
+  // github → migrated to providers/github.ts
   gitlab: "GITLAB_TOKEN",
-  slack: "SLACK_TOKEN",
+  // slack → migrated to providers/slack.ts
   discord: "DISCORD_TOKEN",
   notion: "NOTION_TOKEN",
-  linear: "LINEAR_API_KEY",
+  // linear → migrated to providers/linear.ts
   datadog: "DD_API_KEY",
   sentry: "SENTRY_AUTH_TOKEN",
   sendgrid: "SENDGRID_API_KEY",
@@ -39,7 +39,7 @@ const INTEGRATION_ENV_MAP = {
   linkedin: "LINKEDIN_ACCESS_TOKEN",
   instagram: "INSTAGRAM_ACCESS_TOKEN",
   salesforce: "SALESFORCE_ACCESS_TOKEN",
-  twitter: "TWITTER_ACCESS_TOKEN",
+  // twitter → migrated to providers/twitter.ts
   digitalocean: "DIGITALOCEAN_TOKEN",
   algolia: "ALGOLIA_API_KEY",
   clickup: "CLICKUP_API_KEY",
@@ -48,7 +48,7 @@ const INTEGRATION_ENV_MAP = {
   "docker-hub": "DOCKER_HUB_TOKEN",
   bitbucket: "BITBUCKET_TOKEN",
   confluence: "CONFLUENCE_TOKEN",
-  jira: "JIRA_API_TOKEN",
+  // jira → migrated to providers/jira.ts
   jenkins: "JENKINS_TOKEN",
   grafana: "GRAFANA_TOKEN",
   woocommerce: "WOOCOMMERCE_SECRET_KEY",
@@ -81,16 +81,14 @@ const INTEGRATION_ENV_MAP = {
 // the primary token.
 const INTEGRATION_CONFIG_ENV_MAP = {
   // Developer tools
-  "github.org": "GITHUB_ORG",
+  // github.org → providers/github.ts
   "gitlab.base_url": "GITLAB_BASE_URL",
   "bitbucket.username": "BITBUCKET_USERNAME",
   "bitbucket.workspace": "BITBUCKET_WORKSPACE",
-  "jira.email": "JIRA_EMAIL",
-  "jira.site_url": "JIRA_BASE_URL",
-  "jira.project_key": "JIRA_PROJECT_KEY",
-  "linear.team_id": "LINEAR_TEAM_ID",
+  // jira.email/site_url/project_key → providers/jira.ts
+  // linear.team_id → providers/linear.ts
   // Communication
-  "slack.default_channel": "SLACK_DEFAULT_CHANNEL",
+  // slack.default_channel → providers/slack.ts
   "discord.guild_id": "DISCORD_GUILD_ID",
   "teams.webhook_url": "TEAMS_WEBHOOK_URL",
   "email.smtp_host": "SMTP_HOST",
@@ -175,9 +173,7 @@ const INTEGRATION_CONFIG_ENV_MAP = {
   "paypal.client_id": "PAYPAL_CLIENT_ID",
   "stripe.webhook_secret": "STRIPE_WEBHOOK_SECRET",
   // Social
-  "twitter.api_key": "TWITTER_API_KEY",
-  "twitter.api_secret": "TWITTER_API_SECRET",
-  "twitter.default_username": "TWITTER_DEFAULT_USERNAME",
+  // twitter.api_key/api_secret/default_username → providers/twitter.ts
   "facebook.page_id": "FACEBOOK_PAGE_ID",
   "instagram.business_account_id": "INSTAGRAM_BUSINESS_ACCOUNT_ID",
   "instagram.page_id": "INSTAGRAM_PAGE_ID",
