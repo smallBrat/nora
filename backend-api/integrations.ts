@@ -10,6 +10,11 @@ const {
   getIntegrationToolSpecs,
 } = require("../agent-runtime/lib/integrationTools");
 const llmProviders = require("./llmProviders");
+const {
+  createIntegrationsRepository,
+} = require("./integrations/repository/integrationsRepository");
+
+const repo = createIntegrationsRepository(db);
 
 const TWITTER_OAUTH_TOKEN_URL = "https://api.x.com/2/oauth2/token";
 const OAUTH_TOKEN_REFRESH_SKEW_MS = 5 * 60 * 1000;
@@ -258,26 +263,15 @@ async function seedCatalog() {
   const catalog = loadCatalog();
   for (const item of catalog) {
     try {
-      await db.query(
-        `INSERT INTO integration_catalog(id, name, icon, category, description, auth_type, config_schema, enabled)
-         VALUES($1, $2, $3, $4, $5, $6, $7, true)
-         ON CONFLICT (id) DO UPDATE SET
-           name = EXCLUDED.name,
-           icon = EXCLUDED.icon,
-           category = EXCLUDED.category,
-           description = EXCLUDED.description,
-           auth_type = EXCLUDED.auth_type,
-           config_schema = EXCLUDED.config_schema`,
-        [
-          item.id,
-          item.name,
-          item.icon,
-          item.category,
-          item.description,
-          item.authType,
-          JSON.stringify(item),
-        ],
-      );
+      await repo.upsertCatalogItem({
+        id: item.id,
+        name: item.name,
+        icon: item.icon,
+        category: item.category,
+        description: item.description,
+        authType: item.authType,
+        rawJson: JSON.stringify(item),
+      });
     } catch (e) {
       // Table may not exist yet during first boot — silently skip
       if (!e.message.includes("does not exist")) {
@@ -323,16 +317,9 @@ function hydrateRow(row) {
 }
 
 async function getCatalog(category) {
-  let query = "SELECT * FROM integration_catalog WHERE enabled = true";
-  const params = [];
-  if (category) {
-    query += " AND category = $1";
-    params.push(category);
-  }
-  query += " ORDER BY category, name";
   try {
-    const result = await db.query(query, params);
-    return result.rows.map(hydrateRow);
+    const rows = await repo.getCatalogByCategory(category);
+    return rows.map(hydrateRow);
   } catch {
     // Fallback to in-memory catalog if table doesn't exist yet
     const catalog = loadCatalog();
@@ -343,8 +330,8 @@ async function getCatalog(category) {
 
 async function getCatalogItem(catalogId) {
   try {
-    const result = await db.query("SELECT * FROM integration_catalog WHERE id = $1", [catalogId]);
-    return result.rows[0] ? hydrateRow(result.rows[0]) : null;
+    const row = await repo.getCatalogItemById(catalogId);
+    return row ? hydrateRow(row) : null;
   } catch {
     return loadCatalog().find((c) => c.id === catalogId) || null;
   }
@@ -489,11 +476,11 @@ async function refreshTwitterOAuthRowIfNeeded(row = {}) {
   const { secured: securedConfig } = encryptSensitiveConfig(provider, nextConfig);
   const encryptedToken = encrypt(accessToken);
 
-  await db.query("UPDATE integrations SET access_token = $1, config = $2 WHERE id = $3", [
+  await repo.updateAccessTokenAndConfig({
+    id: row.id,
     encryptedToken,
-    JSON.stringify(securedConfig),
-    row.id,
-  ]);
+    encryptedConfigJson: JSON.stringify(securedConfig),
+  });
 
   return {
     ...row,
@@ -717,11 +704,14 @@ async function connectIntegration(agentId, provider, token, config = {}) {
   }
 
   const encryptedToken = token ? encrypt(token) : null;
-  const result = await db.query(
-    "INSERT INTO integrations(agent_id, provider, catalog_id, access_token, config) VALUES($1, $2, $3, $4, $5) RETURNING *",
-    [agentId, provider, provider, encryptedToken, JSON.stringify(securedConfig)],
-  );
-  const { access_token, ...safeRow } = result.rows[0] || {};
+  const inserted = await repo.insertIntegration({
+    agentId,
+    provider,
+    catalogId: provider,
+    encryptedToken,
+    encryptedConfigJson: JSON.stringify(securedConfig),
+  });
+  const { access_token, ...safeRow } = inserted || {};
   return {
     ...safeRow,
     config: redactSensitiveConfig(provider, securedConfig),
@@ -731,46 +721,31 @@ async function connectIntegration(agentId, provider, token, config = {}) {
 async function replaceIntegration(agentId, provider, token, config = {}) {
   const result = await connectIntegration(agentId, provider, token, config);
   if (result?.id) {
-    await db.query("DELETE FROM integrations WHERE agent_id = $1 AND provider = $2 AND id <> $3", [
+    await repo.deleteSiblingIntegrations({
       agentId,
       provider,
-      result.id,
-    ]);
+      excludeId: result.id,
+    });
   }
   return result;
 }
 
 async function listIntegrations(agentId) {
-  const result = await db.query(
-    `SELECT i.id, i.agent_id, i.provider, i.catalog_id, i.config, i.status, i.created_at,
-            ic.name as catalog_name, ic.icon as catalog_icon, ic.category as catalog_category, ic.description as catalog_description
-     FROM integrations i
-     LEFT JOIN integration_catalog ic ON i.catalog_id = ic.id
-     WHERE i.agent_id = $1
-     ORDER BY i.created_at DESC`,
-    [agentId],
-  );
-  return result.rows.map((row) => ({
+  const rows = await repo.listForAgent(agentId);
+  return rows.map((row) => ({
     ...row,
     config: redactSensitiveConfig(row.provider, row.config),
   }));
 }
 
 async function removeIntegration(integrationId, agentId) {
-  const result = await db.query(
-    "DELETE FROM integrations WHERE id = $1 AND agent_id = $2 RETURNING id, provider",
-    [integrationId, agentId],
-  );
-  if (!result.rows[0]) throw new Error("Integration not found");
-  return result.rows[0];
+  const removed = await repo.deleteIntegration({ integrationId, agentId });
+  if (!removed) throw new Error("Integration not found");
+  return removed;
 }
 
 async function testIntegration(integrationId, agentId) {
-  const result = await db.query("SELECT * FROM integrations WHERE id = $1 AND agent_id = $2", [
-    integrationId,
-    agentId,
-  ]);
-  const integration = result.rows[0];
+  const integration = await repo.findIntegration({ integrationId, agentId });
   if (!integration) throw new Error("Integration not found");
 
   if (!integration.access_token) {
@@ -1322,17 +1297,9 @@ async function testIntegration(integrationId, agentId) {
  * Build integration summary for syncing to agent containers.
  */
 async function getIntegrationsForSync(agentId) {
-  const result = await db.query(
-    `SELECT i.id, i.provider, i.catalog_id, i.config, i.status, i.created_at,
-            ic.name as catalog_name, ic.category as catalog_category,
-            ic.auth_type, ic.config_schema
-     FROM integrations i
-     LEFT JOIN integration_catalog ic ON i.catalog_id = ic.id
-     WHERE i.agent_id = $1 AND i.status = 'active'`,
-    [agentId],
-  );
+  const rows = await repo.listActiveForAgent(agentId);
   const refreshedRows = [];
-  for (const row of result.rows) {
+  for (const row of rows) {
     refreshedRows.push(await refreshTwitterOAuthRowIfNeeded(row));
   }
   return refreshedRows.map(buildIntegrationSyncEntry);
@@ -1345,12 +1312,9 @@ async function getIntegrationsForSync(agentId) {
  * integrations sync route (push live tokens into a running gateway via RPC).
  */
 async function getIntegrationEnvVars(agentId) {
-  const result = await db.query(
-    "SELECT id, provider, catalog_id, access_token, config FROM integrations WHERE agent_id = $1 AND status = 'active'",
-    [agentId],
-  );
+  const rows = await repo.listActiveEnvSourcesForAgent(agentId);
   const envVars = {};
-  for (const rawRow of result.rows) {
+  for (const rawRow of rows) {
     const row = await refreshTwitterOAuthRowIfNeeded(rawRow);
     // 1. Primary credential stored in access_token column
     const envName = INTEGRATION_ENV_MAP[row.provider];
