@@ -3,18 +3,30 @@
 
 const db = require("./db");
 const { encrypt, decrypt, ensureEncryptionConfigured } = require("./crypto");
-const path = require("path");
-const fs = require("fs");
-const {
-  buildIntegrationToolExecutionMetadata,
-  getIntegrationToolSpecs,
-} = require("../agent-runtime/lib/integrationTools");
 const llmProviders = require("./llmProviders");
 const {
   createIntegrationsRepository,
 } = require("./integrations/repository/integrationsRepository");
+const catalogLoader = require("./integrations/catalog/catalogLoader");
+const {
+  createSecretEncryption,
+} = require("./integrations/crypto/secretEncryption");
+const {
+  buildIntegrationToolCatalogEntries,
+} = require("./integrations/services/toolCatalogBuilder");
 
 const repo = createIntegrationsRepository(db);
+const secretCrypto = createSecretEncryption({
+  encrypt,
+  decrypt,
+  getSensitiveConfigKeys: catalogLoader.getSensitiveConfigKeys,
+});
+const {
+  encryptSensitiveConfig,
+  decryptSensitiveConfig,
+  redactSensitiveConfig,
+  stripSensitiveConfig,
+} = secretCrypto;
 
 const TWITTER_OAUTH_TOKEN_URL = "https://api.x.com/2/oauth2/token";
 const OAUTH_TOKEN_REFRESH_SKEW_MS = 5 * 60 * 1000;
@@ -239,164 +251,22 @@ const { assertSafeUrlAsync } = require("./networkSafety");
 const assertSafeUrl = assertSafeUrlAsync;
 
 // ── Catalog ──────────────────────────────────────────────
+// Logic lives in integrations/catalog/catalogLoader.ts; the wrappers
+// below preserve the existing module signatures used by callers.
 
-let catalogCache = null;
+const loadCatalog = catalogLoader.loadCatalog;
+const hydrateRow = catalogLoader.hydrateRow;
 
-function loadCatalog() {
-  if (catalogCache) return catalogCache;
-  const catalogPath = path.join(__dirname, "integrations", "catalog", "catalog.json");
-  try {
-    catalogCache = JSON.parse(fs.readFileSync(catalogPath, "utf8"));
-  } catch {
-    catalogCache = [];
-    console.warn("Could not load integration catalog from disk");
-  }
-  return catalogCache;
-}
-
-/**
- * Seed the integration_catalog table from the JSON spec files.
- * Called once on server startup.
- */
 async function seedCatalog() {
-  catalogCache = null; // force re-read from disk
-  const catalog = loadCatalog();
-  for (const item of catalog) {
-    try {
-      await repo.upsertCatalogItem({
-        id: item.id,
-        name: item.name,
-        icon: item.icon,
-        category: item.category,
-        description: item.description,
-        authType: item.authType,
-        rawJson: JSON.stringify(item),
-      });
-    } catch (e) {
-      // Table may not exist yet during first boot — silently skip
-      if (!e.message.includes("does not exist")) {
-        console.error(`Failed to seed catalog item ${item.id}:`, e.message);
-      }
-    }
-  }
-  console.log(`Integration catalog seeded: ${catalog.length} items`);
-}
-
-function resolveCatalogSchema(row = {}) {
-  const rawSchema =
-    row.config_schema ??
-    loadCatalog().find(
-      (item) => item.id === row.catalog_id || item.id === row.provider || item.id === row.id,
-    );
-
-  if (!rawSchema) return {};
-
-  if (typeof rawSchema === "string") {
-    try {
-      return JSON.parse(rawSchema);
-    } catch {
-      return {};
-    }
-  }
-
-  return rawSchema && typeof rawSchema === "object" ? rawSchema : {};
-}
-
-function hydrateRow(row) {
-  const schema = resolveCatalogSchema(row);
-  return {
-    ...row,
-    configFields: schema.configFields || [],
-    capabilities: schema.capabilities || [],
-    authType: schema.authType || row.auth_type,
-    toolSpecs: schema.toolSpecs || [],
-    mcp: schema.mcp || null,
-    api: schema.api || null,
-    usageHints: schema.usageHints || [],
-  };
+  return catalogLoader.seedCatalog(repo);
 }
 
 async function getCatalog(category) {
-  try {
-    const rows = await repo.getCatalogByCategory(category);
-    return rows.map(hydrateRow);
-  } catch {
-    // Fallback to in-memory catalog if table doesn't exist yet
-    const catalog = loadCatalog();
-    if (category) return catalog.filter((c) => c.category === category);
-    return catalog;
-  }
+  return catalogLoader.getCatalog(repo, category);
 }
 
 async function getCatalogItem(catalogId) {
-  try {
-    const row = await repo.getCatalogItemById(catalogId);
-    return row ? hydrateRow(row) : null;
-  } catch {
-    return loadCatalog().find((c) => c.id === catalogId) || null;
-  }
-}
-
-const SECRET_CONFIG_KEY_RE =
-  /(token|secret|password|api[_-]?key|private[_-]?key|service[_-]?account|credentials?)/i;
-const REDACTED_SECRET = "[REDACTED]";
-
-function getSensitiveConfigKeys(provider) {
-  const catalogItem = loadCatalog().find((item) => item.id === provider);
-  const schemaKeys = new Set(
-    (catalogItem?.configFields || [])
-      .filter((field) => field?.type === "password" || SECRET_CONFIG_KEY_RE.test(field?.key || ""))
-      .map((field) => field.key),
-  );
-  if (
-    provider === "gcp" ||
-    provider === "google-drive" ||
-    provider === "google-sheets" ||
-    provider === "google-calendar" ||
-    provider === "firebase" ||
-    provider === "google-analytics"
-  ) {
-    for (const key of ["service_account_json", "credentials_json"]) schemaKeys.add(key);
-  }
-  return schemaKeys;
-}
-
-function parseConfig(config) {
-  return typeof config === "string" ? JSON.parse(config) : config || {};
-}
-
-function encryptSensitiveConfig(provider, config = {}) {
-  const plain = parseConfig(config);
-  const sensitiveKeys = getSensitiveConfigKeys(provider);
-  const secured = { ...plain };
-  let hasSensitiveMaterial = false;
-
-  for (const key of Object.keys(secured)) {
-    const value = secured[key];
-    if (!value) continue;
-    if (sensitiveKeys.has(key) || SECRET_CONFIG_KEY_RE.test(key)) {
-      hasSensitiveMaterial = true;
-      secured[key] = encrypt(String(value));
-    }
-  }
-
-  return { secured, hasSensitiveMaterial };
-}
-
-function decryptSensitiveConfig(provider, config = {}) {
-  const parsed = parseConfig(config);
-  const sensitiveKeys = getSensitiveConfigKeys(provider);
-  const revealed = { ...parsed };
-
-  for (const key of Object.keys(revealed)) {
-    const value = revealed[key];
-    if (!value) continue;
-    if (sensitiveKeys.has(key) || SECRET_CONFIG_KEY_RE.test(key)) {
-      revealed[key] = decrypt(String(value));
-    }
-  }
-
-  return revealed;
+  return catalogLoader.getCatalogItem(repo, catalogId);
 }
 
 function stringValue(value) {
@@ -489,36 +359,6 @@ async function refreshTwitterOAuthRowIfNeeded(row = {}) {
   };
 }
 
-function redactSensitiveConfig(provider, config = {}) {
-  const parsed = parseConfig(config);
-  const sensitiveKeys = getSensitiveConfigKeys(provider);
-  const redacted = { ...parsed };
-
-  for (const key of Object.keys(redacted)) {
-    if (sensitiveKeys.has(key) || SECRET_CONFIG_KEY_RE.test(key)) {
-      if (redacted[key]) redacted[key] = REDACTED_SECRET;
-    }
-  }
-
-  return redacted;
-}
-
-function stripSensitiveConfig(provider, config = {}) {
-  const parsed = parseConfig(config);
-  const sensitiveKeys = getSensitiveConfigKeys(provider);
-  const stripped = { ...parsed };
-  let removedSensitive = false;
-
-  for (const key of Object.keys(stripped)) {
-    if (sensitiveKeys.has(key) || SECRET_CONFIG_KEY_RE.test(key)) {
-      if (stripped[key]) removedSensitive = true;
-      stripped[key] = null;
-    }
-  }
-
-  return { config: stripped, removedSensitive };
-}
-
 async function readProviderErrorResponse(res) {
   const rawText = await res.text().catch(() => "");
   if (!rawText) return { rawText: "", data: null };
@@ -603,84 +443,6 @@ function buildIntegrationSyncEntry(row = {}) {
       config: configEnv,
     },
   };
-}
-
-function normalizeToolName(rawName, fallback) {
-  const candidate = String(rawName || fallback || "tool")
-    .trim()
-    .replace(/[^a-zA-Z0-9_-]+/g, "_")
-    .replace(/^_+|_+$/g, "");
-  return candidate || "tool";
-}
-
-function ensureUniqueToolName(baseName, reservedNames) {
-  let nextName = baseName;
-  let suffix = 2;
-  while (reservedNames.has(nextName)) {
-    nextName = `${baseName}_${suffix}`;
-    suffix += 1;
-  }
-  reservedNames.add(nextName);
-  return nextName;
-}
-
-function normalizeToolParameterSchema(schema) {
-  if (!schema || typeof schema !== "object" || Array.isArray(schema)) {
-    return { type: "object", properties: {} };
-  }
-  return schema;
-}
-
-function buildIntegrationToolCatalogEntries(integrations = [], options = {}) {
-  const reservedNames =
-    options.reservedNames instanceof Set ? new Set(options.reservedNames) : new Set();
-  const tools = [];
-
-  for (const integration of Array.isArray(integrations) ? integrations : []) {
-    const toolSpecs = getIntegrationToolSpecs(integration);
-
-    for (let index = 0; index < toolSpecs.length; index += 1) {
-      const spec = toolSpecs[index] || {};
-      const uniqueName = ensureUniqueToolName(
-        normalizeToolName(spec.name, `${integration.provider}_${index + 1}`),
-        reservedNames,
-      );
-      const execution = buildIntegrationToolExecutionMetadata(integration, spec);
-
-      tools.push({
-        type: "function",
-        function: {
-          name: uniqueName,
-          description:
-            String(spec.description || "").trim() ||
-            `Declared ${integration.name || integration.provider} integration capability.`,
-          parameters: normalizeToolParameterSchema(spec.inputSchema || spec.parameters),
-        },
-        nora: {
-          source: "integration-manifest",
-          executable: execution.executable,
-          executionState: execution.executionState,
-          executionSurface: execution.executionSurface,
-          executor: execution.executor,
-          provider: integration.provider,
-          providerName: integration.name || integration.provider,
-          integrationId: integration.id,
-          operation: spec.operation || null,
-          runtimeToolName: execution.runtimeToolName,
-          invokeCommand: execution.invokeCommand,
-          exampleInput: execution.exampleInput,
-          authType: integration.authType || null,
-          capabilities: Array.isArray(integration.capabilities) ? integration.capabilities : [],
-          api: integration.api || null,
-          mcp: integration.mcp || null,
-          usageHints: Array.isArray(integration.usageHints) ? integration.usageHints : [],
-          config: integration.redactedConfig || {},
-        },
-      });
-    }
-  }
-
-  return tools;
 }
 
 // ── Agent Integrations (CRUD) ────────────────────────────
