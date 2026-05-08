@@ -12,9 +12,7 @@ export * from "./types/provider";
 
 export { createIntegrationsRepository } from "./repository/integrationsRepository";
 export type { IntegrationsRepository } from "./repository/integrationsRepository";
-export {
-  createOAuthStatesRepository,
-} from "./repository/oauthStatesRepository";
+export { createOAuthStatesRepository } from "./repository/oauthStatesRepository";
 export type { OAuthStatesRepository } from "./repository/oauthStatesRepository";
 
 export {

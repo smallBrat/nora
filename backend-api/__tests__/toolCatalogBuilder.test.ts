@@ -43,9 +43,7 @@ describe("buildIntegrationToolCatalogEntries", () => {
       integrationId: "int-gh",
       runtimeToolName: "nora_github_integration",
     });
-    expect(aggregate.nora.invokeCommand).toContain(
-      "nora-integration-tool nora_github_integration",
-    );
+    expect(aggregate.nora.invokeCommand).toContain("nora-integration-tool nora_github_integration");
 
     expect(repoTool.function).toEqual({
       name: "github_list_repositories",

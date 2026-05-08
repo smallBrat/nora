@@ -8,9 +8,7 @@
 // implementation instead of this adapter; PR 6 then trims the
 // corresponding entry from connectivityTests + the env maps.
 
-const {
-  buildConnectivityTests,
-} = require("./legacy/connectivityTests");
+const { buildConnectivityTests } = require("./legacy/connectivityTests");
 
 import type {
   ConnectivityResult,
@@ -26,20 +24,14 @@ export interface LegacyEnvMaps {
   configEnvMap: Record<string, string>;
 }
 
-export function createLegacyProviderAdapter(
-  providerId: string,
-  envMaps: LegacyEnvMaps,
-): Provider {
+export function createLegacyProviderAdapter(providerId: string, envMaps: LegacyEnvMaps): Provider {
   const authType: ProviderAuthType = "custom";
 
   return {
     id: providerId,
     authType,
 
-    async test(
-      ctx: DecryptedIntegration,
-      deps: ProviderDeps,
-    ): Promise<ConnectivityResult> {
+    async test(ctx: DecryptedIntegration, deps: ProviderDeps): Promise<ConnectivityResult> {
       const integration = { ...ctx.row, config: ctx.config };
       const tests = buildConnectivityTests(integration, ctx.token, {
         assertSafeUrl: deps.assertSafeUrl,

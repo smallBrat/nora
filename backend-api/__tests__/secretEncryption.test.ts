@@ -1,7 +1,5 @@
 // @ts-nocheck
-const {
-  createSecretEncryption,
-} = require("../integrations/crypto/secretEncryption");
+const { createSecretEncryption } = require("../integrations/crypto/secretEncryption");
 
 const encrypt = (s) => `enc(${s})`;
 const decrypt = (s) => `dec(${s})`;

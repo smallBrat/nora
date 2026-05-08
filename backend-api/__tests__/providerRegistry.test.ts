@@ -1,10 +1,6 @@
 // @ts-nocheck
-const {
-  createProviderRegistry,
-} = require("../integrations/providers/base/registry");
-const {
-  createLegacyProviderAdapter,
-} = require("../integrations/providers/legacy");
+const { createProviderRegistry } = require("../integrations/providers/base/registry");
+const { createLegacyProviderAdapter } = require("../integrations/providers/legacy");
 
 describe("createProviderRegistry", () => {
   it("falls back to the legacy adapter for unregistered providers", () => {
@@ -62,8 +58,7 @@ describe("createProviderRegistry", () => {
   });
 
   it("returns a fallback connectivity message when the provider has no test", async () => {
-    const legacyFactory = (id) =>
-      createLegacyProviderAdapter(id, { envMap: {}, configEnvMap: {} });
+    const legacyFactory = (id) => createLegacyProviderAdapter(id, { envMap: {}, configEnvMap: {} });
     const registry = createProviderRegistry(legacyFactory);
 
     const provider = registry.resolve("unknown-provider");
@@ -78,8 +73,7 @@ describe("createProviderRegistry", () => {
   });
 
   it("captures errors thrown by the legacy connectivity test as success=false", async () => {
-    const legacyFactory = (id) =>
-      createLegacyProviderAdapter(id, { envMap: {}, configEnvMap: {} });
+    const legacyFactory = (id) => createLegacyProviderAdapter(id, { envMap: {}, configEnvMap: {} });
     const registry = createProviderRegistry(legacyFactory);
 
     const originalFetch = global.fetch;
@@ -104,11 +98,20 @@ describe("createProviderRegistry", () => {
   });
 
   it("lists registered providers", () => {
-    const legacyFactory = (id) =>
-      createLegacyProviderAdapter(id, { envMap: {}, configEnvMap: {} });
+    const legacyFactory = (id) => createLegacyProviderAdapter(id, { envMap: {}, configEnvMap: {} });
     const registry = createProviderRegistry(legacyFactory);
-    const a = { id: "a", authType: "api_key", test: async () => ({ success: true }), mapToEnv: () => ({ primary: null, config: {} }) };
-    const b = { id: "b", authType: "api_key", test: async () => ({ success: true }), mapToEnv: () => ({ primary: null, config: {} }) };
+    const a = {
+      id: "a",
+      authType: "api_key",
+      test: async () => ({ success: true }),
+      mapToEnv: () => ({ primary: null, config: {} }),
+    };
+    const b = {
+      id: "b",
+      authType: "api_key",
+      test: async () => ({ success: true }),
+      mapToEnv: () => ({ primary: null, config: {} }),
+    };
 
     registry.register(a);
     registry.register(b);

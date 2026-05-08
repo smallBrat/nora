@@ -12,9 +12,7 @@
 const db = require("../../db");
 const { encrypt, decrypt, ensureEncryptionConfigured } = require("../../crypto");
 const { assertSafeUrlAsync } = require("../../networkSafety");
-const {
-  createIntegrationsRepository,
-} = require("../repository/integrationsRepository");
+const { createIntegrationsRepository } = require("../repository/integrationsRepository");
 const catalogLoader = require("../catalog/catalogLoader");
 const { createSecretEncryption } = require("../crypto/secretEncryption");
 const { buildIntegrationToolCatalogEntries } = require("./toolCatalogBuilder");

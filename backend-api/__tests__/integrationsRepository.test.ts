@@ -2,10 +2,10 @@
 // Locks in the exact SQL strings and parameter order produced by the
 // integrations repository so future refactors can't silently drift.
 
-const { createIntegrationsRepository } = require("../integrations/repository/integrationsRepository");
 const {
-  createOAuthStatesRepository,
-} = require("../integrations/repository/oauthStatesRepository");
+  createIntegrationsRepository,
+} = require("../integrations/repository/integrationsRepository");
+const { createOAuthStatesRepository } = require("../integrations/repository/oauthStatesRepository");
 
 function makeDb(rows = []) {
   const calls = [];
@@ -184,9 +184,7 @@ describe("createIntegrationsRepository", () => {
       agentId: "agent-1",
     });
 
-    expect(db.calls[0].sql).toBe(
-      "SELECT * FROM integrations WHERE id = $1 AND agent_id = $2",
-    );
+    expect(db.calls[0].sql).toBe("SELECT * FROM integrations WHERE id = $1 AND agent_id = $2");
     expect(db.calls[0].params).toEqual(["int-1", "agent-1"]);
     expect(row).toEqual({ id: "int-1" });
   });
@@ -263,9 +261,7 @@ describe("createOAuthStatesRepository", () => {
 
     await repo.delete("state-1");
 
-    expect(db.calls[0].sql).toBe(
-      "DELETE FROM integration_oauth_states WHERE state = $1",
-    );
+    expect(db.calls[0].sql).toBe("DELETE FROM integration_oauth_states WHERE state = $1");
     expect(db.calls[0].params).toEqual(["state-1"]);
   });
 });

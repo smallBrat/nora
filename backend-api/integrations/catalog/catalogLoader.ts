@@ -9,11 +9,7 @@
 import * as fs from "fs";
 import * as path from "path";
 
-import type {
-  CatalogConfigField,
-  CatalogItem,
-  CatalogToolSpec,
-} from "../types/integration";
+import type { CatalogConfigField, CatalogItem, CatalogToolSpec } from "../types/integration";
 import type { IntegrationsRepository } from "../repository/integrationsRepository";
 
 const SECRET_CONFIG_KEY_RE =
@@ -74,9 +70,7 @@ export async function seedCatalog(repo: IntegrationsRepository): Promise<void> {
   console.log(`Integration catalog seeded: ${catalog.length} items`);
 }
 
-export function resolveCatalogSchema(
-  row: Record<string, any> = {},
-): Record<string, any> {
+export function resolveCatalogSchema(row: Record<string, any> = {}): Record<string, any> {
   const rawSchema =
     row.config_schema ??
     loadCatalog().find(
@@ -150,10 +144,7 @@ export function getSensitiveConfigKeys(provider: string): Set<string> {
   const catalogItem = loadCatalog().find((item) => item.id === provider);
   const schemaKeys = new Set<string>(
     (catalogItem?.configFields || [])
-      .filter(
-        (field) =>
-          field?.type === "password" || SECRET_CONFIG_KEY_RE.test(field?.key || ""),
-      )
+      .filter((field) => field?.type === "password" || SECRET_CONFIG_KEY_RE.test(field?.key || ""))
       .map((field) => field.key),
   );
   if (GOOGLE_STYLE_SERVICE_ACCOUNT_PROVIDERS.has(provider)) {

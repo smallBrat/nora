@@ -4,10 +4,7 @@
 // no provider business logic. Callers pass pre-encrypted blobs and
 // receive raw rows; transformation happens in services/.
 
-import type {
-  IntegrationCatalogRow,
-  IntegrationRow,
-} from "../types/integration";
+import type { IntegrationCatalogRow, IntegrationRow } from "../types/integration";
 
 type DbLike = { query: (sql: string, params?: unknown[]) => Promise<{ rows: any[] }> };
 
@@ -91,10 +88,7 @@ export function createIntegrationsRepository(db: DbLike): IntegrationsRepository
     },
 
     async getCatalogItemById(catalogId) {
-      const result = await db.query(
-        "SELECT * FROM integration_catalog WHERE id = $1",
-        [catalogId],
-      );
+      const result = await db.query("SELECT * FROM integration_catalog WHERE id = $1", [catalogId]);
       return result.rows[0] ?? null;
     },
 
@@ -156,18 +150,19 @@ export function createIntegrationsRepository(db: DbLike): IntegrationsRepository
     },
 
     async findIntegration({ integrationId, agentId }) {
-      const result = await db.query(
-        "SELECT * FROM integrations WHERE id = $1 AND agent_id = $2",
-        [integrationId, agentId],
-      );
+      const result = await db.query("SELECT * FROM integrations WHERE id = $1 AND agent_id = $2", [
+        integrationId,
+        agentId,
+      ]);
       return result.rows[0] ?? null;
     },
 
     async updateAccessTokenAndConfig({ id, encryptedToken, encryptedConfigJson }) {
-      await db.query(
-        "UPDATE integrations SET access_token = $1, config = $2 WHERE id = $3",
-        [encryptedToken, encryptedConfigJson, id],
-      );
+      await db.query("UPDATE integrations SET access_token = $1, config = $2 WHERE id = $3", [
+        encryptedToken,
+        encryptedConfigJson,
+        id,
+      ]);
     },
   };
 }

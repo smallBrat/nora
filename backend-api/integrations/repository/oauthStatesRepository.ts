@@ -19,10 +19,7 @@ export interface OAuthStatesRepository {
     redirectPath: string;
     expiresAt: Date;
   }): Promise<void>;
-  consume(input: {
-    state: string;
-    provider: string;
-  }): Promise<OAuthStateRow | null>;
+  consume(input: { state: string; provider: string }): Promise<OAuthStateRow | null>;
   delete(state: string): Promise<void>;
 }
 
@@ -64,10 +61,7 @@ export function createOAuthStatesRepository(db: DbLike): OAuthStatesRepository {
     },
 
     async delete(state) {
-      await db.query(
-        "DELETE FROM integration_oauth_states WHERE state = $1",
-        [state],
-      );
+      await db.query("DELETE FROM integration_oauth_states WHERE state = $1", [state]);
     },
   };
 }

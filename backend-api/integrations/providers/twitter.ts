@@ -105,10 +105,7 @@ export const twitterProvider: Provider = {
   // Refresh the OAuth 2.0 access token using the stored refresh_token if
   // we're within the skew window of expiry. Persists the new tokens via
   // the database handle from ProviderDeps.
-  async refreshCredentials(
-    row: IntegrationRow,
-    deps: ProviderDeps,
-  ): Promise<RefreshOutcome> {
+  async refreshCredentials(row: IntegrationRow, deps: ProviderDeps): Promise<RefreshOutcome> {
     if (!row?.id) return { row, refreshed: false };
 
     // The caller will already have decrypted secrets via the
@@ -127,10 +124,7 @@ export const twitterProvider: Provider = {
 
     // Decrypt fields the legacy crypto module would have decrypted.
     for (const key of Object.keys(config)) {
-      if (
-        typeof config[key] === "string" &&
-        /^enc\(|^[A-Za-z0-9+/=]{20,}$/.test(config[key])
-      ) {
+      if (typeof config[key] === "string" && /^enc\(|^[A-Za-z0-9+/=]{20,}$/.test(config[key])) {
         try {
           config[key] = deps.decrypt(config[key]);
         } catch {
