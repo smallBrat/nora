@@ -181,6 +181,59 @@ function tokenExpiresAt(tokenData = {}) {
   return new Date(Date.now() + expiresIn * 1000).toISOString();
 }
 
+// ── LinkedIn OAuth 2.0 ───────────────────────────────────
+// Parallel to the Twitter helpers above. These should be extracted
+// into a generic OAuth2 helper alongside the Twitter ones once a
+// third OAuth provider lands.
+const LINKEDIN_OAUTH_AUTHORIZE_URL = "https://www.linkedin.com/oauth/v2/authorization";
+const LINKEDIN_OAUTH_TOKEN_URL = "https://www.linkedin.com/oauth/v2/accessToken";
+const LINKEDIN_OAUTH_USERINFO_URL = "https://api.linkedin.com/v2/userinfo";
+const LINKEDIN_OAUTH_SCOPES = ["openid", "profile", "email", "w_member_social"];
+const LINKEDIN_OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
+
+function linkedinOAuthCallbackUrl(req) {
+  return `${publicBaseUrl(req)}/api/integrations/linkedin/oauth/callback`;
+}
+
+function normalizeLinkedinOAuthConfig(config = {}) {
+  const source = config && typeof config === "object" && !Array.isArray(config) ? config : {};
+  return {
+    clientId: String(source.client_id || source.clientId || "").trim(),
+    clientSecret: String(source.client_secret || source.clientSecret || "").trim(),
+    defaultUsername: String(source.default_username || source.username || "").trim(),
+  };
+}
+
+async function exchangeLinkedinOAuthCode({ code, redirectUri, clientId, clientSecret }) {
+  if (!clientId || !clientSecret) {
+    const error = new Error("LinkedIn OAuth Client ID and Client Secret are both required.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const body = new URLSearchParams({
+    code,
+    grant_type: "authorization_code",
+    client_id: clientId,
+    client_secret: clientSecret,
+    redirect_uri: redirectUri,
+  });
+
+  const res = await fetch(LINKEDIN_OAUTH_TOKEN_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body,
+  });
+  return readJsonResponse(res, "LinkedIn token exchange");
+}
+
+async function fetchLinkedinOAuthUser(accessToken) {
+  const res = await fetch(LINKEDIN_OAUTH_USERINFO_URL, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  return readJsonResponse(res, "LinkedIn user lookup");
+}
+
 async function getAgentIntegrationRuntimeTarget(agentId) {
   const agentResult = await db.query(
     `SELECT id, container_id, host, runtime_host, runtime_port, status, gateway_token,
@@ -425,6 +478,179 @@ router.post("/agents/:id/integrations/twitter/oauth/start", async (req, res) => 
     });
   } catch (e) {
     res.status(e.statusCode || 500).json({ error: e.message });
+  }
+});
+
+router.post("/agents/:id/integrations/linkedin/oauth/start", async (req, res) => {
+  try {
+    const oauthConfig = normalizeLinkedinOAuthConfig(req.body?.config || req.body);
+    if (!oauthConfig.clientId || !oauthConfig.clientSecret) {
+      return res.status(400).json({
+        error:
+          "LinkedIn OAuth Client ID and Client Secret are required. Create a LinkedIn app, add the Nora callback URL as an authorized redirect, then enter the Client ID and Client Secret in this integration.",
+      });
+    }
+
+    const state = randomToken(32);
+    // LinkedIn confidential clients don't require PKCE, but we generate
+    // a code verifier anyway so the integration_oauth_states schema
+    // (shared with Twitter) stays uniform.
+    const codeVerifier = randomToken(64);
+    const redirectUri = linkedinOAuthCallbackUrl(req);
+    const redirectPath = normalizeRedirectPath(req.body?.redirectPath, req.params.id);
+    const expiresAt = new Date(Date.now() + LINKEDIN_OAUTH_STATE_TTL_MS);
+
+    await db.query(
+      `INSERT INTO integration_oauth_states(
+         state, provider, user_id, agent_id, code_verifier, client_id,
+         client_secret, config, redirect_path, expires_at
+       )
+       VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+      [
+        state,
+        "linkedin",
+        req.user.id,
+        req.params.id,
+        codeVerifier,
+        oauthConfig.clientId,
+        encrypt(oauthConfig.clientSecret),
+        JSON.stringify({
+          default_username: oauthConfig.defaultUsername,
+        }),
+        redirectPath,
+        expiresAt,
+      ],
+    );
+
+    const authorizationUrl = new URL(LINKEDIN_OAUTH_AUTHORIZE_URL);
+    authorizationUrl.searchParams.set("response_type", "code");
+    authorizationUrl.searchParams.set("client_id", oauthConfig.clientId);
+    authorizationUrl.searchParams.set("redirect_uri", redirectUri);
+    authorizationUrl.searchParams.set("scope", LINKEDIN_OAUTH_SCOPES.join(" "));
+    authorizationUrl.searchParams.set("state", state);
+
+    res.json({
+      authorizationUrl: authorizationUrl.toString(),
+      redirectUri,
+      expiresAt: expiresAt.toISOString(),
+    });
+  } catch (e) {
+    res.status(e.statusCode || 500).json({ error: e.message });
+  }
+});
+
+router.get("/integrations/linkedin/oauth/callback", async (req, res) => {
+  let redirectPath = "/app/agents";
+  let state = typeof req.query.state === "string" ? req.query.state : "";
+
+  try {
+    const code = typeof req.query.code === "string" ? req.query.code : "";
+    const providerError = typeof req.query.error === "string" ? req.query.error : "";
+    const providerErrorDescription =
+      typeof req.query.error_description === "string" ? req.query.error_description : "";
+
+    if (providerError) {
+      throw new Error(providerErrorDescription || providerError);
+    }
+    if (!state || !code) {
+      const error = new Error("LinkedIn OAuth callback missing state or code");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const stateResult = await db.query(
+      `SELECT s.state, s.provider, s.user_id, s.agent_id, s.code_verifier,
+              s.client_id, s.client_secret, s.config, s.redirect_path,
+              s.expires_at, a.user_id AS agent_user_id
+         FROM integration_oauth_states s
+         JOIN agents a ON a.id = s.agent_id
+        WHERE s.state = $1 AND s.provider = $2`,
+      [state, "linkedin"],
+    );
+    const oauthState = stateResult.rows[0];
+    if (!oauthState) {
+      const error = new Error("LinkedIn OAuth state expired or was already used");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    await db.query("DELETE FROM integration_oauth_states WHERE state = $1", [state]);
+    state = "";
+    redirectPath = normalizeRedirectPath(oauthState.redirect_path, oauthState.agent_id);
+
+    if (new Date(oauthState.expires_at).getTime() < Date.now()) {
+      const error = new Error("LinkedIn OAuth state expired. Start the connection again.");
+      error.statusCode = 400;
+      throw error;
+    }
+    if (
+      String(oauthState.user_id) !== String(req.user.id) ||
+      String(oauthState.agent_user_id) !== String(req.user.id)
+    ) {
+      const error = new Error("LinkedIn OAuth state does not belong to this Nora user");
+      error.statusCode = 403;
+      throw error;
+    }
+
+    const clientSecret = oauthState.client_secret ? decrypt(oauthState.client_secret) : "";
+    const tokenData = await exchangeLinkedinOAuthCode({
+      code,
+      redirectUri: linkedinOAuthCallbackUrl(req),
+      clientId: oauthState.client_id,
+      clientSecret,
+    });
+    const accessToken = String(tokenData.access_token || "").trim();
+    if (!accessToken) {
+      throw new Error("LinkedIn token exchange did not return an access token");
+    }
+
+    const profile = await fetchLinkedinOAuthUser(accessToken);
+    let stateConfig = {};
+    if (oauthState.config && typeof oauthState.config === "object") {
+      stateConfig = oauthState.config;
+    } else if (typeof oauthState.config === "string") {
+      try {
+        stateConfig = JSON.parse(oauthState.config);
+      } catch {
+        stateConfig = {};
+      }
+    }
+    const linkedinName = String(profile?.name || profile?.given_name || "").trim();
+    const linkedinSub = String(profile?.sub || "").trim();
+    const defaultUsername = String(stateConfig.default_username || "").trim() || linkedinName;
+    const config = {
+      access_token: accessToken,
+      refresh_token: tokenData.refresh_token || "",
+      token_type: tokenData.token_type || "Bearer",
+      scope: tokenData.scope || LINKEDIN_OAUTH_SCOPES.join(" "),
+      expires_at: tokenExpiresAt(tokenData),
+      client_id: oauthState.client_id,
+      client_secret: clientSecret,
+      sub: linkedinSub,
+      name: linkedinName,
+      default_username: defaultUsername,
+    };
+
+    await integrations.replaceIntegration(oauthState.agent_id, "linkedin", accessToken, config);
+    await syncIntegrationsToAgent(oauthState.agent_id, { strict: true });
+
+    return res.redirect(
+      appendQuery(redirectPath, {
+        integration: "linkedin",
+        status: "connected",
+      }),
+    );
+  } catch (e) {
+    if (state) {
+      db.query("DELETE FROM integration_oauth_states WHERE state = $1", [state]).catch(() => {});
+    }
+    return res.redirect(
+      appendQuery(redirectPath, {
+        integration: "linkedin",
+        status: "error",
+        error: e.message || "LinkedIn OAuth failed",
+      }),
+    );
   }
 });
 

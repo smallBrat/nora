@@ -790,12 +790,68 @@
     "name": "LinkedIn",
     "icon": "linkedin",
     "category": "social",
-    "description": "Post updates, manage company pages, and access LinkedIn APIs",
-    "authType": "api_key",
+    "description": "Post updates, read profile/email, and access LinkedIn APIs via OAuth 2.0",
+    "authType": "oauth2",
     "configFields": [
-      { "key": "access_token", "label": "Access Token", "type": "password", "required": true }
+      {
+        "key": "client_id",
+        "label": "LinkedIn OAuth 2.0 Client ID",
+        "type": "text",
+        "required": true
+      },
+      {
+        "key": "client_secret",
+        "label": "LinkedIn OAuth 2.0 Client Secret",
+        "type": "password",
+        "required": true
+      },
+      {
+        "key": "default_username",
+        "label": "Default Username (display only)",
+        "type": "text",
+        "required": false
+      }
     ],
-    "capabilities": ["read", "write"]
+    "capabilities": ["read", "write"],
+    "toolSpecs": [
+      {
+        "name": "linkedin_get_me",
+        "description": "Get the connected LinkedIn user's OpenID profile (name, email, sub).",
+        "operation": "userinfo",
+        "inputSchema": { "type": "object", "properties": {} }
+      },
+      {
+        "name": "linkedin_post_share",
+        "description": "Share a post on LinkedIn from the connected user.",
+        "operation": "ugcPosts.create",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "text": { "type": "string", "description": "Post body text." },
+            "visibility": {
+              "type": "string",
+              "enum": ["PUBLIC", "CONNECTIONS"],
+              "description": "Audience visibility for the post."
+            }
+          },
+          "required": ["text"]
+        }
+      }
+    ],
+    "api": {
+      "type": "rest",
+      "baseUrl": "https://api.linkedin.com",
+      "docsUrl": "https://learn.microsoft.com/en-us/linkedin/",
+      "authEnv": "LINKEDIN_ACCESS_TOKEN"
+    },
+    "mcp": {
+      "available": false,
+      "notes": "No first-class Nora MCP bridge is wired for LinkedIn yet."
+    },
+    "usageHints": [
+      "Create a LinkedIn app at https://www.linkedin.com/developers/, add the Nora callback URL as an authorized redirect, then enter the Client ID and Client Secret here. Authorize a LinkedIn user with openid, profile, email, and w_member_social scopes; do not paste a manually-issued access token.",
+      "Inside a running OpenClaw agent, use the generated nora-integrations skill and nora-integration-tool command to execute connected LinkedIn tools."
+    ]
   },
   {
     "id": "facebook",
