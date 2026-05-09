@@ -84,7 +84,9 @@ Required substitutions in addition to the strategy template:
 
 The catalog entry for OAuth2 providers must declare `client_id` (required, type=text) and `client_secret` (required, type=password) as configFields — these are what the dashboard collects before kicking off the OAuth flow. Optionally include `default_username` (type=text, not required) for display.
 
-**Frontend wiring is automatic:** `IntegrationsTab.tsx` checks `item.authType === "oauth2"` and routes to `POST /api/agents/:id/integrations/<id>/oauth/start`. Once `oauth_routes.ts.tmpl` is appended, the flow works end-to-end after a backend restart (which re-seeds the catalog table from the JSON file).
+**Frontend wiring is automatic:** `IntegrationsTab.tsx` checks `item.authType === "oauth2"` and routes to `POST /api/agents/:id/integrations/<id>/oauth/start`. The integration modal also auto-renders the OAuth redirect URI for the operator to copy into their provider's developer console — derived from `window.location.origin + "/api/integrations/<id>/oauth/callback"`, no extra catalog metadata required. Once `oauth_routes.ts.tmpl` is appended, the flow works end-to-end after a backend restart (which re-seeds the catalog table from the JSON file).
+
+**Optional docs touch-up for OAuth providers:** `docs/guides/integrations.mdx` has a generic "OAuth-based integrations" section explaining the redirect URI pattern. The provider-specific examples table near the top of that section can optionally be extended with the new provider's redirect URI for discoverability, but the generic pattern row already covers any new OAuth provider.
 
 ## Catalog entry template
 

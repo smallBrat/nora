@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Puzzle, X, Loader2, CheckCircle, XCircle, RefreshCw } from "lucide-react";
+import { Puzzle, X, Loader2, CheckCircle, XCircle, RefreshCw, Copy, Check } from "lucide-react";
 
 type IntegrationCardProps = {
   item: any;
@@ -10,6 +10,13 @@ type IntegrationCardProps = {
   directConnect?: boolean;
   submitLabel?: string;
 };
+
+// Computes the redirect URI an operator must register in the provider's
+// OAuth app (e.g. LinkedIn developers console, X developer portal).
+function computeOAuthRedirectUri(providerId: string): string {
+  if (typeof window === "undefined" || !providerId) return "";
+  return `${window.location.origin}/api/integrations/${providerId}/oauth/callback`;
+}
 
 export default function IntegrationCard({
   item,
@@ -25,12 +32,27 @@ export default function IntegrationCard({
   const [connecting, setConnecting] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState(null); // { success, message }
+  const [redirectCopied, setRedirectCopied] = useState(false);
 
   const name = item.name || item.catalog_name || item.provider;
   const description = item.description || item.catalog_description || "";
   const category = item.category || item.catalog_category || "";
   const configFields = item.configFields || [];
   const isInstalled = !!installed;
+  const isOAuth2 = item.authType === "oauth2";
+  const redirectUri = isOAuth2 ? computeOAuthRedirectUri(item.id || item.provider) : "";
+  const usageHints = Array.isArray(item.usageHints) ? item.usageHints : [];
+
+  async function copyRedirectUri() {
+    if (!redirectUri || typeof navigator === "undefined" || !navigator.clipboard) return;
+    try {
+      await navigator.clipboard.writeText(redirectUri);
+      setRedirectCopied(true);
+      setTimeout(() => setRedirectCopied(false), 2000);
+    } catch {
+      // Clipboard API blocked (insecure context, permission denied) — silent.
+    }
+  }
 
   const categoryColors = {
     "developer-tools": "bg-blue-50 text-blue-700",
@@ -199,6 +221,47 @@ export default function IntegrationCard({
               </button>
             </div>
             <div className="p-4 space-y-3">
+              {isOAuth2 && redirectUri && (
+                <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 space-y-2">
+                  <div className="text-[10px] font-bold uppercase tracking-widest text-blue-700">
+                    OAuth Redirect URI
+                  </div>
+                  <p className="text-[11px] leading-relaxed text-blue-800">
+                    Add this exact URL as an authorized redirect URI in your {name} OAuth app before
+                    clicking <span className="font-semibold">{submitLabel || "Authorize"}</span>.
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 break-all rounded border border-blue-200 bg-white px-2 py-1.5 font-mono text-[11px] text-slate-700">
+                      {redirectUri}
+                    </code>
+                    <button
+                      type="button"
+                      onClick={copyRedirectUri}
+                      className="flex shrink-0 items-center gap-1 rounded-lg bg-blue-600 px-2.5 py-1.5 text-[10px] font-bold text-white hover:bg-blue-700"
+                      title="Copy redirect URI"
+                    >
+                      {redirectCopied ? (
+                        <>
+                          <Check size={11} />
+                          Copied
+                        </>
+                      ) : (
+                        <>
+                          <Copy size={11} />
+                          Copy
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  {usageHints.length > 0 && (
+                    <ul className="list-disc pl-4 text-[11px] leading-relaxed text-blue-800/80 space-y-0.5">
+                      {usageHints.slice(0, 2).map((hint, idx) => (
+                        <li key={idx}>{hint}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
               {configFields.map((field) => (
                 <div key={field.key}>
                   <label className="text-[10px] text-slate-500 font-bold uppercase tracking-widest block mb-1">
