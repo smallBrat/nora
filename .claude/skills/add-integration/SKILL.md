@@ -47,6 +47,7 @@ Only ask one batch of questions. If the user wants more fields/tools afterwards,
 - `backend-api/integrations/providers/legacy/connectivityTests.ts` — delete the entry if the provider was previously legacy
 - `backend-api/integrations/providers/legacy/envMaps.ts` — delete its env-map rows if previously legacy
 - `backend-api/integrations/AGENTS.md` — add the new provider to the migrated list
+- **`backend-api/routes/integrations.ts` — when `auth_type === "oauth2"`, append the constants block + start/callback routes from `templates/oauth_routes.ts.tmpl`. The frontend (`frontend-dashboard/components/agents/IntegrationsTab.tsx`) already routes to `/api/agents/:id/integrations/<id>/oauth/start` whenever the catalog reports `authType: "oauth2"` — no frontend changes needed.**
 
 **Never touches:**
 - `agent-runtime/lib/integrationTools.ts` — runtime side; reads from synced catalog
@@ -59,7 +60,31 @@ Only ask one batch of questions. If the user wants more fields/tools afterwards,
 
 Pick the template that matches the auth type. Copy as the body of `backend-api/integrations/providers/<id>.ts` and substitute the placeholders.
 
-**Note**: see `templates/api_key.ts.tmpl`, `templates/oauth2.ts.tmpl`, `templates/basic.ts.tmpl`, and `templates/test.ts.tmpl` in this skill directory for the canonical bodies. Read them with the Read tool when generating.
+Templates in this skill directory:
+- `templates/api_key.ts.tmpl` — simple API-key/Bearer providers (github, slack, …)
+- `templates/oauth2.ts.tmpl` — OAuth 2.0 with `refreshCredentials` + `sanitizeForSync` (twitter, linkedin, …)
+- `templates/basic.ts.tmpl` — Basic auth with site-URL validation (jira, bitbucket, …)
+- `templates/test.ts.tmpl` — unit-test scaffold for the provider
+- `templates/oauth_routes.ts.tmpl` — **only for `oauth2` providers**: constants + start/callback routes appended to `backend-api/routes/integrations.ts`
+
+Read each with the Read tool when generating. Substitute the `{{PLACEHOLDER}}` tokens.
+
+## OAuth2 — additional steps
+
+If `auth_type === "oauth2"`, the strategy file alone is not enough — the dashboard's "Authorize with X" button needs an OAuth start route, and LinkedIn/Twitter style flows need a callback route to exchange the code for tokens. Generate both from `templates/oauth_routes.ts.tmpl` and append to `backend-api/routes/integrations.ts`.
+
+Required substitutions in addition to the strategy template:
+- `{{AUTHORIZE_URL}}` — provider's authorization endpoint (e.g. `https://www.linkedin.com/oauth/v2/authorization`)
+- `{{TOKEN_URL}}` — token-exchange endpoint
+- `{{USERINFO_URL}}` — endpoint to fetch the connected user's profile after exchange
+- `{{SCOPES_ARRAY}}` — JS array literal of scope strings
+- `{{IDENTITY_FIELD}}` — JSON field on the userinfo response that names the user (e.g. `name`, `username`, `login`)
+- `{{ID_CAP}}` — provider id capitalized (e.g. `Linkedin`, `Twitter`)
+- `{{ID_CAP_UPPER}}` — provider id uppercased (e.g. `LINKEDIN`, `TWITTER`) for constant names
+
+The catalog entry for OAuth2 providers must declare `client_id` (required, type=text) and `client_secret` (required, type=password) as configFields — these are what the dashboard collects before kicking off the OAuth flow. Optionally include `default_username` (type=text, not required) for display.
+
+**Frontend wiring is automatic:** `IntegrationsTab.tsx` checks `item.authType === "oauth2"` and routes to `POST /api/agents/:id/integrations/<id>/oauth/start`. Once `oauth_routes.ts.tmpl` is appended, the flow works end-to-end after a backend restart (which re-seeds the catalog table from the JSON file).
 
 ## Catalog entry template
 

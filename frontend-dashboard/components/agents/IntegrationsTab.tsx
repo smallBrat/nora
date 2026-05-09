@@ -239,13 +239,13 @@ export default function IntegrationsTab({ agentId }) {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {filteredCatalog.map((item) => {
             const inst = installed.find((i) => i.provider === item.id || i.catalog_id === item.id);
-            const oauthConnect = item.id === "twitter";
+            const oauthConnect = item.authType === "oauth2";
             return (
               <IntegrationCard
                 key={item.id}
                 item={item}
                 installed={inst || null}
-                submitLabel={oauthConnect ? "Authorize with X" : undefined}
+                submitLabel={oauthConnect ? `Authorize with ${item.name}` : undefined}
                 onConnect={(configValues) =>
                   oauthConnect
                     ? handleOAuthConnect(item, configValues)
