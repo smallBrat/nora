@@ -46,7 +46,7 @@
                 "group": "Kubernetes",
                 "pages": [
                   "configuration/provisioner-backends/kubernetes",
-                  "configuration/provisioner-backends/kubernetes-kind",
+                  "configuration/provisioner-backends/kubernetes-k3s",
                   "configuration/provisioner-backends/kubernetes-aks",
                   "configuration/provisioner-backends/kubernetes-gke",
                   "configuration/provisioner-backends/kubernetes-eks"

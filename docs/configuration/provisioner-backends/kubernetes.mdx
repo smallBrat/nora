@@ -20,7 +20,7 @@ K8S_EXPOSURE_MODE=cluster-ip
 | Mode | Use when | Required settings |
 | ---- | -------- | ----------------- |
 | `cluster-ip` | Nora runs in the same cluster or has an in-cluster route to Services. | `K8S_NAMESPACE` |
-| `node-port` | Local Kind or another cluster where Nora reaches node ports. | `K8S_RUNTIME_HOST`, optional fixed node ports |
+| `node-port` | K3s or another self-hosted cluster where Nora reaches node ports. | `K8S_RUNTIME_HOST`, optional fixed node ports |
 | `load-balancer` | Nora runs outside AKS, GKE, EKS, or another cloud cluster. | Optional annotations, source ranges, and load balancer class |
 
 NodePort example:
@@ -64,7 +64,7 @@ The kubeconfig identity needs permissions in `K8S_NAMESPACE` to:
 
 ## Provider guides
 
-- [Kind](/configuration/provisioner-backends/kubernetes-kind)
+- [K3s](/configuration/provisioner-backends/kubernetes-k3s)
 - [AKS](/configuration/provisioner-backends/kubernetes-aks)
 - [GKE](/configuration/provisioner-backends/kubernetes-gke)
 - [EKS](/configuration/provisioner-backends/kubernetes-eks)

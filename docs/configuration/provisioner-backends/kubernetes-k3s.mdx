@@ -1,0 +1,91 @@
+# K3s provisioner backend
+
+> Run Nora agents on a lightweight self-hosted K3s cluster using Nora's Kubernetes adapter.
+
+K3s is the recommended self-hosted Kubernetes path when you want cluster scheduling without using a managed cloud provider. Nora still uses the same Kubernetes adapter underneath; the `k3s` backend id exists so operators can distinguish lightweight self-hosted clusters from cloud `k8s` deployments in configuration and the deploy flow.
+
+## When to use K3s
+
+Use K3s when Nora runs on your own server, homelab, edge node, or private VM fleet and you want agent workloads scheduled as Kubernetes Deployments instead of local Docker containers.
+
+Use AKS, GKE, EKS, or another cloud `k8s` target when you want managed control-plane operations, cloud load balancers, cloud identity, and multi-zone cluster management.
+
+|                        | K3s                                      | Cloud Kubernetes (`k8s`)                         |
+| ---------------------- | ---------------------------------------- | ------------------------------------------------ |
+| **Backend id**         | `k3s`                                    | `k8s`                                            |
+| **Operator model**     | You own the cluster host and upgrades    | Cloud provider manages the Kubernetes control plane |
+| **Typical exposure**   | `node-port` from Compose to the K3s node | `load-balancer` with provider-managed Services   |
+| **Best for**           | Self-hosted, edge, lab, and private infra | Production cloud clusters and managed networking |
+| **Adapter behavior**   | Same generic Kubernetes adapter          | Same generic Kubernetes adapter                  |
+
+## Install K3s
+
+On the host that will run K3s:
+
+```bash theme={null}
+curl -sfL https://get.k3s.io | sh -
+sudo k3s kubectl get nodes
+```
+
+Create a kubeconfig Nora can mount:
+
+```bash theme={null}
+mkdir -p .secrets
+sudo install -m 600 -o "$USER" -g "$USER" \
+  /etc/rancher/k3s/k3s.yaml \
+  ./.secrets/k3s-kubeconfig
+```
+
+If Nora runs in Docker Compose, the kubeconfig server URL must be reachable from the `backend-api` and `worker-provisioner` containers. Replace the default loopback address with the K3s node address:
+
+```bash theme={null}
+K3S_NODE_IP=<k3s-node-ip>
+sed -i "s/127.0.0.1/${K3S_NODE_IP}/g" ./.secrets/k3s-kubeconfig
+kubectl --kubeconfig ./.secrets/k3s-kubeconfig get nodes
+```
+
+## Configure Nora
+
+Set the K3s helper variables in `.env`:
+
+```bash theme={null}
+K3S_KUBECONFIG_PATH=./.secrets/k3s-kubeconfig
+K3S_ENABLED_BACKENDS=k3s
+K3S_K8S_NAMESPACE=openclaw-agents
+K3S_K8S_EXPOSURE_MODE=node-port
+K3S_K8S_RUNTIME_HOST=host.docker.internal
+```
+
+Use `host.docker.internal` when K3s and Nora's Docker Compose stack run on the same host. Use the K3s node IP or DNS name when Nora runs on a different host.
+
+Leave `K3S_K8S_RUNTIME_NODE_PORT` and `K3S_K8S_GATEWAY_NODE_PORT` empty unless you need fixed ports for a single-agent test. Empty values let Kubernetes allocate NodePorts per agent and avoid port conflicts.
+
+Start Nora with the K3s overlay:
+
+```bash theme={null}
+docker compose -f docker-compose.yml -f docker-compose.k3s.yml up -d --build
+```
+
+## Exposure modes
+
+For the standard Compose-hosted control plane, use `node-port`. Nora stores the allocated NodePorts for each agent and reaches them through `K3S_K8S_RUNTIME_HOST`.
+
+Use `cluster-ip` only when the Nora control plane itself runs inside the same K3s cluster or otherwise has an in-cluster route to Service DNS names.
+
+Use `load-balancer` only when your K3s installation has a load balancer implementation that can assign a reachable address per agent Service.
+
+## Verification
+
+Check the Kubernetes workload:
+
+```bash theme={null}
+kubectl --kubeconfig ./.secrets/k3s-kubeconfig -n openclaw-agents get deploy,svc,pods
+```
+
+Check Nora worker logs:
+
+```bash theme={null}
+docker compose -f docker-compose.yml -f docker-compose.k3s.yml logs worker-provisioner
+```
+
+If an agent reaches `running` but the gateway is unreachable, confirm that `K3S_K8S_RUNTIME_HOST` points to an address the Compose containers can reach and that your firewall allows the allocated NodePort range.

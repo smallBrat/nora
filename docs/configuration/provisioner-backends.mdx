@@ -14,7 +14,7 @@ Nora provisions agent runtimes onto execution targets selected through `ENABLED_
   </Card>
 
   <Card title="Kubernetes" icon="cloud" href="/configuration/provisioner-backends/kubernetes">
-    K3s, Kind, AKS, GKE, EKS, or another conformant Kubernetes cluster.
+    K3s, AKS, GKE, EKS, or another conformant Kubernetes cluster.
   </Card>
 </CardGroup>
 
@@ -38,7 +38,7 @@ ENABLED_BACKENDS=docker
 ENABLED_SANDBOX_PROFILES=standard
 ```
 
-Use `ENABLED_BACKENDS=docker,k8s` when you want both local Docker and Kubernetes visible in the deploy flow. Use `ENABLED_BACKENDS=k8s` when every new agent should target Kubernetes by default.
+Use `ENABLED_BACKENDS=docker,k3s` when you want both local Docker and K3s visible in the deploy flow. Use `ENABLED_BACKENDS=docker,k8s` for cloud Kubernetes. Use `ENABLED_BACKENDS=k3s` or `ENABLED_BACKENDS=k8s` when every new agent should target that Kubernetes-backed option by default.
 
 ## Kubernetes providers
 
@@ -49,8 +49,8 @@ The Kubernetes adapter is provider-neutral. Nora talks to the Kubernetes API thr
     Adapter contract, exposure modes, namespace, service annotations, and RBAC expectations.
   </Card>
 
-  <Card title="Kind" icon="flask" href="/configuration/provisioner-backends/kubernetes-kind">
-    Local Kubernetes verification through `docker-compose.kind.yml`.
+  <Card title="K3s" icon="server" href="/configuration/provisioner-backends/kubernetes-k3s">
+    Lightweight self-hosted Kubernetes setup through `docker-compose.k3s.yml`.
   </Card>
 
   <Card title="AKS" icon="microsoft" href="/configuration/provisioner-backends/kubernetes-aks">
