@@ -36,7 +36,24 @@
         "pages": [
           "configuration/environment-variables",
           "configuration/platform-modes",
-          "configuration/provisioner-backends",
+          {
+            "group": "Provisioner backends",
+            "pages": [
+              "configuration/provisioner-backends",
+              "configuration/provisioner-backends/docker",
+              "configuration/provisioner-backends/proxmox",
+              {
+                "group": "Kubernetes",
+                "pages": [
+                  "configuration/provisioner-backends/kubernetes",
+                  "configuration/provisioner-backends/kubernetes-kind",
+                  "configuration/provisioner-backends/kubernetes-aks",
+                  "configuration/provisioner-backends/kubernetes-gke",
+                  "configuration/provisioner-backends/kubernetes-eks"
+                ]
+              }
+            ]
+          },
           "configuration/tls-domains"
         ]
       },

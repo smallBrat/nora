@@ -6,6 +6,7 @@ const db = require("./db");
 const containerManager = require("./containerManager");
 const { resolveAgentBackendType } = require("./agentRuntimeFields");
 const { extractSessionTokenFromUpgrade } = require("./authCookie");
+const { findAccessibleAgentForActor } = require("./middleware/ownership");
 
 /**
  * Attach the live-log WebSocket server to an existing HTTP server.
@@ -44,23 +45,9 @@ function attachLogStream(server) {
 
   wss.on("connection", async (ws, _req, agentId, user) => {
     try {
-      const result = await db.query(
-        `SELECT id, name, status, container_id, backend_type, runtime_family,
-                deploy_target, sandbox_profile, user_id
-           FROM agents
-          WHERE id = $1`,
-        [agentId]
-      );
-      if (!result.rows[0]) {
+      const agent = await findAccessibleAgentForActor(agentId, user, "viewer");
+      if (!agent) {
         ws.send(JSON.stringify({ type: "error", message: "Agent not found" }));
-        ws.close();
-        return;
-      }
-
-      const agent = result.rows[0];
-      const isAdmin = user?.role === "admin";
-      if (!isAdmin && agent.user_id !== user?.id) {
-        ws.send(JSON.stringify({ type: "error", message: "Unauthorized" }));
         ws.close();
         return;
       }
@@ -71,7 +58,7 @@ function attachLogStream(server) {
           type: "system",
           timestamp: new Date().toISOString(),
           message: `Connected to log stream for ${agent.name}`,
-        })
+        }),
       );
 
       if (!agent.container_id) {
@@ -80,7 +67,7 @@ function attachLogStream(server) {
             type: "system",
             timestamp: new Date().toISOString(),
             message: "No container assigned — agent may still be provisioning",
-          })
+          }),
         );
         return;
       }
@@ -104,7 +91,7 @@ function attachLogStream(server) {
             type: "system",
             timestamp: new Date().toISOString(),
             message: `Agent is ${agent.status} — logs will appear when the agent is running`,
-          })
+          }),
         );
         return; // keep connection open; client can wait
       }
@@ -120,7 +107,7 @@ function attachLogStream(server) {
               type: "system",
               timestamp: new Date().toISOString(),
               message: "Log streaming not available for this backend",
-            })
+            }),
           );
           return;
         }
@@ -130,7 +117,7 @@ function attachLogStream(server) {
             type: "system",
             timestamp: new Date().toISOString(),
             message: `Streaming logs from ${backendType} container...`,
-          })
+          }),
         );
 
         // Parse log lines (handles Docker multiplexed stream + raw streams)
@@ -139,7 +126,13 @@ function attachLogStream(server) {
           // Docker multiplexed stream: 8-byte header per frame
           // Skip the 8-byte docker header if present (stream_type byte > 2 means no header)
           let payload = chunk;
-          if (chunk.length > 8 && chunk[0] <= 2 && chunk[1] === 0 && chunk[2] === 0 && chunk[3] === 0) {
+          if (
+            chunk.length > 8 &&
+            chunk[0] <= 2 &&
+            chunk[1] === 0 &&
+            chunk[2] === 0 &&
+            chunk[3] === 0
+          ) {
             payload = chunk.slice(8);
           }
           const text = payload.toString("utf8").trim();
@@ -164,9 +157,7 @@ function attachLogStream(server) {
             else if (upper.includes("WARN")) level = "WARN";
             else if (upper.includes("DEBUG")) level = "DEBUG";
 
-            ws.send(
-              JSON.stringify({ type: "log", timestamp, level, message })
-            );
+            ws.send(JSON.stringify({ type: "log", timestamp, level, message }));
           }
         });
 
@@ -177,7 +168,7 @@ function attachLogStream(server) {
                 type: "system",
                 timestamp: new Date().toISOString(),
                 message: "Container log stream ended",
-              })
+              }),
             );
           }
         });
@@ -189,7 +180,7 @@ function attachLogStream(server) {
                 type: "error",
                 timestamp: new Date().toISOString(),
                 message: `Log stream error: ${err.message}`,
-              })
+              }),
             );
           }
         });
@@ -199,7 +190,7 @@ function attachLogStream(server) {
             type: "error",
             timestamp: new Date().toISOString(),
             message: `Failed to attach to container: ${err.message}`,
-          })
+          }),
         );
         return;
       }

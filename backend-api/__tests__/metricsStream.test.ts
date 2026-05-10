@@ -3,10 +3,10 @@ const { EventEmitter } = require("events");
 const jwt = require("jsonwebtoken");
 
 const mockDb = { query: jest.fn() };
-const mockContainerManager = {
-  status: jest.fn(),
-  logs: jest.fn(),
-};
+const mockBuildAgentStatsResponse = jest.fn().mockResolvedValue({
+  status: "running",
+  runtime: { health: "ok" },
+});
 const wsConnections = [];
 
 class mockFakeWebSocket extends EventEmitter {
@@ -40,7 +40,9 @@ class mockFakeWebSocketServer extends EventEmitter {
 }
 
 jest.mock("../db", () => mockDb);
-jest.mock("../containerManager", () => mockContainerManager);
+jest.mock("../agentTelemetry", () => ({
+  buildAgentStatsResponse: mockBuildAgentStatsResponse,
+}));
 jest.mock("ws", () => ({
   WebSocketServer: mockFakeWebSocketServer,
 }));
@@ -49,24 +51,27 @@ function flushAsyncWork() {
   return new Promise((resolve) => setImmediate(resolve));
 }
 
-describe("log stream websocket auth", () => {
-  let attachLogStream;
+describe("metrics stream websocket auth", () => {
+  let attachMetricsStream;
   let server;
 
   beforeEach(() => {
     jest.resetModules();
     process.env.JWT_SECRET = "secret";
     mockDb.query.mockReset();
-    mockContainerManager.status.mockReset();
-    mockContainerManager.logs.mockReset();
+    mockBuildAgentStatsResponse.mockClear();
+    mockBuildAgentStatsResponse.mockResolvedValue({
+      status: "running",
+      runtime: { health: "ok" },
+    });
     wsConnections.length = 0;
 
-    ({ attachLogStream } = require("../logStream"));
+    ({ attachMetricsStream } = require("../metricsStream"));
     server = new EventEmitter();
-    attachLogStream(server);
+    attachMetricsStream(server);
   });
 
-  function openLogStream(agentId, userPayload) {
+  function openMetricsStream(agentId, userPayload) {
     const token = jwt.sign(userPayload, process.env.JWT_SECRET, {
       expiresIn: "1h",
     });
@@ -78,7 +83,7 @@ describe("log stream websocket auth", () => {
     server.emit(
       "upgrade",
       {
-        url: `/ws/logs/${agentId}?token=${encodeURIComponent(token)}`,
+        url: `/ws/metrics/${agentId}?token=${encodeURIComponent(token)}`,
         headers: { host: "nora.test" },
       },
       socket,
@@ -88,23 +93,48 @@ describe("log stream websocket auth", () => {
     return wsConnections[0];
   }
 
-  it("rejects users without direct ownership or workspace access", async () => {
+  it("allows workspace viewers to stream shared agent metrics", async () => {
     mockDb.query
       .mockResolvedValueOnce({
         rows: [
           {
             id: "agent-1",
-            name: "Other Agent",
+            name: "Shared Agent",
             status: "running",
-            container_id: null,
-            backend_type: "docker",
+            user_id: "owner-1",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [{ role: "viewer" }] });
+
+    const ws = openMetricsStream("agent-1", { id: "viewer-1", role: "user" });
+    await flushAsyncWork();
+
+    expect(mockBuildAgentStatsResponse).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "agent-1", effective_role: "viewer" }),
+    );
+    expect(ws.sent).toContainEqual({
+      type: "snapshot",
+      payload: { status: "running", runtime: { health: "ok" } },
+    });
+    ws.close();
+  });
+
+  it("rejects users without access to the agent", async () => {
+    mockDb.query
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: "agent-1",
+            name: "Shared Agent",
+            status: "running",
             user_id: "owner-1",
           },
         ],
       })
       .mockResolvedValueOnce({ rows: [] });
 
-    const ws = openLogStream("agent-1", { id: "user-2", role: "user" });
+    const ws = openMetricsStream("agent-1", { id: "user-2", role: "user" });
     await flushAsyncWork();
 
     expect(ws.sent).toContainEqual({
@@ -114,63 +144,29 @@ describe("log stream websocket auth", () => {
     expect(ws.closed).toBe(true);
   });
 
-  it("allows workspace viewers to inspect shared agent log streams", async () => {
-    mockDb.query
-      .mockResolvedValueOnce({
-        rows: [
-          {
-            id: "agent-1",
-            name: "Shared Agent",
-            status: "running",
-            container_id: null,
-            backend_type: "docker",
-            user_id: "owner-1",
-          },
-        ],
-      })
-      .mockResolvedValueOnce({ rows: [{ role: "viewer" }] });
-
-    const ws = openLogStream("agent-1", { id: "viewer-1", role: "user" });
-    await flushAsyncWork();
-
-    expect(ws.sent[0]).toEqual(
-      expect.objectContaining({
-        type: "system",
-        message: "Connected to log stream for Shared Agent",
-      }),
-    );
-    expect(ws.closed).toBe(false);
-  });
-
-  it("allows admins to inspect any agent log stream", async () => {
+  it("allows admins to stream metrics for any agent", async () => {
     mockDb.query.mockResolvedValueOnce({
       rows: [
         {
           id: "agent-1",
           name: "Fleet Agent",
           status: "running",
-          container_id: null,
-          backend_type: "docker",
           user_id: "owner-1",
         },
       ],
     });
 
-    const ws = openLogStream("agent-1", { id: "admin-1", role: "admin" });
+    const ws = openMetricsStream("agent-1", { id: "admin-1", role: "admin" });
     await flushAsyncWork();
 
+    expect(mockBuildAgentStatsResponse).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "agent-1", effective_role: "admin" }),
+    );
     expect(ws.sent[0]).toEqual(
       expect.objectContaining({
-        type: "system",
-        message: "Connected to log stream for Fleet Agent",
+        type: "snapshot",
       }),
     );
-    expect(ws.sent[1]).toEqual(
-      expect.objectContaining({
-        type: "system",
-        message: "No container assigned — agent may still be provisioning",
-      }),
-    );
-    expect(ws.closed).toBe(false);
+    ws.close();
   });
 });

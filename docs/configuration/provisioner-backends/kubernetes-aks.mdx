@@ -1,0 +1,72 @@
+# Azure Kubernetes Service (AKS) provisioner backend
+
+> Provision Nora agents into Azure Kubernetes Service (AKS) using Nora's generic Kubernetes adapter and the AKS Compose overlay.
+
+AKS uses the same `k8s` backend id as every Kubernetes provider. The AKS-specific overlay mounts an AKS kubeconfig and defaults agent Services to cloud `LoadBalancer` exposure.
+
+## Create the kubeconfig
+
+```bash theme={null}
+mkdir -p .secrets
+az account set --subscription <subscription-id>
+az aks get-credentials \
+  --resource-group <resource-group> \
+  --name <cluster-name> \
+  --admin \
+  --file ./.secrets/aks-kubeconfig \
+  --overwrite-existing
+```
+
+Verify access from the host:
+
+```bash theme={null}
+kubectl --kubeconfig ./.secrets/aks-kubeconfig get nodes
+```
+
+## Configure Nora
+
+Set the AKS helper variables in `.env`:
+
+```bash theme={null}
+AKS_KUBECONFIG_PATH=./.secrets/aks-kubeconfig
+AKS_ENABLED_BACKENDS=k8s
+AKS_K8S_NAMESPACE=openclaw-agents
+AKS_K8S_EXPOSURE_MODE=load-balancer
+AKS_K8S_LOAD_BALANCER_SOURCE_RANGES=<nora-control-plane-egress-cidr>
+AKS_K8S_LOAD_BALANCER_READY_TIMEOUT_MS=1200000
+AKS_DEPLOYMENT_JOB_TIMEOUT_MS=1800000
+AKS_PROVISION_TIMEOUT_MS=1740000
+```
+
+Start the stack:
+
+```bash theme={null}
+docker compose -f docker-compose.yml -f docker-compose.aks.yml up -d --build
+```
+
+## AKS Service options
+
+For a public load balancer, leave `AKS_K8S_SERVICE_ANNOTATIONS_JSON` empty and restrict access with `AKS_K8S_LOAD_BALANCER_SOURCE_RANGES` when possible.
+
+For an internal AKS load balancer:
+
+```bash theme={null}
+AKS_K8S_SERVICE_ANNOTATIONS_JSON='{"service.beta.kubernetes.io/azure-load-balancer-internal":"true"}'
+```
+
+Do not set `K8S_RUNTIME_HOST` to the AKS API server address. Nora uses the Kubernetes API through kubeconfig, and agent gateway/runtime traffic uses the per-agent Service address.
+
+## Verification
+
+```bash theme={null}
+kubectl --kubeconfig ./.secrets/aks-kubeconfig -n openclaw-agents get deploy,svc,pods
+docker compose -f docker-compose.yml -f docker-compose.aks.yml logs worker-provisioner
+```
+
+For real e2e, enable the Kubernetes matrix cell:
+
+```bash theme={null}
+cd e2e
+REAL_ENABLE_OPENCLAW_DOCKER=0 REAL_ENABLE_OPENCLAW_K8S=1 \
+  BASE_URL=http://localhost:8080 npm run test:real:matrix
+```

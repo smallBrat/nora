@@ -2,19 +2,19 @@
 
 > Compare Docker, Proxmox, and Kubernetes provisioner backends to pick the right agent isolation and scaling strategy for your Nora deployment.
 
-Nora supports three provisioner backends that determine how agent runtime environments are created and isolated. You select a backend by setting `PROVISIONER_BACKEND` in your `.env` file. Docker is the default and requires no additional configuration, making it the fastest path to a running deployment. Proxmox and Kubernetes unlock stronger isolation and horizontal scale for production environments.
+Nora provisions agent runtimes onto execution targets selected through `ENABLED_BACKENDS`. Docker is the default path. Proxmox and Kubernetes add stronger placement options without changing the operator workflow.
 
 <CardGroup cols={3}>
-  <Card title="Docker" icon="docker" href="#docker">
-    Single-host deployments, local development, and quick evaluation. Zero extra configuration required.
+  <Card title="Docker" icon="docker" href="/configuration/provisioner-backends/docker">
+    Single-host deployments, local development, and quick evaluation.
   </Card>
 
-  <Card title="Proxmox" icon="server" href="#proxmox">
-    Stronger VM-level isolation, private fleet management, and on-premises infrastructure control.
+  <Card title="Proxmox" icon="server" href="/configuration/provisioner-backends/proxmox">
+    Proxmox-managed LXC runtime placement with API and SSH bootstrap.
   </Card>
 
-  <Card title="Kubernetes" icon="cloud" href="#kubernetes">
-    Cloud-native deployments, horizontal scaling, and container-native agent workloads.
+  <Card title="Kubernetes" icon="cloud" href="/configuration/provisioner-backends/kubernetes">
+    K3s, Kind, AKS, GKE, EKS, or another conformant Kubernetes cluster.
   </Card>
 </CardGroup>
 
@@ -22,111 +22,52 @@ Nora supports three provisioner backends that determine how agent runtime enviro
 
 |                        | Docker                                  | Proxmox                                                       | Kubernetes                                 |
 | ---------------------- | --------------------------------------- | ------------------------------------------------------------- | ------------------------------------------ |
-| **Deployment scale**   | Single host                             | Private VM fleet                                              | Multi-node cluster                         |
-| **Agent isolation**    | Container                               | Full VM                                                       | Container (namespace-scoped)               |
-| **Setup complexity**   | Low — no extra vars required            | Medium — Proxmox API credentials and a VM template            | Medium to high — existing cluster required |
-| **Best for**           | Local dev, evaluation, lean self-hosted | On-prem, security-conscious operators, private infrastructure | Cloud-native teams, AWS/Azure/GCP rollouts |
-| **Horizontal scaling** | No                                      | Limited (manual fleet)                                        | Yes                                        |
+| **Deployment scale**   | Single host                             | Private VM/LXC fleet                                          | Multi-node cluster                         |
+| **Agent isolation**    | Container                               | Proxmox LXC                                                   | Pod and namespace boundaries               |
+| **Setup complexity**   | Low                                     | Medium - Proxmox API plus SSH bootstrap                       | Medium to high - cluster and kubeconfig    |
+| **Best for**           | Local dev, evaluation, lean self-hosted | On-prem and private infrastructure operators                  | Cloud-native and managed-cluster rollouts  |
+| **Horizontal scaling** | No                                      | Limited by Proxmox fleet capacity                             | Yes                                        |
 
-## Docker
+## Runtime selection
 
-Docker is the default backend. When `PROVISIONER_BACKEND` is unset or set to `docker`, Nora provisions each agent runtime as an isolated Docker container on the same host running the Nora stack.
-
-```bash theme={null}
-PROVISIONER_BACKEND=docker
-```
-
-No additional variables are required. Resource limits applied to each agent are controlled by the [self-hosted resource limit variables](/configuration/environment-variables#self-hosted-resource-limits) (`MAX_VCPU`, `MAX_RAM_MB`, `MAX_DISK_GB`, `MAX_AGENTS`).
-
-<Tip>
-  Docker is the recommended backend for first-time deployments, local development, and low-volume self-hosted installations. You can migrate to Proxmox or Kubernetes later without changing your data.
-</Tip>
-
-## Proxmox
-
-The Proxmox backend provisions each agent runtime as a full virtual machine on a Proxmox VE node. This gives you stronger isolation than containers and full control over the underlying VM configuration.
-
-Set the following variables in your `.env`:
+Runtime selection is three-dimensional:
 
 ```bash theme={null}
-PROVISIONER_BACKEND=proxmox
-
-PROXMOX_API_URL=https://proxmox.local:8006/api2/json
-PROXMOX_TOKEN_ID=user@pam!tokenname
-PROXMOX_TOKEN_SECRET=<your-token-secret>
-PROXMOX_NODE=pve
-PROXMOX_TEMPLATE=ubuntu-22.04-standard
+ENABLED_RUNTIME_FAMILIES=openclaw
+ENABLED_BACKENDS=docker
+ENABLED_SANDBOX_PROFILES=standard
 ```
 
-| Variable               | Description                                                                                   |
-| ---------------------- | --------------------------------------------------------------------------------------------- |
-| `PROXMOX_API_URL`      | Full URL to your Proxmox API endpoint.                                                        |
-| `PROXMOX_TOKEN_ID`     | API token identifier in `user@pam!tokenname` format.                                          |
-| `PROXMOX_TOKEN_SECRET` | Secret for the API token above.                                                               |
-| `PROXMOX_NODE`         | Name of the Proxmox node where VMs are created. Defaults to `pve`.                            |
-| `PROXMOX_TEMPLATE`     | VM template cloned as the base image for each new agent. Defaults to `ubuntu-22.04-standard`. |
+Use `ENABLED_BACKENDS=docker,k8s` when you want both local Docker and Kubernetes visible in the deploy flow. Use `ENABLED_BACKENDS=k8s` when every new agent should target Kubernetes by default.
 
-<Note>
-  Create an API token in the Proxmox web UI under **Datacenter → Permissions → API Tokens**. The token user needs sufficient privileges to clone VMs from the configured template and manage VM lifecycle on the target node.
-</Note>
+## Kubernetes providers
 
-### When to choose Proxmox
+The Kubernetes adapter is provider-neutral. Nora talks to the Kubernetes API through `KUBECONFIG`, then creates Deployments and Services for each agent.
 
-Choose Proxmox when you need:
+<CardGroup cols={2}>
+  <Card title="Generic Kubernetes" icon="boxes-stacked" href="/configuration/provisioner-backends/kubernetes">
+    Adapter contract, exposure modes, namespace, service annotations, and RBAC expectations.
+  </Card>
 
-* VM-level isolation between agent workloads
-* An existing Proxmox cluster you want to leverage
-* On-premises infrastructure where you control the hardware
-* Stronger security boundaries than container namespaces provide
+  <Card title="Kind" icon="flask" href="/configuration/provisioner-backends/kubernetes-kind">
+    Local Kubernetes verification through `docker-compose.kind.yml`.
+  </Card>
 
-## Kubernetes
+  <Card title="AKS" icon="microsoft" href="/configuration/provisioner-backends/kubernetes-aks">
+    Azure Kubernetes Service setup through `docker-compose.aks.yml`.
+  </Card>
 
-The Kubernetes backend schedules agent workloads as pods inside a Kubernetes cluster. It is best suited for cloud-native operators already running Kubernetes on AWS, Azure, GCP, or on-premises.
+  <Card title="GKE" icon="google" href="/configuration/provisioner-backends/kubernetes-gke">
+    Google Kubernetes Engine setup through `docker-compose.gke.yml`.
+  </Card>
 
-Set the following variables in your `.env`:
+  <Card title="EKS" icon="aws" href="/configuration/provisioner-backends/kubernetes-eks">
+    Amazon EKS setup through `docker-compose.eks.yml`.
+  </Card>
+</CardGroup>
 
-```bash theme={null}
-PROVISIONER_BACKEND=k8s
-K8S_NAMESPACE=openclaw-agents
-K8S_EXPOSURE_MODE=cluster-ip
-```
+## Related references
 
-| Variable                | Required | Default           | Description                                                                                                                          |
-| ----------------------- | -------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `K8S_NAMESPACE`         | No       | `openclaw-agents` | Namespace where agent pods and services are created.                                                                                 |
-| `K8S_EXPOSURE_MODE`     | No       | `cluster-ip`      | How agent services are exposed. Use `cluster-ip` for standard in-cluster access and `node-port` for local `kind`-based verification. |
-| `K8S_RUNTIME_NODE_PORT` | No       | —                 | Node port for the agent runtime service. Only applicable in `node-port` mode.                                                        |
-| `K8S_GATEWAY_NODE_PORT` | No       | —                 | Node port for the agent gateway service. Only applicable in `node-port` mode.                                                        |
-| `K8S_RUNTIME_HOST`      | No       | —                 | Hostname or IP that the Nora control plane uses to reach agent runtimes in `node-port` mode.                                         |
-
-### Exposure modes
-
-<Tabs>
-  <Tab title="cluster-ip (default)">
-    Agent services use `ClusterIP` and are reachable only from within the cluster. Use this for all standard cloud and on-premises Kubernetes deployments where the Nora control plane runs inside the same cluster.
-
-    ```bash theme={null}
-    K8S_EXPOSURE_MODE=cluster-ip
-    ```
-  </Tab>
-
-  <Tab title="node-port (local kind)">
-    Agent services use `NodePort` so that the Nora control plane, running in Docker Compose outside the cluster, can reach them through Docker-mapped host ports. Use this for local verification with `kind`.
-
-    ```bash theme={null}
-    K8S_EXPOSURE_MODE=node-port
-    K8S_RUNTIME_NODE_PORT=30080
-    K8S_GATEWAY_NODE_PORT=30081
-    K8S_RUNTIME_HOST=host.docker.internal
-    ```
-  </Tab>
-</Tabs>
-
-### When to choose Kubernetes
-
-Choose Kubernetes when you need:
-
-* Horizontal scaling of agent workloads across multiple nodes
-* Native integration with cloud provider managed services (EKS, AKE, GKE)
-* Container-native deployment on infrastructure already managed by Kubernetes
-* Standard Kubernetes tooling for observability, autoscaling, and policy enforcement
+- [Environment variables](/configuration/environment-variables)
+- [Deploy an agent](/guides/deploy-agent)
+- [NemoClaw sandbox](/guides/nemoclaw)

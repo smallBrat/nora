@@ -12,6 +12,7 @@ jest.mock("../db", () => mockDb);
 
 const {
   findAccessibleAgent,
+  findAccessibleAgentForActor,
   rankRole,
   roleSatisfies,
   WORKSPACE_ROLE_RANK,
@@ -126,6 +127,44 @@ describe("findAccessibleAgent", () => {
   it("returns null for missing inputs without hitting the database", async () => {
     expect(await findAccessibleAgent(null, "user-1")).toBeNull();
     expect(await findAccessibleAgent("a1", null)).toBeNull();
+    expect(mockDb.query).not.toHaveBeenCalled();
+  });
+});
+
+describe("findAccessibleAgentForActor", () => {
+  it("lets platform admins access any agent", async () => {
+    mockDb.query.mockResolvedValueOnce({
+      rows: [{ id: "a1", user_id: "owner-1", name: "Fleet Agent" }],
+    });
+
+    const agent = await findAccessibleAgentForActor(
+      "a1",
+      { id: "admin-1", role: "admin" },
+      "editor",
+    );
+
+    expect(agent).toMatchObject({ id: "a1", effective_role: "admin" });
+    expect(mockDb.query).toHaveBeenCalledWith("SELECT * FROM agents WHERE id = $1", ["a1"]);
+  });
+
+  it("uses workspace-aware role checks for non-admin actors", async () => {
+    mockDb.query
+      .mockResolvedValueOnce({ rows: [{ id: "a1", user_id: "owner-1", name: "Shared" }] })
+      .mockResolvedValueOnce({ rows: [{ role: "editor" }] });
+
+    const agent = await findAccessibleAgentForActor(
+      "a1",
+      { id: "member-1", role: "user" },
+      "editor",
+    );
+
+    expect(agent).toMatchObject({ id: "a1", effective_role: "editor" });
+    expect(mockDb.query).toHaveBeenCalledTimes(2);
+  });
+
+  it("returns null when the actor is missing", async () => {
+    expect(await findAccessibleAgentForActor("a1", null, "viewer")).toBeNull();
+    expect(await findAccessibleAgentForActor("a1", {}, "viewer")).toBeNull();
     expect(mockDb.query).not.toHaveBeenCalled();
   });
 });

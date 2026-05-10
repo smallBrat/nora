@@ -6,6 +6,7 @@ const db = require("./db");
 const containerManager = require("./containerManager");
 const { resolveAgentBackendType } = require("./agentRuntimeFields");
 const { extractSessionTokenFromUpgrade } = require("./authCookie");
+const { findAccessibleAgentForActor } = require("./middleware/ownership");
 
 // Direct Docker access needed for exec sessions (containerManager.exec returns
 // the raw exec object, but we need the Docker container object for full TTY support)
@@ -57,23 +58,9 @@ function attachExecStream(server) {
 
   wss.on("connection", async (ws, _req, agentId, user) => {
     try {
-      // Verify the agent belongs to this user
-      const result = await db.query(
-        `SELECT id, name, status, container_id, backend_type, runtime_family,
-                deploy_target, sandbox_profile, user_id
-           FROM agents
-          WHERE id = $1`,
-        [agentId],
-      );
-      if (!result.rows[0]) {
+      const agent = await findAccessibleAgentForActor(agentId, user, "editor");
+      if (!agent) {
         ws.send(JSON.stringify({ type: "error", message: "Agent not found" }));
-        ws.close();
-        return;
-      }
-
-      const agent = result.rows[0];
-      if (agent.user_id !== user.id) {
-        ws.send(JSON.stringify({ type: "error", message: "Unauthorized" }));
         ws.close();
         return;
       }

@@ -1,0 +1,70 @@
+# Kubernetes provisioner backend
+
+> Run Nora agents as Kubernetes Deployments and Services through the generic `k8s` execution target.
+
+The Kubernetes backend is provider-neutral. Nora reads a kubeconfig, creates a namespace if needed, schedules one Deployment per agent, and creates one Service exposing the agent runtime and gateway ports.
+
+## Configuration
+
+```bash theme={null}
+ENABLED_BACKENDS=k8s
+KUBECONFIG=/kubeconfig/config
+K8S_NAMESPACE=openclaw-agents
+K8S_EXPOSURE_MODE=cluster-ip
+```
+
+`KUBECONFIG` must be visible inside both `backend-api` and `worker-provisioner`. The managed-provider Compose overlays mount the host kubeconfig at `/kubeconfig/config` for both services. For production, prefer a scoped identity or service account with the permissions below instead of a broad cluster-admin kubeconfig.
+
+## Exposure modes
+
+| Mode | Use when | Required settings |
+| ---- | -------- | ----------------- |
+| `cluster-ip` | Nora runs in the same cluster or has an in-cluster route to Services. | `K8S_NAMESPACE` |
+| `node-port` | Local Kind or another cluster where Nora reaches node ports. | `K8S_RUNTIME_HOST`, optional fixed node ports |
+| `load-balancer` | Nora runs outside AKS, GKE, EKS, or another cloud cluster. | Optional annotations, source ranges, and load balancer class |
+
+NodePort example:
+
+```bash theme={null}
+K8S_EXPOSURE_MODE=node-port
+K8S_RUNTIME_NODE_PORT=30909
+K8S_GATEWAY_NODE_PORT=31879
+K8S_RUNTIME_HOST=host.docker.internal
+```
+
+LoadBalancer example:
+
+```bash theme={null}
+K8S_EXPOSURE_MODE=load-balancer
+K8S_LOAD_BALANCER_SOURCE_RANGES=<nora-control-plane-egress-cidr>
+K8S_LOAD_BALANCER_READY_TIMEOUT_MS=1200000
+```
+
+## Service customization
+
+Provider-specific Service annotations are passed as JSON:
+
+```bash theme={null}
+K8S_SERVICE_ANNOTATIONS_JSON='{"example.com/annotation":"value"}'
+```
+
+`K8S_LOAD_BALANCER_SOURCE_RANGES` is a comma-separated CIDR list. Use it to restrict cloud load balancers to the Nora control-plane egress IP whenever possible.
+
+`K8S_LOAD_BALANCER_CLASS` is copied to the Service `loadBalancerClass` field in `load-balancer` mode.
+
+## RBAC expectations
+
+The kubeconfig identity needs permissions in `K8S_NAMESPACE` to:
+
+- Create and read Namespaces.
+- Create, read, patch, and delete Deployments.
+- Create, read, and delete Services.
+- List Pods for logs and terminal attachment.
+- Read Pod logs.
+
+## Provider guides
+
+- [Kind](/configuration/provisioner-backends/kubernetes-kind)
+- [AKS](/configuration/provisioner-backends/kubernetes-aks)
+- [GKE](/configuration/provisioner-backends/kubernetes-gke)
+- [EKS](/configuration/provisioner-backends/kubernetes-eks)

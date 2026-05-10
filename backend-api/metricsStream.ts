@@ -1,9 +1,9 @@
 // @ts-nocheck
 const { WebSocketServer } = require("ws");
 const jwt = require("jsonwebtoken");
-const db = require("./db");
 const { buildAgentStatsResponse } = require("./agentTelemetry");
 const { extractSessionTokenFromUpgrade } = require("./authCookie");
+const { findAccessibleAgentForActor } = require("./middleware/ownership");
 
 const STREAM_INTERVAL_MS = 5000;
 
@@ -31,19 +31,18 @@ function attachMetricsStream(server) {
     }
 
     wss.handleUpgrade(request, socket, head, (ws) => {
-      wss.emit("connection", ws, { agentId: match[1], userId: payload.id });
+      wss.emit("connection", ws, {
+        agentId: match[1],
+        user: { id: payload.id, role: payload.role },
+      });
     });
   });
 
-  wss.on("connection", async (ws, { agentId, userId }) => {
+  wss.on("connection", async (ws, { agentId, user }) => {
     let closed = false;
 
     const sendSnapshot = async () => {
-      const result = await db.query(
-        "SELECT * FROM agents WHERE id = $1 AND user_id = $2",
-        [agentId, userId]
-      );
-      const agent = result.rows[0];
+      const agent = await findAccessibleAgentForActor(agentId, user, "viewer");
 
       if (!agent) {
         if (ws.readyState === 1) {

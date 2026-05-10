@@ -1,0 +1,52 @@
+# Proxmox provisioner backend
+
+> Provision Nora agents as Proxmox-managed LXC runtime targets through the Proxmox API and SSH bootstrap.
+
+Proxmox gives Nora a stronger isolation and infrastructure-control option than local Docker containers while keeping the Nora control plane in Docker Compose.
+
+## Configuration
+
+```bash theme={null}
+ENABLED_BACKENDS=proxmox
+
+PROXMOX_API_URL=https://proxmox.local:8006/api2/json
+PROXMOX_TOKEN_ID=user@pam!tokenname
+PROXMOX_TOKEN_SECRET=<your-token-secret>
+PROXMOX_NODE=pve
+PROXMOX_TEMPLATE=local:vztmpl/ubuntu-22.04-standard_22.04-1_amd64.tar.zst
+PROXMOX_ROOTFS_STORAGE=local-lvm
+PROXMOX_BRIDGE=vmbr0
+PROXMOX_SSH_HOST=proxmox.local
+PROXMOX_SSH_USER=root
+PROXMOX_SSH_PRIVATE_KEY_PATH=/run/secrets/proxmox_key
+```
+
+`PROXMOX_TOKEN_ID` must use Proxmox API token format: `user@realm!tokenname`.
+
+## Required access
+
+The API token and SSH user must be able to:
+
+- Clone or create containers from the configured template.
+- Start, stop, restart, and delete the runtime target.
+- Run bootstrap commands through `pct` during first deploy.
+
+## Runtime-specific templates
+
+OpenClaw uses `PROXMOX_TEMPLATE`. Hermes and NemoClaw need explicit templates when those runtime paths are enabled:
+
+```bash theme={null}
+PROXMOX_HERMES_TEMPLATE=
+PROXMOX_NEMOCLAW_TEMPLATE=
+```
+
+## Verification
+
+Confirm the backend reports as available:
+
+```bash theme={null}
+docker compose up -d --build backend-api worker-provisioner
+curl -fsS http://localhost:8080/api/config/platform
+```
+
+If Proxmox appears enabled but unavailable, check `backend-api` startup logs for missing API token, SSH, or template settings.

@@ -116,6 +116,24 @@ async function findAccessibleAgent(agentId, userId, requiredRole = "viewer") {
   return { ...row, effective_role: memberRole };
 }
 
+// WebSocket and other non-Express entrypoints still need the same agent access
+// rules as HTTP routes. Platform admins retain fleet-wide read/write access,
+// while normal users flow through the workspace-aware ownership check above.
+async function findAccessibleAgentForActor(agentId, actor, requiredRole = "viewer") {
+  if (!agentId || !actor?.id) return null;
+  if (!Object.prototype.hasOwnProperty.call(WORKSPACE_ROLE_RANK, requiredRole)) {
+    throw new Error(`Unknown workspace role: ${requiredRole}`);
+  }
+
+  if (actor.role === "admin") {
+    const result = await db.query("SELECT * FROM agents WHERE id = $1", [agentId]);
+    const row = result.rows[0];
+    return row ? { ...row, effective_role: "admin" } : null;
+  }
+
+  return findAccessibleAgent(agentId, actor.id, requiredRole);
+}
+
 async function findOwnedWorkspace(workspaceId, userId) {
   if (!workspaceId) return null;
   const result = await db.query(
@@ -229,6 +247,7 @@ module.exports = {
   enforceApiKeyAgentScope,
   findOwnedAgent,
   findAccessibleAgent,
+  findAccessibleAgentForActor,
   findOwnedWorkspace,
   findWorkspaceMembership,
   requireOwnedAgent,

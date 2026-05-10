@@ -1,0 +1,53 @@
+# Docker provisioner backend
+
+> Run Nora agents as containers on the same Docker host as the Nora control plane.
+
+Docker is the default execution target. It is the fastest path for local development, evaluation, and lean self-hosted installs.
+
+## Configuration
+
+```bash theme={null}
+ENABLED_RUNTIME_FAMILIES=openclaw
+ENABLED_BACKENDS=docker
+ENABLED_SANDBOX_PROFILES=standard
+```
+
+No backend-specific credentials are required. The default `docker-compose.yml` mounts the host Docker socket into `backend-api`, `worker-provisioner`, and `worker-backup` so lifecycle operations can create, stop, restart, inspect, and delete agent containers.
+
+## Resource limits
+
+Self-hosted resource ceilings apply to Docker-backed deployments:
+
+```bash theme={null}
+MAX_VCPU=16
+MAX_RAM_MB=32768
+MAX_DISK_GB=500
+MAX_AGENTS=50
+```
+
+Each deploy request can choose resources within these limits unless platform defaults or billing mode lock them down.
+
+## Verification
+
+Start the default stack:
+
+```bash theme={null}
+docker compose up -d --build
+curl -fsS http://localhost:8080/api/health
+```
+
+Check that Docker is enabled:
+
+```bash theme={null}
+curl -fsS http://localhost:8080/api/config/platform
+```
+
+The response should include `docker` in `enabledBackends` or `enabledDeployTargets`.
+
+## When to use Docker
+
+Use Docker when:
+
+- Nora and the agents can run on one host.
+- You want the simplest operational model.
+- You are evaluating Nora before moving agents to Kubernetes or Proxmox.

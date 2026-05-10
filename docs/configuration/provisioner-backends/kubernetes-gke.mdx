@@ -1,0 +1,75 @@
+# GKE Kubernetes provisioner backend
+
+> Provision Nora agents into Google Kubernetes Engine using Nora's generic Kubernetes adapter and the GKE Compose overlay.
+
+GKE uses the same `k8s` backend id as every Kubernetes provider. The GKE-specific overlay mounts a GKE kubeconfig and defaults agent Services to cloud `LoadBalancer` exposure.
+
+## Create the kubeconfig
+
+```bash theme={null}
+mkdir -p .secrets
+KUBECONFIG=./.secrets/gke-kubeconfig \
+  gcloud container clusters get-credentials <cluster-name> \
+    --region <region> \
+    --project <project-id>
+```
+
+Use `--zone <zone>` instead of `--region <region>` for zonal clusters.
+
+Verify access from the host:
+
+```bash theme={null}
+kubectl --kubeconfig ./.secrets/gke-kubeconfig get nodes
+```
+
+## Configure Nora
+
+Set the GKE helper variables in `.env`:
+
+```bash theme={null}
+GKE_KUBECONFIG_PATH=./.secrets/gke-kubeconfig
+GKE_ENABLED_BACKENDS=k8s
+GKE_K8S_NAMESPACE=openclaw-agents
+GKE_K8S_EXPOSURE_MODE=load-balancer
+GKE_K8S_LOAD_BALANCER_SOURCE_RANGES=<nora-control-plane-egress-cidr>
+GKE_K8S_LOAD_BALANCER_READY_TIMEOUT_MS=1200000
+GKE_DEPLOYMENT_JOB_TIMEOUT_MS=1800000
+GKE_PROVISION_TIMEOUT_MS=1740000
+```
+
+Start the stack:
+
+```bash theme={null}
+docker compose -f docker-compose.yml -f docker-compose.gke.yml up -d --build
+```
+
+## GKE Service options
+
+The default GKE `LoadBalancer` Service path works without annotations. To request GKE's external passthrough Network Load Balancer with RBS on supported cluster versions, set:
+
+```bash theme={null}
+GKE_K8S_LOAD_BALANCER_CLASS=networking.gke.io/l4-regional-external
+```
+
+For clusters that use the annotation path instead of `loadBalancerClass`:
+
+```bash theme={null}
+GKE_K8S_SERVICE_ANNOTATIONS_JSON='{"cloud.google.com/l4-rbs":"enabled"}'
+```
+
+Leave `GKE_K8S_SERVICE_ANNOTATIONS_JSON` empty unless your cluster policy requires provider-specific Service annotations.
+
+## Verification
+
+```bash theme={null}
+kubectl --kubeconfig ./.secrets/gke-kubeconfig -n openclaw-agents get deploy,svc,pods
+docker compose -f docker-compose.yml -f docker-compose.gke.yml logs worker-provisioner
+```
+
+For real e2e, enable the Kubernetes matrix cell:
+
+```bash theme={null}
+cd e2e
+REAL_ENABLE_OPENCLAW_DOCKER=0 REAL_ENABLE_OPENCLAW_K8S=1 \
+  BASE_URL=http://localhost:8080 npm run test:real:matrix
+```

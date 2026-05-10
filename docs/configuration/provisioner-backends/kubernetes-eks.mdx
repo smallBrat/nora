@@ -1,0 +1,73 @@
+# EKS Kubernetes provisioner backend
+
+> Provision Nora agents into Amazon EKS using Nora's generic Kubernetes adapter and the EKS Compose overlay.
+
+EKS uses the same `k8s` backend id as every Kubernetes provider. The EKS-specific overlay mounts an EKS kubeconfig and defaults agent Services to cloud `LoadBalancer` exposure.
+
+## Create the kubeconfig
+
+```bash theme={null}
+mkdir -p .secrets
+aws eks update-kubeconfig \
+  --name <cluster-name> \
+  --region <region> \
+  --kubeconfig ./.secrets/eks-kubeconfig
+```
+
+Verify access from the host:
+
+```bash theme={null}
+kubectl --kubeconfig ./.secrets/eks-kubeconfig get nodes
+```
+
+## Configure Nora
+
+Set the EKS helper variables in `.env`:
+
+```bash theme={null}
+EKS_KUBECONFIG_PATH=./.secrets/eks-kubeconfig
+EKS_ENABLED_BACKENDS=k8s
+EKS_K8S_NAMESPACE=openclaw-agents
+EKS_K8S_EXPOSURE_MODE=load-balancer
+EKS_K8S_LOAD_BALANCER_SOURCE_RANGES=<nora-control-plane-egress-cidr>
+EKS_K8S_LOAD_BALANCER_READY_TIMEOUT_MS=1200000
+EKS_DEPLOYMENT_JOB_TIMEOUT_MS=1800000
+EKS_PROVISION_TIMEOUT_MS=1740000
+```
+
+Start the stack:
+
+```bash theme={null}
+docker compose -f docker-compose.yml -f docker-compose.eks.yml up -d --build
+```
+
+## EKS Service options
+
+For EKS Auto Mode NLB:
+
+```bash theme={null}
+EKS_K8S_LOAD_BALANCER_CLASS=eks.amazonaws.com/nlb
+```
+
+For AWS Load Balancer Controller / NLB annotations:
+
+```bash theme={null}
+EKS_K8S_SERVICE_ANNOTATIONS_JSON='{"service.beta.kubernetes.io/aws-load-balancer-scheme":"internet-facing","service.beta.kubernetes.io/aws-load-balancer-nlb-target-type":"ip"}'
+```
+
+Your cluster must have the AWS load-balancing path you choose installed and configured. If Services stay pending, check the EKS controller events and IAM permissions for load balancer creation.
+
+## Verification
+
+```bash theme={null}
+kubectl --kubeconfig ./.secrets/eks-kubeconfig -n openclaw-agents get deploy,svc,pods
+docker compose -f docker-compose.yml -f docker-compose.eks.yml logs worker-provisioner
+```
+
+For real e2e, enable the Kubernetes matrix cell:
+
+```bash theme={null}
+cd e2e
+REAL_ENABLE_OPENCLAW_DOCKER=0 REAL_ENABLE_OPENCLAW_K8S=1 \
+  BASE_URL=http://localhost:8080 npm run test:real:matrix
+```

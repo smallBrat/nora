@@ -5,7 +5,7 @@ const jwt = require("jsonwebtoken");
 const mockDb = { query: jest.fn() };
 const mockContainerManager = {
   status: jest.fn(),
-  logs: jest.fn(),
+  exec: jest.fn(),
 };
 const wsConnections = [];
 
@@ -41,6 +41,7 @@ class mockFakeWebSocketServer extends EventEmitter {
 
 jest.mock("../db", () => mockDb);
 jest.mock("../containerManager", () => mockContainerManager);
+jest.mock("dockerode", () => jest.fn());
 jest.mock("ws", () => ({
   WebSocketServer: mockFakeWebSocketServer,
 }));
@@ -49,8 +50,8 @@ function flushAsyncWork() {
   return new Promise((resolve) => setImmediate(resolve));
 }
 
-describe("log stream websocket auth", () => {
-  let attachLogStream;
+describe("exec stream websocket auth", () => {
+  let attachExecStream;
   let server;
 
   beforeEach(() => {
@@ -58,15 +59,15 @@ describe("log stream websocket auth", () => {
     process.env.JWT_SECRET = "secret";
     mockDb.query.mockReset();
     mockContainerManager.status.mockReset();
-    mockContainerManager.logs.mockReset();
+    mockContainerManager.exec.mockReset();
     wsConnections.length = 0;
 
-    ({ attachLogStream } = require("../logStream"));
+    ({ attachExecStream } = require("../execStream"));
     server = new EventEmitter();
-    attachLogStream(server);
+    attachExecStream(server);
   });
 
-  function openLogStream(agentId, userPayload) {
+  function openExecStream(agentId, userPayload) {
     const token = jwt.sign(userPayload, process.env.JWT_SECRET, {
       expiresIn: "1h",
     });
@@ -78,7 +79,7 @@ describe("log stream websocket auth", () => {
     server.emit(
       "upgrade",
       {
-        url: `/ws/logs/${agentId}?token=${encodeURIComponent(token)}`,
+        url: `/ws/exec/${agentId}?token=${encodeURIComponent(token)}`,
         headers: { host: "nora.test" },
       },
       socket,
@@ -88,13 +89,13 @@ describe("log stream websocket auth", () => {
     return wsConnections[0];
   }
 
-  it("rejects users without direct ownership or workspace access", async () => {
+  it("allows workspace editors to open terminal sessions for shared agents", async () => {
     mockDb.query
       .mockResolvedValueOnce({
         rows: [
           {
             id: "agent-1",
-            name: "Other Agent",
+            name: "Shared Agent",
             status: "running",
             container_id: null,
             backend_type: "docker",
@@ -102,19 +103,19 @@ describe("log stream websocket auth", () => {
           },
         ],
       })
-      .mockResolvedValueOnce({ rows: [] });
+      .mockResolvedValueOnce({ rows: [{ role: "editor" }] });
 
-    const ws = openLogStream("agent-1", { id: "user-2", role: "user" });
+    const ws = openExecStream("agent-1", { id: "editor-1", role: "user" });
     await flushAsyncWork();
 
     expect(ws.sent).toContainEqual({
       type: "error",
-      message: "Agent not found",
+      message: "No container ID — agent may still be provisioning",
     });
     expect(ws.closed).toBe(true);
   });
 
-  it("allows workspace viewers to inspect shared agent log streams", async () => {
+  it("rejects workspace viewers from terminal sessions", async () => {
     mockDb.query
       .mockResolvedValueOnce({
         rows: [
@@ -130,19 +131,17 @@ describe("log stream websocket auth", () => {
       })
       .mockResolvedValueOnce({ rows: [{ role: "viewer" }] });
 
-    const ws = openLogStream("agent-1", { id: "viewer-1", role: "user" });
+    const ws = openExecStream("agent-1", { id: "viewer-1", role: "user" });
     await flushAsyncWork();
 
-    expect(ws.sent[0]).toEqual(
-      expect.objectContaining({
-        type: "system",
-        message: "Connected to log stream for Shared Agent",
-      }),
-    );
-    expect(ws.closed).toBe(false);
+    expect(ws.sent).toContainEqual({
+      type: "error",
+      message: "Agent not found",
+    });
+    expect(ws.closed).toBe(true);
   });
 
-  it("allows admins to inspect any agent log stream", async () => {
+  it("allows admins to open terminal sessions for any agent", async () => {
     mockDb.query.mockResolvedValueOnce({
       rows: [
         {
@@ -156,21 +155,13 @@ describe("log stream websocket auth", () => {
       ],
     });
 
-    const ws = openLogStream("agent-1", { id: "admin-1", role: "admin" });
+    const ws = openExecStream("agent-1", { id: "admin-1", role: "admin" });
     await flushAsyncWork();
 
-    expect(ws.sent[0]).toEqual(
-      expect.objectContaining({
-        type: "system",
-        message: "Connected to log stream for Fleet Agent",
-      }),
-    );
-    expect(ws.sent[1]).toEqual(
-      expect.objectContaining({
-        type: "system",
-        message: "No container assigned — agent may still be provisioning",
-      }),
-    );
-    expect(ws.closed).toBe(false);
+    expect(ws.sent).toContainEqual({
+      type: "error",
+      message: "No container ID — agent may still be provisioning",
+    });
+    expect(ws.closed).toBe(true);
   });
 });
