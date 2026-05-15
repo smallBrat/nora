@@ -1162,7 +1162,7 @@ async function runSmtpSession(integration = {}, message = {}) {
   }
 
   let socket = secure
-    ? tls.connect({ host, port, servername: host, rejectUnauthorized: false })
+    ? tls.connect({ host, port, servername: host, rejectUnauthorized: true })
     : net.connect({ host, port });
   let buffer = "";
   const waitFor = (patterns, { timeoutMs = 15000 } = {}) =>
