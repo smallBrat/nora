@@ -6,6 +6,7 @@ const tls = require("tls");
 const crypto = require("crypto");
 const { execFileSync } = require("child_process");
 const { DatabaseSync } = require("node:sqlite");
+const sanitizeHtml = require("sanitize-html");
 
 const NORA_SYNC_INTEGRATIONS_DIR = "/root/.openclaw/workspace/integrations";
 const NORA_SYNC_INTEGRATIONS_CATALOG_FILE = `${NORA_SYNC_INTEGRATIONS_DIR}/integrations.json`;
@@ -1307,12 +1308,18 @@ function parseMimeParts(rawMessage = "") {
 }
 
 function sanitizeHtmlBody(html = "") {
-  return String(html || "")
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
-    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "")
-    .replace(/\son\w+="[^"]*"/gi, "")
-    .replace(/\son\w+='[^']*'/gi, "")
-    .trim();
+  return sanitizeHtml(String(html || ""), {
+    disallowedTagsMode: "discard",
+    allowedTags: (sanitizeHtml.defaults.allowedTags || []).filter((tag) => tag !== "style"),
+    allowedAttributes: {
+      ...sanitizeHtml.defaults.allowedAttributes,
+      "*": (sanitizeHtml.defaults.allowedAttributes?.["*"] || []).filter(
+        (attr) => !/^on/i.test(String(attr || ""))
+      ),
+    },
+    allowedSchemes: ["http", "https", "mailto"],
+    allowProtocolRelative: false,
+  }).trim();
 }
 
 function normalizeEmailMessage(uid, rawMessage = "", fallbackHeaders = {}) {
