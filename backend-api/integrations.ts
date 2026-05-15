@@ -13,6 +13,8 @@ type IntegrationsModule = {
   buildCloneableIntegration: (...args: unknown[]) => unknown;
   buildIntegrationSyncEntry: (...args: unknown[]) => unknown;
   buildIntegrationToolCatalogEntries: (...args: unknown[]) => unknown;
+  normalizeEmailConfigInput: (...args: unknown[]) => unknown;
+  extractEmailPrimarySecret: (...args: unknown[]) => unknown;
   seedCatalog: (...args: unknown[]) => Promise<unknown>;
   getCatalog: (...args: unknown[]) => Promise<unknown>;
   getCatalogItem: (...args: unknown[]) => Promise<unknown>;
@@ -21,10 +23,13 @@ type IntegrationsModule = {
   decryptSensitiveConfig: (...args: unknown[]) => unknown;
   listIntegrations: (...args: unknown[]) => Promise<unknown>;
   removeIntegration: (...args: unknown[]) => Promise<unknown>;
+  updateIntegration: (...args: unknown[]) => Promise<unknown>;
+  updateEmailCronJobId: (...args: unknown[]) => Promise<unknown>;
   testIntegration: (...args: unknown[]) => Promise<unknown>;
   getIntegrationsForSync: (...args: unknown[]) => Promise<unknown>;
   getIntegrationEnvVars: (...args: unknown[]) => Promise<unknown>;
   integrationProviderAffectsLlmAuth: (provider: string) => boolean;
+  findActiveIntegrationByCronJobId: (...args: unknown[]) => Promise<unknown>;
   stripSensitiveConfig: (...args: unknown[]) => unknown;
 };
 
@@ -32,6 +37,8 @@ const exported: IntegrationsModule = {
   buildCloneableIntegration: service.buildCloneableIntegration,
   buildIntegrationSyncEntry: service.buildIntegrationSyncEntry,
   buildIntegrationToolCatalogEntries: service.buildIntegrationToolCatalogEntries,
+  normalizeEmailConfigInput: service.normalizeEmailConfigInput,
+  extractEmailPrimarySecret: service.extractEmailPrimarySecret,
   seedCatalog: service.seedCatalog,
   getCatalog: service.getCatalog,
   getCatalogItem: service.getCatalogItem,
@@ -40,10 +47,13 @@ const exported: IntegrationsModule = {
   decryptSensitiveConfig: service.decryptSensitiveConfig,
   listIntegrations: service.listIntegrations,
   removeIntegration: service.removeIntegration,
+  updateIntegration: service.updateIntegration,
+  updateEmailCronJobId: service.updateEmailCronJobId,
   testIntegration: service.testIntegration,
   getIntegrationsForSync: service.getIntegrationsForSync,
   getIntegrationEnvVars: service.getIntegrationEnvVars,
   integrationProviderAffectsLlmAuth: service.integrationProviderAffectsLlmAuth,
+  findActiveIntegrationByCronJobId: service.findActiveIntegrationByCronJobId,
   stripSensitiveConfig: service.stripSensitiveConfig,
 };
 

@@ -38,16 +38,32 @@ export interface IntegrationsRepository {
   deleteIntegration(input: {
     integrationId: string;
     agentId: string;
-  }): Promise<{ id: string; provider: string } | null>;
+  }): Promise<{ id: string; provider: string; cron_job_id?: string | null } | null>;
   findIntegration(input: {
     integrationId: string;
     agentId: string;
+  }): Promise<IntegrationRow | null>;
+  updateIntegration(input: {
+    id: string;
+    agentId: string;
+    encryptedToken: string | null;
+    encryptedConfigJson: string;
   }): Promise<IntegrationRow | null>;
   updateAccessTokenAndConfig(input: {
     id: string;
     encryptedToken: string;
     encryptedConfigJson: string;
   }): Promise<void>;
+  updateCronJobId(input: {
+    id: string;
+    agentId: string;
+    cronJobId: string | null;
+  }): Promise<void>;
+  findActiveEmailIntegrations(agentId: string): Promise<IntegrationRow[]>;
+  findActiveIntegrationByCronJobId(input: {
+    agentId: string;
+    cronJobId: string;
+  }): Promise<IntegrationRow | null>;
 }
 
 export function createIntegrationsRepository(db: DbLike): IntegrationsRepository {
@@ -109,8 +125,10 @@ export function createIntegrationsRepository(db: DbLike): IntegrationsRepository
 
     async listForAgent(agentId) {
       const result = await db.query(
-        `SELECT i.id, i.agent_id, i.provider, i.catalog_id, i.config, i.status, i.created_at,
-                ic.name as catalog_name, ic.icon as catalog_icon, ic.category as catalog_category, ic.description as catalog_description
+        `SELECT i.id, i.agent_id, i.provider, i.catalog_id, i.config, i.status, i.cron_job_id,
+                i.mailbox_state, i.created_at,
+                ic.name as catalog_name, ic.icon as catalog_icon, ic.category as catalog_category,
+                ic.description as catalog_description, ic.auth_type, ic.config_schema
          FROM integrations i
          LEFT JOIN integration_catalog ic ON i.catalog_id = ic.id
          WHERE i.agent_id = $1
@@ -122,7 +140,8 @@ export function createIntegrationsRepository(db: DbLike): IntegrationsRepository
 
     async listActiveForAgent(agentId) {
       const result = await db.query(
-        `SELECT i.id, i.provider, i.catalog_id, i.config, i.status, i.created_at,
+        `SELECT i.id, i.provider, i.catalog_id, i.config, i.status, i.cron_job_id,
+                i.mailbox_state, i.created_at,
                 ic.name as catalog_name, ic.category as catalog_category,
                 ic.auth_type, ic.config_schema
          FROM integrations i
@@ -143,7 +162,7 @@ export function createIntegrationsRepository(db: DbLike): IntegrationsRepository
 
     async deleteIntegration({ integrationId, agentId }) {
       const result = await db.query(
-        "DELETE FROM integrations WHERE id = $1 AND agent_id = $2 RETURNING id, provider",
+        "DELETE FROM integrations WHERE id = $1 AND agent_id = $2 RETURNING id, provider, cron_job_id",
         [integrationId, agentId],
       );
       return result.rows[0] ?? null;
@@ -163,6 +182,44 @@ export function createIntegrationsRepository(db: DbLike): IntegrationsRepository
         encryptedConfigJson,
         id,
       ]);
+    },
+
+    async updateIntegration({ id, agentId, encryptedToken, encryptedConfigJson }) {
+      const result = await db.query(
+        `UPDATE integrations
+            SET access_token = $1,
+                config = $2
+          WHERE id = $3 AND agent_id = $4
+        RETURNING *`,
+        [encryptedToken, encryptedConfigJson, id, agentId],
+      );
+      return result.rows[0] ?? null;
+    },
+
+    async updateCronJobId({ id, agentId, cronJobId }) {
+      await db.query(
+        "UPDATE integrations SET cron_job_id = $1 WHERE id = $2 AND agent_id = $3",
+        [cronJobId, id, agentId],
+      );
+    },
+
+    async findActiveEmailIntegrations(agentId) {
+      const result = await db.query(
+        "SELECT id, agent_id, provider, config, cron_job_id, status FROM integrations WHERE agent_id = $1 AND provider = 'email' AND status = 'active'",
+        [agentId],
+      );
+      return result.rows;
+    },
+
+    async findActiveIntegrationByCronJobId({ agentId, cronJobId }) {
+      const result = await db.query(
+        `SELECT id, agent_id, provider, catalog_id, status, cron_job_id
+           FROM integrations
+          WHERE agent_id = $1 AND cron_job_id = $2 AND status = 'active'
+          LIMIT 1`,
+        [agentId, cronJobId],
+      );
+      return result.rows[0] ?? null;
     },
   };
 }

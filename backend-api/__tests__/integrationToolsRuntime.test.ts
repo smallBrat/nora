@@ -11,6 +11,7 @@ const {
   buildIntegrationToolExecutionMetadata,
   executeIntegrationToolInvocation,
   loadSyncedIntegrations,
+  normalizeEmailMessage,
 } = require("../../agent-runtime/lib/integrationTools");
 
 describe("runtime integration tool execution", () => {
@@ -487,5 +488,146 @@ describe("runtime integration tool execution", () => {
     expect(markdown).toContain("default_channel: #ops");
     expect(markdown).not.toContain("ghp_test");
     expect(markdown).not.toContain("xoxb-secret");
+  });
+
+  it("does not expose built-in email processing tools through the runtime skill", () => {
+    const emailIntegration = { provider: "email" };
+    const ops = [
+      { name: "email_list_new_messages", operation: "messages.list_new" },
+      { name: "email_get_message", operation: "messages.get" },
+      { name: "email_send_message", operation: "messages.send" },
+      { name: "email_send_reply", operation: "messages.reply" },
+      { name: "email_mark_processed", operation: "messages.mark_processed" },
+    ];
+    for (const spec of ops) {
+      const meta = buildIntegrationToolExecutionMetadata(emailIntegration, spec);
+      expect(meta.executable).toBe(false);
+      expect(meta.executionState).toBe("manifest_only");
+      expect(meta.invokeCommand).toBeNull();
+    }
+  });
+
+  it("normalizes a plain-text email message", () => {
+    const raw = [
+      "From: Alice <alice@example.com>",
+      "To: Bob <bob@example.com>",
+      "Subject: Hello",
+      "Date: Thu, 01 Jan 2026 12:00:00 +0000",
+      "Message-ID: <abc@example.com>",
+      "In-Reply-To: <prev@example.com>",
+      "References: <prev@example.com>",
+      "",
+      "Hi Bob, this is the body.",
+    ].join("\r\n");
+
+    const msg = normalizeEmailMessage(101, raw, {});
+
+    expect(msg.uid).toBe(101);
+    expect(msg.messageId).toBe("<abc@example.com>");
+    expect(msg.subject).toBe("Hello");
+    expect(msg.from).toEqual([{ name: "Alice", address: "alice@example.com", raw: "Alice <alice@example.com>" }]);
+    expect(msg.to).toEqual([{ name: "Bob", address: "bob@example.com", raw: "Bob <bob@example.com>" }]);
+    expect(msg.inReplyTo).toBe("<prev@example.com>");
+    expect(msg.references).toBe("<prev@example.com>");
+    expect(msg.textBody).toBe("Hi Bob, this is the body.");
+    expect(msg.htmlBody).toBe("");
+    expect(msg.attachments).toEqual([]);
+  });
+
+  it("extracts htmlBody and textBody from a multipart/alternative message", () => {
+    const boundary = "=_boundary_test";
+    const raw = [
+      `Content-Type: multipart/alternative; boundary="${boundary}"`,
+      "",
+      `--${boundary}`,
+      "Content-Type: text/plain; charset=utf-8",
+      "",
+      "Plain text version.",
+      `--${boundary}`,
+      "Content-Type: text/html; charset=utf-8",
+      "",
+      "<p>HTML <b>version</b>.</p>",
+      `--${boundary}--`,
+    ].join("\r\n");
+
+    const msg = normalizeEmailMessage(42, raw, {});
+
+    expect(msg.textBody).toBe("Plain text version.");
+    expect(msg.htmlBody).toBe("<p>HTML <b>version</b>.</p>");
+    expect(msg.attachments).toEqual([]);
+  });
+
+  it("strips script and event handler tags from htmlBody", () => {
+    const boundary = "=_xss_boundary";
+    const raw = [
+      `Content-Type: multipart/alternative; boundary="${boundary}"`,
+      "",
+      `--${boundary}`,
+      "Content-Type: text/html; charset=utf-8",
+      "",
+      '<p onclick="evil()">Hello</p><script>alert(1)</script><style>body{}</style>',
+      `--${boundary}--`,
+    ].join("\r\n");
+
+    const msg = normalizeEmailMessage(99, raw, {});
+
+    expect(msg.htmlBody).not.toContain("<script>");
+    expect(msg.htmlBody).not.toContain("<style>");
+    expect(msg.htmlBody).not.toContain('onclick=');
+    expect(msg.htmlBody).toContain("<p");
+  });
+
+  it("surfaces attachment metadata from a multipart/mixed message", () => {
+    const boundary = "=_attach_boundary";
+    const raw = [
+      `Content-Type: multipart/mixed; boundary="${boundary}"`,
+      "",
+      `--${boundary}`,
+      "Content-Type: text/plain; charset=utf-8",
+      "",
+      "See attached.",
+      `--${boundary}`,
+      'Content-Type: application/pdf; name="report.pdf"',
+      'Content-Disposition: attachment; filename="report.pdf"',
+      "Content-Transfer-Encoding: base64",
+      "",
+      "AAAA",
+      `--${boundary}--`,
+    ].join("\r\n");
+
+    const msg = normalizeEmailMessage(55, raw, {});
+
+    expect(msg.textBody).toBe("See attached.");
+    expect(msg.attachments).toHaveLength(1);
+    expect(msg.attachments[0].filename).toBe("report.pdf");
+    expect(msg.attachments[0].contentType).toBe("application/pdf");
+    expect(typeof msg.attachments[0].size).toBe("number");
+  });
+
+  it("rejects removed email processing tools when invoked directly", async () => {
+    await expect(
+      executeIntegrationToolInvocation({
+        toolName: "email_mark_processed",
+        input: { uid: 77, messageId: "<dedupetest@example.com>", status: "processed" },
+        integrations: [
+          {
+            id: "test-email",
+            provider: "email",
+            name: "Test Email",
+            config: {
+              auth: { mode: "basic", username: "test@example.com", password: "pass" },
+              imap: { host: "imap.example.com", port: 993, secure: true },
+              smtp: {
+                host: "smtp.example.com",
+                port: 465,
+                secure: true,
+                fromAddress: "test@example.com",
+              },
+            },
+            toolSpecs: [{ name: "email_mark_processed", operation: "messages.mark_processed" }],
+          },
+        ],
+      }),
+    ).rejects.toThrow(/not executable/i);
   });
 });

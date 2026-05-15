@@ -1073,12 +1073,55 @@ router.post(
   }),
 );
 
+router.put(
+  "/:id/hermes-ui/cron/:jobId",
+  asyncHandler(async (req, res) => {
+    const agent = await loadHermesUiAgent(req, { requiredRole: "editor" });
+
+    try {
+      const cronResponse = await fetchHermesApi(
+        agent,
+        `/api/jobs/${encodeURIComponent(req.params.jobId)}`,
+        {
+          method: "PUT",
+          timeoutMs: 15000,
+          body: normalizeHermesCronPayload(req.body),
+        },
+      );
+      if (!cronResponse.ok) {
+        return res.status(cronResponse.status >= 500 ? 502 : cronResponse.status).json({
+          error: extractHermesApiError(
+            cronResponse.data,
+            `Hermes cron update returned ${cronResponse.status}`,
+          ),
+        });
+      }
+
+      res.json(
+        cronResponse.data && typeof cronResponse.data === "object"
+          ? cronResponse.data
+          : { success: true },
+      );
+    } catch (error) {
+      res.status(error.statusCode || 502).json({
+        error: error.message || "Hermes cron endpoint unreachable",
+      });
+    }
+  }),
+);
+
 router.delete(
   "/:id/hermes-ui/cron/:jobId",
   asyncHandler(async (req, res) => {
     const agent = await loadHermesUiAgent(req, { requiredRole: "editor" });
 
     try {
+      const integrations = require("../integrations");
+      const linkedIntegration = await integrations.findActiveIntegrationByCronJobId(
+        req.params.id,
+        req.params.jobId,
+      );
+
       const cronResponse = await fetchHermesApi(
         agent,
         `/api/jobs/${encodeURIComponent(req.params.jobId)}`,
@@ -1094,6 +1137,15 @@ router.delete(
             `Hermes cron deletion returned ${cronResponse.status}`,
           ),
         });
+      }
+
+      if (linkedIntegration) {
+        await integrations.updateEmailCronJobId(linkedIntegration.id, req.params.id, null);
+        if (linkedIntegration.provider === "email") {
+          await integrations.updateIntegration(linkedIntegration.id, req.params.id, null, {
+            "cron.enabled": false,
+          });
+        }
       }
 
       res.json({

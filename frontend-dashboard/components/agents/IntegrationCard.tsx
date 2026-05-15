@@ -29,6 +29,48 @@ function computeOAuthRedirectUri(providerId: string): string {
   return `${window.location.origin}/api/integrations/${providerId}/oauth/callback`;
 }
 
+const EMAIL_PROVIDER_DEFAULTS: Record<string, Record<string, any>> = {
+  gmail: {
+    "imap.host": "imap.gmail.com",
+    "imap.port": 993,
+    "imap.secure": true,
+    "smtp.host": "smtp.gmail.com",
+    "smtp.port": 465,
+    "smtp.secure": true,
+  },
+  outlook: {
+    "imap.host": "outlook.office365.com",
+    "imap.port": 993,
+    "imap.secure": true,
+    "smtp.host": "smtp.office365.com",
+    "smtp.port": 587,
+    "smtp.secure": false,
+  },
+  custom: {
+    "imap.host": "",
+    "imap.port": 993,
+    "imap.secure": true,
+    "smtp.host": "",
+    "smtp.port": 465,
+    "smtp.secure": true,
+  },
+};
+
+const EMAIL_CONNECTION_ADVANCED_KEYS = new Set([
+  "imap.host",
+  "imap.port",
+  "imap.secure",
+  "smtp.host",
+  "smtp.port",
+  "smtp.secure",
+]);
+
+const EMAIL_CRON_KEYS = new Set([
+  "cron.enabled",
+  "cron.intervalMinutes",
+  "cron.prompt",
+]);
+
 export default function IntegrationCard({
   item,
   installed,
@@ -42,6 +84,7 @@ export default function IntegrationCard({
   const [configValues, setConfigValues] = useState({});
   const [connecting, setConnecting] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [testResult, setTestResult] = useState(null); // { success, message }
   const [redirectCopied, setRedirectCopied] = useState(false);
 
@@ -59,6 +102,7 @@ export default function IntegrationCard({
     ? item.setupGuide.scopes
     : [];
   const mcpAvailable = item.mcp && item.mcp.available === true;
+  const isEmailIntegration = (item?.id || item?.provider || item?.catalog_id) === "email";
 
   async function copyRedirectUri() {
     if (!redirectUri || typeof navigator === "undefined" || !navigator.clipboard) return;
@@ -69,6 +113,46 @@ export default function IntegrationCard({
     } catch {
       // Clipboard API blocked (insecure context, permission denied) — silent.
     }
+  }
+
+  function applyEmailPresetDefaults(values: Record<string, any>) {
+    if (!isEmailIntegration) return values;
+    const preset = values.providerPreset || "gmail";
+    return {
+      ...EMAIL_PROVIDER_DEFAULTS.gmail,
+      ...values,
+      ...(EMAIL_PROVIDER_DEFAULTS[preset] || {}),
+      providerPreset: preset,
+    };
+  }
+
+  function buildInitialConfigValues() {
+    const initialValues = configFields.reduce(
+      (acc, field) => {
+        if (field.defaultValue !== undefined) acc[field.key] = field.defaultValue;
+        return acc;
+      },
+      {} as Record<string, any>,
+    );
+    return applyEmailPresetDefaults(initialValues);
+  }
+
+  function updateConfigValue(fieldKey: string, value: any) {
+    setConfigValues((prev) => {
+      const next = { ...prev, [fieldKey]: value };
+
+      if (fieldKey === "providerPreset" && isEmailIntegration) {
+        return applyEmailPresetDefaults(next);
+      }
+
+      if (isEmailIntegration && fieldKey === "auth.username") {
+        if (!prev["smtp.fromAddress"] || prev["smtp.fromAddress"] === prev["auth.username"]) {
+          next["smtp.fromAddress"] = value;
+        }
+      }
+
+      return next;
+    });
   }
 
   const categoryColors = {
@@ -103,6 +187,8 @@ export default function IntegrationCard({
     }
 
     if (configFields.length > 0) {
+      setConfigValues(buildInitialConfigValues());
+      setShowAdvanced(false);
       setShowConfig(true);
       setTestResult(null);
     } else {
@@ -143,6 +229,88 @@ export default function IntegrationCard({
     } finally {
       setTesting(false);
     }
+  }
+
+  const basicFields = isEmailIntegration
+    ? configFields.filter(
+        (field) =>
+          !EMAIL_CONNECTION_ADVANCED_KEYS.has(field.key) && !EMAIL_CRON_KEYS.has(field.key),
+      )
+    : configFields;
+  const advancedConnectionFields = isEmailIntegration
+    ? configFields.filter((field) => EMAIL_CONNECTION_ADVANCED_KEYS.has(field.key))
+    : [];
+  const cronToggleField = isEmailIntegration
+    ? configFields.find((field) => field.key === "cron.enabled")
+    : null;
+  const cronConfigFields = isEmailIntegration
+    ? configFields.filter((field) => field.key === "cron.intervalMinutes" || field.key === "cron.prompt")
+    : [];
+  const cronEnabled = Boolean(configValues["cron.enabled"]);
+
+  function renderField(field: any) {
+    return (
+      <div key={field.key}>
+        <label className="text-[10px] text-slate-500 font-bold uppercase tracking-widest block mb-1">
+          {field.label} {field.required && <span className="text-red-400">*</span>}
+        </label>
+        {field.type === "textarea" ? (
+          <textarea
+            value={configValues[field.key] || ""}
+            onChange={(e) => updateConfigValue(field.key, e.target.value)}
+            rows={4}
+            placeholder={field.placeholder || ""}
+            className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+          />
+        ) : field.type === "select" ? (
+          <select
+            value={configValues[field.key] ?? field.defaultValue ?? ""}
+            onChange={(e) => updateConfigValue(field.key, e.target.value)}
+            className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+          >
+            <option value="">Select…</option>
+            {(field.options || []).map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        ) : field.type === "checkbox" ? (
+          <label className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-700">
+            <input
+              type="checkbox"
+              checked={Boolean(configValues[field.key] ?? field.defaultValue ?? false)}
+              onChange={(e) => updateConfigValue(field.key, e.target.checked)}
+              className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+            />
+            Enable
+          </label>
+        ) : (
+          <input
+            type={
+              field.type === "password"
+                ? "password"
+                : field.type === "number"
+                  ? "number"
+                  : field.type === "email"
+                    ? "email"
+                    : field.type === "url"
+                      ? "url"
+                      : "text"
+            }
+            value={configValues[field.key] ?? field.defaultValue ?? ""}
+            onChange={(e) =>
+              updateConfigValue(
+                field.key,
+                field.type === "number" ? Number(e.target.value) : e.target.value,
+              )
+            }
+            placeholder={field.placeholder || (field.type === "url" ? "https://..." : "")}
+            className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        )}
+      </div>
+    );
   }
 
   return (
@@ -241,6 +409,7 @@ export default function IntegrationCard({
                 onClick={() => {
                   setShowConfig(false);
                   setConfigValues({});
+                  setShowAdvanced(false);
                   setTestResult(null);
                 }}
                 className="text-slate-400 hover:text-slate-600"
@@ -357,34 +526,67 @@ export default function IntegrationCard({
                   )}
                 </div>
               )}
-              {configFields.map((field) => (
-                <div key={field.key}>
-                  <label className="text-[10px] text-slate-500 font-bold uppercase tracking-widest block mb-1">
-                    {field.label} {field.required && <span className="text-red-400">*</span>}
-                  </label>
-                  {field.type === "textarea" ? (
-                    <textarea
-                      value={configValues[field.key] || ""}
-                      onChange={(e) =>
-                        setConfigValues((prev) => ({ ...prev, [field.key]: e.target.value }))
-                      }
-                      rows={4}
-                      placeholder={field.placeholder || ""}
-                      className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
-                    />
-                  ) : (
-                    <input
-                      type={field.type === "password" ? "password" : "text"}
-                      value={configValues[field.key] || ""}
-                      onChange={(e) =>
-                        setConfigValues((prev) => ({ ...prev, [field.key]: e.target.value }))
-                      }
-                      placeholder={field.placeholder || (field.type === "url" ? "https://..." : "")}
-                      className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
+              {basicFields.map(renderField)}
+
+              {isEmailIntegration && (advancedConnectionFields.length > 0 || cronToggleField || cronConfigFields.length > 0) && (
+                <div className="rounded-xl border border-slate-200 bg-slate-50/70">
+                  <button
+                    type="button"
+                    onClick={() => setShowAdvanced((prev) => !prev)}
+                    className="w-full flex items-center justify-between px-3 py-2 text-left"
+                  >
+                    <div>
+                      <div className="text-[11px] font-bold text-slate-800">Advanced Connection & Cron Settings</div>
+                      <div className="text-[10px] text-slate-500">
+                        Provider defaults are prefilled. Use this section for custom server overrides and the optional reminder cron.
+                      </div>
+                    </div>
+                    <span className="text-[10px] font-bold text-slate-500">
+                      {showAdvanced ? "Hide" : "Show"}
+                    </span>
+                  </button>
+                  {showAdvanced && (
+                    <div className="border-t border-slate-200 p-3 space-y-3">
+                      {advancedConnectionFields.length > 0 && (
+                        <div className="space-y-3">
+                          <div>
+                            <div className="text-[11px] font-bold text-slate-800">Connection Overrides</div>
+                            <div className="mt-1 text-[10px] text-slate-500">
+                              Adjust IMAP and SMTP host settings only if you need something other than the preset defaults.
+                            </div>
+                          </div>
+                          <div className="grid gap-3 md:grid-cols-2">
+                            {advancedConnectionFields.map(renderField)}
+                          </div>
+                        </div>
+                      )}
+
+                      {(cronToggleField || cronConfigFields.length > 0) && (
+                        <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-3">
+                          <div>
+                            <div className="text-[11px] font-bold text-slate-800">Reminder Cron</div>
+                            <div className="mt-1 text-[10px] text-slate-500">
+                              Nora can optionally create a normal scheduled agent turn seeded from this mailbox connection.
+                            </div>
+                          </div>
+
+                          {cronToggleField ? renderField(cronToggleField) : null}
+
+                          {cronEnabled ? (
+                            <div className="grid gap-3 md:grid-cols-2">
+                              {cronConfigFields.map(renderField)}
+                            </div>
+                          ) : (
+                            <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-500">
+                              Turn on the reminder cron to choose how often it runs and what prompt it should use.
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
-              ))}
+              )}
             </div>
             {/* Test result banner in modal */}
             {testResult && (
@@ -400,6 +602,7 @@ export default function IntegrationCard({
                 onClick={() => {
                   setShowConfig(false);
                   setConfigValues({});
+                  setShowAdvanced(false);
                   setTestResult(null);
                 }}
                 className="px-4 py-2 text-[10px] font-bold text-slate-500 hover:text-slate-700"
