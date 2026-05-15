@@ -1,0 +1,161 @@
+import net from "net";
+import tls from "tls";
+import nodemailer from "nodemailer";
+
+type EmailConfig = Record<string, any>;
+
+function stringValue(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function numberValue(value: unknown, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function boolValue(value: unknown, fallback = false): boolean {
+  return typeof value === "boolean" ? value : fallback;
+}
+
+function classifyMailError(error: unknown, protocol: "imap" | "smtp"): string {
+  const message = String((error as any)?.message || error || "").toLowerCase();
+  if (
+    message.includes("invalid credentials") ||
+    message.includes("auth") ||
+    message.includes("login failed")
+  ) {
+    return "invalid_mail_credentials";
+  }
+  if (message.includes("tls") || message.includes("ssl")) {
+    return "tls_mismatch";
+  }
+  if (message.includes("disabled")) {
+    return "imap_disabled";
+  }
+  return protocol === "smtp" ? "smtp_unreachable" : "imap_unreachable";
+}
+
+function escapeImapString(value: string): string {
+  return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
+async function connectImap(config: EmailConfig): Promise<{ ok: true; message: string }> {
+  const imap = config.imap || {};
+  const auth = config.auth || {};
+  const host = stringValue(imap.host);
+  const port = numberValue(imap.port, 993);
+  const secure = boolValue(imap.secure, true);
+  const username = stringValue(auth.username);
+  const password = stringValue(auth.password);
+
+  if (!host || !username) throw new Error("IMAP host and username are required");
+  if (!password) throw new Error("IMAP password is required");
+
+  await new Promise<void>((resolve, reject) => {
+    let completed = false;
+    let buffer = "";
+    let commandSent = false;
+    const socket = secure
+      ? tls.connect({ host, port, servername: host })
+      : net.connect({ host, port });
+
+    const finish = (err?: Error) => {
+      if (completed) return;
+      completed = true;
+      socket.removeAllListeners();
+      socket.destroy();
+      if (err) reject(err);
+      else resolve();
+    };
+
+    const sendAuth = () => {
+      if (commandSent) return;
+      commandSent = true;
+      const command = `a1 LOGIN ${escapeImapString(username)} ${escapeImapString(password)}\r\n`;
+      socket.write(command);
+    };
+
+    socket.setTimeout(10000, () => finish(new Error("IMAP connection timed out")));
+    socket.on("error", (error) =>
+      finish(error instanceof Error ? error : new Error(String(error))),
+    );
+    socket.on("data", (chunk) => {
+      buffer += chunk.toString("utf8");
+      if (!commandSent && /\* OK/i.test(buffer)) {
+        sendAuth();
+        return;
+      }
+      if (!commandSent) return;
+      if (/^a1 OK\b/im.test(buffer)) {
+        socket.write("a2 LOGOUT\r\n");
+        finish();
+        return;
+      }
+      if (/^a1 (NO|BAD)\b/im.test(buffer)) {
+        finish(new Error(buffer.trim()));
+      }
+    });
+  });
+
+  return { ok: true, message: `IMAP authenticated to ${host}:${port}` };
+}
+
+async function verifySmtp(config: EmailConfig): Promise<{ ok: true; message: string }> {
+  const smtp = config.smtp || {};
+  const auth = config.auth || {};
+  const host = stringValue(smtp.host);
+  const port = numberValue(smtp.port, 465);
+  const secure = boolValue(smtp.secure, port === 465);
+  const user = stringValue(auth.username);
+  const password = stringValue(auth.password);
+
+  if (!host || !user) throw new Error("SMTP host and username are required");
+  if (!password) throw new Error("SMTP password is required");
+
+  const transport = nodemailer.createTransport({
+    host,
+    port,
+    secure,
+    auth: { user, pass: password },
+    tls: { rejectUnauthorized: false },
+  });
+  await transport.verify();
+  return { ok: true, message: `SMTP verified for ${host}:${port}` };
+}
+
+export async function testEmailConnection(config: EmailConfig) {
+  let imap: any;
+  let smtp: any;
+
+  try {
+    imap = await connectImap(config);
+  } catch (error) {
+    const code = classifyMailError(error, "imap");
+    imap = {
+      ok: false,
+      error: code,
+      message: (error as any)?.message || String(error),
+    };
+  }
+
+  try {
+    smtp = await verifySmtp(config);
+  } catch (error) {
+    const code = classifyMailError(error, "smtp");
+    smtp = {
+      ok: false,
+      error: code,
+      message: (error as any)?.message || String(error),
+    };
+  }
+
+  const ok = Boolean(imap?.ok) && Boolean(smtp?.ok);
+  return {
+    success: ok,
+    ok,
+    message: ok ? "IMAP and SMTP authentication verified" : "Email integration test failed",
+    error: ok ? undefined : imap?.error || smtp?.error,
+    imap,
+    smtp,
+  };
+}

@@ -139,6 +139,7 @@ const { instagramProvider } = require("../providers/instagram");
 const { zapierProvider } = require("../providers/zapier");
 const { makeProvider } = require("../providers/make");
 const { n8nProvider } = require("../providers/n8n");
+const { normalizeEmailConfigInput, extractEmailPrimarySecret } = require("../providers/email");
 
 const repo = createIntegrationsRepository(db);
 const secretCrypto = createSecretEncryption({
@@ -308,10 +309,23 @@ function buildCloneableIntegration(row = {}) {
   };
 }
 
+function normalizeEmailDisplayConfig(config = {}, cronJobId = null) {
+  const normalized = normalizeEmailConfigInput(config || {});
+  if (!cronJobId) {
+    normalized.cron = {
+      ...(normalized.cron && typeof normalized.cron === "object" ? normalized.cron : {}),
+      enabled: false,
+    };
+  }
+  return normalized;
+}
+
 function buildIntegrationSyncEntry(row = {}) {
   const hydrated = hydrateRow(row);
   const provider = row.provider || row.catalog_id || row.id;
-  const decryptedConfig = decryptSensitiveConfig(provider, row.config);
+  const decryptedConfigRaw = decryptSensitiveConfig(provider, row.config);
+  const decryptedConfig =
+    provider === "email" ? normalizeEmailConfigInput(decryptedConfigRaw) : decryptedConfigRaw;
   const resolved = providerRegistry.resolve(provider);
   const config =
     typeof resolved.sanitizeForSync === "function"
@@ -340,9 +354,54 @@ function buildIntegrationSyncEntry(row = {}) {
   };
 }
 
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function expandDottedConfig(input = {}) {
+  const next = {};
+  for (const [key, value] of Object.entries(input || {})) {
+    if (value === undefined) continue;
+    if (!key.includes(".")) {
+      next[key] = value;
+      continue;
+    }
+
+    const parts = key.split(".");
+    let cursor = next;
+    while (parts.length > 1) {
+      const part = parts.shift();
+      if (!isPlainObject(cursor[part])) {
+        cursor[part] = {};
+      }
+      cursor = cursor[part];
+    }
+    cursor[parts[0]] = value;
+  }
+  return next;
+}
+
+function mergeConfig(baseValue, patchValue) {
+  if (Array.isArray(patchValue)) return patchValue.slice();
+  if (!isPlainObject(baseValue) || !isPlainObject(patchValue)) {
+    return patchValue === undefined ? baseValue : patchValue;
+  }
+
+  const next = { ...baseValue };
+  for (const [key, value] of Object.entries(patchValue)) {
+    next[key] = mergeConfig(baseValue[key], value);
+  }
+  return next;
+}
+
 // ── Agent integrations (CRUD) ────────────────────────────
 
 async function connectIntegration(agentId, provider, token, config = {}) {
+  if (provider === "email") {
+    config = normalizeEmailConfigInput(config || {});
+    if (!token) token = extractEmailPrimarySecret(config);
+  }
+
   // If no explicit token, try to extract from config (first
   // password+required field).
   if (!token) {
@@ -390,10 +449,20 @@ async function replaceIntegration(agentId, provider, token, config = {}) {
 
 async function listIntegrations(agentId) {
   const rows = await repo.listForAgent(agentId);
-  return rows.map((row) => ({
-    ...row,
-    config: redactSensitiveConfig(row.provider, row.config),
-  }));
+  return rows.map((row) => {
+    const hydrated = hydrateRow(row);
+    const displayConfig =
+      row.provider === "email"
+        ? normalizeEmailDisplayConfig(
+            decryptSensitiveConfig(row.provider, row.config),
+            row.cron_job_id,
+          )
+        : row.config;
+    return {
+      ...hydrated,
+      config: redactSensitiveConfig(row.provider, displayConfig),
+    };
+  });
 }
 
 async function removeIntegration(integrationId, agentId) {
@@ -402,11 +471,81 @@ async function removeIntegration(integrationId, agentId) {
   return removed;
 }
 
+async function updateIntegration(integrationId, agentId, token, config = {}) {
+  const current = await repo.findIntegration({ integrationId, agentId });
+  if (!current) throw new Error("Integration not found");
+
+  const provider = current.provider;
+  const currentConfigRaw = decryptSensitiveConfig(provider, current.config);
+  const currentConfig =
+    provider === "email" ? normalizeEmailConfigInput(currentConfigRaw) : currentConfigRaw;
+  const patchConfig = expandDottedConfig(config || {});
+  const mergedConfig =
+    provider === "email"
+      ? normalizeEmailConfigInput(mergeConfig(currentConfig, patchConfig))
+      : mergeConfig(currentConfig, patchConfig);
+
+  let resolvedToken = token;
+  if (provider === "email") {
+    resolvedToken = extractEmailPrimarySecret(mergedConfig);
+  } else if (!resolvedToken) {
+    const catalogItem = await getCatalogItem(provider);
+    const tokenField = (catalogItem?.configFields || []).find(
+      (field) => field.type === "password" && field.required,
+    );
+    if (tokenField && typeof config?.[tokenField.key] === "string" && config[tokenField.key]) {
+      resolvedToken = config[tokenField.key];
+    }
+  }
+
+  const { secured: securedConfig, hasSensitiveMaterial } = encryptSensitiveConfig(
+    provider,
+    mergedConfig,
+  );
+  if (resolvedToken || hasSensitiveMaterial || current.access_token) {
+    ensureEncryptionConfigured("Integration credential storage");
+  }
+
+  const encryptedToken = resolvedToken
+    ? encrypt(String(resolvedToken))
+    : current.access_token || null;
+
+  const updated = await repo.updateIntegration({
+    id: integrationId,
+    agentId,
+    encryptedToken,
+    encryptedConfigJson: JSON.stringify(securedConfig),
+  });
+  if (!updated) throw new Error("Integration not found");
+
+  return {
+    ...hydrateRow(updated),
+    config: redactSensitiveConfig(
+      provider,
+      provider === "email"
+        ? normalizeEmailDisplayConfig(mergedConfig, updated.cron_job_id)
+        : mergedConfig,
+    ),
+  };
+}
+
+async function updateEmailCronJobId(integrationId, agentId, cronJobId) {
+  await repo.updateCronJobId({ id: integrationId, agentId, cronJobId });
+}
+
+async function findActiveEmailIntegrations(agentId) {
+  return repo.findActiveEmailIntegrations(agentId);
+}
+
+async function findActiveIntegrationByCronJobId(agentId, cronJobId) {
+  return repo.findActiveIntegrationByCronJobId({ agentId, cronJobId });
+}
+
 async function testIntegration(integrationId, agentId) {
   const integration = await repo.findIntegration({ integrationId, agentId });
   if (!integration) throw new Error("Integration not found");
 
-  if (!integration.access_token) {
+  if (!integration.access_token && integration.provider !== "email") {
     return { success: false, error: "No access token configured" };
   }
 
@@ -417,8 +556,10 @@ async function testIntegration(integrationId, agentId) {
   const refreshedRow = await refreshTwitterOAuthRowIfNeeded(integration);
 
   const provider = refreshedRow.provider;
-  const token = decrypt(refreshedRow.access_token);
-  const decryptedConfig = decryptSensitiveConfig(provider, refreshedRow.config);
+  const token = refreshedRow.access_token ? decrypt(refreshedRow.access_token) : null;
+  const decryptedConfigRaw = decryptSensitiveConfig(provider, refreshedRow.config);
+  const decryptedConfig =
+    provider === "email" ? normalizeEmailConfigInput(decryptedConfigRaw) : decryptedConfigRaw;
 
   const ctx = {
     row: { ...refreshedRow, config: decryptedConfig },
@@ -443,9 +584,24 @@ async function getIntegrationsForSync(agentId) {
 async function getIntegrationEnvVars(agentId) {
   const rows = await repo.listActiveEnvSourcesForAgent(agentId);
   const envVars = {};
+  const flattenConfig = (value, prefix = "") => {
+    const out = {};
+    if (!value || typeof value !== "object" || Array.isArray(value)) return out;
+    for (const [key, child] of Object.entries(value)) {
+      const nextKey = prefix ? `${prefix}_${key}` : key;
+      if (child && typeof child === "object" && !Array.isArray(child)) {
+        Object.assign(out, flattenConfig(child, nextKey));
+      } else {
+        out[nextKey] = child;
+      }
+    }
+    return out;
+  };
   for (const rawRow of rows) {
     const row = await refreshTwitterOAuthRowIfNeeded(rawRow);
-    const decryptedConfig = decryptSensitiveConfig(row.provider, row.config);
+    const decryptedConfigRaw = decryptSensitiveConfig(row.provider, row.config);
+    const decryptedConfig =
+      row.provider === "email" ? normalizeEmailConfigInput(decryptedConfigRaw) : decryptedConfigRaw;
     const envMapping = providerRegistry
       .resolve(row.provider)
       .mapToEnv({ row, token: null, config: decryptedConfig });
@@ -453,7 +609,7 @@ async function getIntegrationEnvVars(agentId) {
     if (envMapping.primary && row.access_token) {
       envVars[envMapping.primary] = decrypt(row.access_token);
     }
-    for (const [cfgKey, cfgValue] of Object.entries(decryptedConfig)) {
+    for (const [cfgKey, cfgValue] of Object.entries(flattenConfig(decryptedConfig))) {
       if (!cfgValue) continue;
       const cfgEnv = envMapping.config[cfgKey];
       if (cfgEnv) envVars[cfgEnv] = String(cfgValue);
@@ -474,6 +630,9 @@ module.exports = {
   redactSensitiveConfig,
   stripSensitiveConfig,
   encryptSensitiveConfig,
+  // Email helpers
+  normalizeEmailConfigInput,
+  extractEmailPrimarySecret,
   // OAuth refresh
   refreshTwitterOAuthRowIfNeeded,
   // Sync entries
@@ -485,7 +644,11 @@ module.exports = {
   replaceIntegration,
   listIntegrations,
   removeIntegration,
+  updateIntegration,
   testIntegration,
+  updateEmailCronJobId,
+  findActiveEmailIntegrations,
+  findActiveIntegrationByCronJobId,
   getIntegrationsForSync,
   getIntegrationEnvVars,
   // LLM auth helpers

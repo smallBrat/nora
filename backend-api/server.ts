@@ -188,6 +188,17 @@ function buildEmbedBootstrapScript({ agentId, requestHost, requestScheme, gatewa
     return null;
   }
 
+  function findConfirmGatewayUrlButton() {
+    var buttons = Array.prototype.slice.call(document.querySelectorAll("button, input[type='submit']"));
+    for (var i = 0; i < buttons.length; i++) {
+      var b = buttons[i];
+      if (!visible(b) || b.disabled) continue;
+      var txt = String((b.innerText || b.textContent || b.value || "")).toLowerCase().trim();
+      if (/^confirm$|^continue$|^ok$|^yes$/.test(txt)) return b;
+    }
+    return null;
+  }
+
   function tryAutoLogin() {
     if (window.__NORA_EMBED_AUTO_LOGIN_DONE__) return true;
     setPasswordHash();
@@ -983,6 +994,14 @@ async function migrateDB() {
      END $$`,
     `DO $$ BEGIN
        ALTER TABLE integrations ADD COLUMN status VARCHAR(20) DEFAULT 'active';
+     EXCEPTION WHEN duplicate_column THEN NULL;
+     END $$`,
+    `DO $$ BEGIN
+       ALTER TABLE integrations ADD COLUMN cron_job_id TEXT;
+     EXCEPTION WHEN duplicate_column THEN NULL;
+     END $$`,
+    `DO $$ BEGIN
+       ALTER TABLE integrations ADD COLUMN mailbox_state JSONB DEFAULT NULL;
      EXCEPTION WHEN duplicate_column THEN NULL;
      END $$`,
     `CREATE TABLE IF NOT EXISTS integration_oauth_states (

@@ -1,8 +1,11 @@
 import { useState, useEffect } from "react";
 import { Puzzle, Search, Loader2 } from "lucide-react";
 import IntegrationCard from "./IntegrationCard";
+import ActiveIntegrationsPanel from "./ActiveIntegrationsPanel";
+import IntegrationDetailPanel from "./IntegrationDetailPanel";
 import { fetchWithAuth } from "../../lib/api";
 import { useToast } from "../Toast";
+import { emitAgentDataChanged, subscribeToAgentDataChanged } from "./agentEvents";
 
 const categories = [
   { id: "all", label: "All" },
@@ -30,11 +33,41 @@ export default function IntegrationsTab({ agentId }) {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState("all");
+  const [selectedIntegrationId, setSelectedIntegrationId] = useState<string | null>(null);
+  const [savingIntegration, setSavingIntegration] = useState(false);
   const toast = useToast();
 
   useEffect(() => {
     loadData();
   }, [agentId]);
+
+  useEffect(() => {
+    return subscribeToAgentDataChanged(agentId, () => {
+      loadData();
+    });
+  }, [agentId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    const integration = url.searchParams.get("integration");
+    const status = url.searchParams.get("status");
+    const error = url.searchParams.get("error");
+    if (!integration || !status) return;
+
+    if (integration === "twitter") {
+      if (status === "connected") {
+        toast.success("Twitter/X connected");
+        loadData();
+      } else if (status === "error") {
+        toast.error(error || `${integration} connection failed`);
+      }
+      url.searchParams.delete("integration");
+      url.searchParams.delete("status");
+      url.searchParams.delete("error");
+      window.history.replaceState({}, "", `${url.pathname}${url.search}`);
+    }
+  }, [toast]);
 
   async function loadData() {
     setLoading(true);
@@ -44,7 +77,13 @@ export default function IntegrationsTab({ agentId }) {
         fetchWithAuth(`/api/agents/${agentId}/integrations`).then((r) => r.json()),
       ]);
       setCatalog(Array.isArray(catalogRes) ? catalogRes : []);
-      setInstalled(Array.isArray(installedRes) ? installedRes : []);
+      const installedItems = Array.isArray(installedRes) ? installedRes : [];
+      setInstalled(installedItems);
+      setSelectedIntegrationId((current) => {
+        if (!installedItems.length) return null;
+        if (current && installedItems.some((item) => item.id === current)) return current;
+        return installedItems[0].id;
+      });
     } catch (e) {
       console.error("Failed to load integrations:", e);
     }
@@ -81,7 +120,8 @@ export default function IntegrationsTab({ agentId }) {
           testResult = { success: false, message: "Test could not be completed" };
         }
 
-        loadData();
+        await loadData();
+        emitAgentDataChanged({ agentId, scope: "integrations" });
         return { integration: newIntegration, testResult };
       } else {
         const data = await res.json();
@@ -151,12 +191,36 @@ export default function IntegrationsTab({ agentId }) {
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
         toast.success("Integration disconnected");
+        emitAgentDataChanged({ agentId, scope: "integrations" });
       } else {
         toast.error(data.error || "Failed to disconnect");
       }
-      loadData();
+      await loadData();
     } catch {
       toast.error("Failed to disconnect integration");
+    }
+  }
+
+  async function handleSave(integration, configValues = {}) {
+    setSavingIntegration(true);
+    try {
+      const res = await fetchWithAuth(`/api/agents/${agentId}/integrations/${integration.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ config: configValues }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(data.error || "Failed to save integration");
+        return;
+      }
+      toast.success("Integration updated");
+      await loadData();
+      emitAgentDataChanged({ agentId, scope: "integrations" });
+    } catch {
+      toast.error("Failed to save integration");
+    } finally {
+      setSavingIntegration(false);
     }
   }
 
@@ -177,24 +241,35 @@ export default function IntegrationsTab({ agentId }) {
     );
   }
 
+  const selectedIntegration =
+    installed.find((item) => item.id === selectedIntegrationId) || installed[0] || null;
+  const selectedCatalogItem =
+    catalog.find(
+      (item) =>
+        item.id === selectedIntegration?.provider || item.id === selectedIntegration?.catalog_id,
+    ) || null;
+
   return (
     <div className="space-y-6">
       {/* Active Integrations */}
       {installed.length > 0 && (
-        <div className="space-y-3">
-          <h3 className="text-sm font-bold text-slate-700">
-            Active Integrations ({installed.length})
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {installed.map((item) => (
-              <IntegrationCard
-                key={item.id}
-                item={item}
-                installed={item}
-                onDisconnect={() => handleDisconnect(item)}
-                onTest={handleTest}
-              />
-            ))}
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(340px,0.85fr)]">
+          <ActiveIntegrationsPanel
+            integrations={installed}
+            selectedId={selectedIntegration?.id || null}
+            onSelect={(integration: any) => setSelectedIntegrationId(integration.id)}
+          />
+          <div className="xl:sticky xl:top-4">
+            <IntegrationDetailPanel
+              integration={selectedIntegration}
+              catalogItem={selectedCatalogItem}
+              onTest={handleTest}
+              onSave={handleSave}
+              saving={savingIntegration}
+              onDisconnect={() => {
+                if (selectedIntegration) handleDisconnect(selectedIntegration);
+              }}
+            />
           </div>
         </div>
       )}
@@ -245,7 +320,13 @@ export default function IntegrationsTab({ agentId }) {
                 key={item.id}
                 item={item}
                 installed={inst || null}
-                submitLabel={oauthConnect ? `Authorize with ${item.name}` : undefined}
+                submitLabel={
+                  oauthConnect
+                    ? item.id === "twitter"
+                      ? "Authorize with X"
+                      : `Authorize with ${item.name}`
+                    : undefined
+                }
                 onConnect={(configValues) =>
                   oauthConnect
                     ? handleOAuthConnect(item, configValues)

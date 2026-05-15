@@ -593,6 +593,53 @@ function getToolName(tool, index) {
 function createGatewayRouter() {
   const router = require("express").Router();
 
+  function normalizeCronScheduleInput(schedule) {
+    if (!schedule) return null;
+    if (typeof schedule === "string") {
+      const trimmed = schedule.trim();
+      return trimmed ? { kind: "cron", expr: trimmed } : null;
+    }
+    if (typeof schedule !== "object" || Array.isArray(schedule)) return null;
+
+    if (typeof schedule.kind === "string") {
+      if (schedule.kind === "cron" && typeof schedule.expr === "string" && schedule.expr.trim()) {
+        return { kind: "cron", expr: schedule.expr.trim() };
+      }
+      if (schedule.kind === "interval") {
+        const everyMs = Number(schedule.everyMs);
+        if (Number.isFinite(everyMs) && everyMs > 0) {
+          return { kind: "interval", everyMs: Math.max(1, Math.floor(everyMs)) };
+        }
+      }
+      if (schedule.kind === "at" && typeof schedule.at === "string" && schedule.at.trim()) {
+        return { kind: "at", at: schedule.at.trim() };
+      }
+    }
+
+    if (Number.isFinite(Number(schedule.interval))) {
+      return {
+        kind: "interval",
+        everyMs: Math.max(1, Number(schedule.interval)) * 1000,
+      };
+    }
+    if (typeof schedule.cron === "string" && schedule.cron.trim()) {
+      return { kind: "cron", expr: schedule.cron.trim() };
+    }
+    if (typeof schedule.expr === "string" && schedule.expr.trim()) {
+      return { kind: "cron", expr: schedule.expr.trim() };
+    }
+    if (Number.isFinite(Number(schedule.everyMs))) {
+      return {
+        kind: "interval",
+        everyMs: Math.max(1, Math.floor(Number(schedule.everyMs))),
+      };
+    }
+    if (typeof schedule.at === "string" && schedule.at.trim()) {
+      return { kind: "at", at: schedule.at.trim() };
+    }
+    return null;
+  }
+
   // Middleware: resolve agent + verify ownership
   // Allow both 'running' and 'warning' statuses — 'warning' means the post-deploy
   // health check was inconclusive (e.g. npm install was slow), but the gateway may
@@ -833,9 +880,10 @@ function createGatewayRouter() {
   router.post("/agents/:agentId/gateway/cron", async (req, res) => {
     try {
       const { name, schedule, message, agentId: targetAgent } = req.body;
-      // The cron.add RPC expects schedule as an object, not a plain string.
-      // The anyOf schema accepts { cron: "expression" } or { interval: seconds }.
-      const scheduleObj = typeof schedule === "string" ? { cron: schedule } : schedule;
+      const scheduleObj = normalizeCronScheduleInput(schedule);
+      if (!scheduleObj) {
+        return res.status(400).json({ error: "A valid cron schedule is required." });
+      }
       const result = await rpcCall(req.agent, "cron.add", {
         name,
         schedule: scheduleObj,
@@ -849,9 +897,74 @@ function createGatewayRouter() {
     }
   });
 
+  router.put("/agents/:agentId/gateway/cron/:cronId", async (req, res) => {
+    try {
+      const cronId = req.params.cronId;
+      const { name, schedule, message, agentId: targetAgent } = req.body || {};
+
+      const existingList = await rpcCall(req.agent, "cron.list");
+      const jobs = Array.isArray(existingList)
+        ? existingList
+        : Array.isArray(existingList?.jobs)
+          ? existingList.jobs
+          : [];
+      const existingJob = jobs.find((job) => String(job?.id || job?.cronId) === String(cronId));
+
+      if (!existingJob) {
+        return res.status(404).json({ error: "Cron job not found" });
+      }
+
+      const scheduleObj =
+        normalizeCronScheduleInput(schedule) ||
+        normalizeCronScheduleInput(existingJob?.schedule) ||
+        normalizeCronScheduleInput(existingJob?.cadence);
+      if (!scheduleObj) {
+        return res.status(400).json({
+          error:
+            "This cron job is missing a readable schedule. Enter a cron expression before saving.",
+        });
+      }
+
+      const addResult = await rpcCall(req.agent, "cron.add", {
+        name,
+        schedule: scheduleObj,
+        sessionTarget: existingJob?.sessionTarget || "new",
+        payload: {
+          ...(existingJob?.payload && typeof existingJob.payload === "object"
+            ? existingJob.payload
+            : {}),
+          message: message || "",
+        },
+        agentId: targetAgent || existingJob?.agentId || "main",
+      });
+
+      await rpcCall(req.agent, "cron.remove", { id: cronId });
+
+      res.json({
+        success: true,
+        previousId: cronId,
+        ...(addResult && typeof addResult === "object" ? addResult : { job: addResult }),
+      });
+    } catch (err) {
+      res.status(502).json({ error: err.message });
+    }
+  });
+
   router.delete("/agents/:agentId/gateway/cron/:cronId", async (req, res) => {
     try {
+      const linkedIntegration = await integrations.findActiveIntegrationByCronJobId(
+        req.params.agentId,
+        req.params.cronId,
+      );
       const result = await rpcCall(req.agent, "cron.remove", { id: req.params.cronId });
+      if (linkedIntegration) {
+        await integrations.updateEmailCronJobId(linkedIntegration.id, req.params.agentId, null);
+        if (linkedIntegration.provider === "email") {
+          await integrations.updateIntegration(linkedIntegration.id, req.params.agentId, null, {
+            "cron.enabled": false,
+          });
+        }
+      }
       res.json(result);
     } catch (err) {
       res.status(502).json({ error: err.message });

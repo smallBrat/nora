@@ -102,6 +102,7 @@ export { instagramProvider } from "./providers/instagram";
 export { zapierProvider } from "./providers/zapier";
 export { makeProvider } from "./providers/make";
 export { n8nProvider } from "./providers/n8n";
+export { normalizeEmailConfigInput, extractEmailPrimarySecret } from "./providers/email";
 
 // The orchestration service is the recommended import for callers that
 // need the high-level operations (connect, list, test, sync, env-vars).
@@ -114,6 +115,7 @@ export const {
   replaceIntegration,
   listIntegrations,
   removeIntegration,
+  updateIntegration,
   testIntegration,
   getIntegrationsForSync,
   getIntegrationEnvVars,
@@ -126,5 +128,6 @@ export const {
   stripSensitiveConfig,
   encryptSensitiveConfig,
   integrationProviderAffectsLlmAuth,
+  findActiveIntegrationByCronJobId,
   providerRegistry,
 } = integrationsService as Record<string, unknown>;

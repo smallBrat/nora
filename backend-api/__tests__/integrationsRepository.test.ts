@@ -147,8 +147,8 @@ describe("createIntegrationsRepository", () => {
     expect(db.calls[0].params).toEqual(["agent-1"]);
   });
 
-  it("deletes an integration scoped to its agent and returns id+provider", async () => {
-    const db = makeDb([{ id: "int-1", provider: "github" }]);
+  it("deletes an integration scoped to its agent and returns id+provider+cron", async () => {
+    const db = makeDb([{ id: "int-1", provider: "github", cron_job_id: "cron-1" }]);
     const repo = createIntegrationsRepository(db);
 
     const removed = await repo.deleteIntegration({
@@ -157,10 +157,10 @@ describe("createIntegrationsRepository", () => {
     });
 
     expect(db.calls[0].sql).toBe(
-      "DELETE FROM integrations WHERE id = $1 AND agent_id = $2 RETURNING id, provider",
+      "DELETE FROM integrations WHERE id = $1 AND agent_id = $2 RETURNING id, provider, cron_job_id",
     );
     expect(db.calls[0].params).toEqual(["int-1", "agent-1"]);
-    expect(removed).toEqual({ id: "int-1", provider: "github" });
+    expect(removed).toEqual({ id: "int-1", provider: "github", cron_job_id: "cron-1" });
   });
 
   it("returns null when delete affects no rows", async () => {

@@ -12,6 +12,7 @@ const { scopeByMethod } = require("../middleware/auth");
 const { AGENT_RUNTIME_PORT } = require("../../agent-runtime/lib/contracts");
 const { runtimeUrlForAgent } = require("../../agent-runtime/lib/agentEndpoints");
 const { resolveAgentRuntimeFamily } = require("../agentRuntimeFields");
+const { normalizeEmailConfigInput } = require("../integrations");
 
 const router = express.Router();
 
@@ -20,6 +21,8 @@ const TWITTER_OAUTH_TOKEN_URL = "https://api.x.com/2/oauth2/token";
 const TWITTER_OAUTH_ME_URL = "https://api.x.com/2/users/me";
 const TWITTER_OAUTH_SCOPES = ["tweet.read", "users.read", "tweet.write", "offline.access"];
 const TWITTER_OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
+const DEFAULT_EMAIL_CRON_PROMPT =
+  "Look for any new emails or calendar invites I should be aware of and summarize anything important for me.";
 
 // Editor floor — integration configs include sensitive credentials, so viewers
 // don't see them. Per-route GET could be relaxed to viewer in a follow-up if
@@ -346,7 +349,16 @@ async function syncIntegrationsToAgent(agentId, { strict = false, strictHermes =
       const envVars = await integrations.getIntegrationEnvVars(agentId);
       envCount = Object.keys(envVars).length;
       if (envCount > 0) {
-        await rpcCall(agent, "config.set", { env: envVars });
+        const configSnapshot = await rpcCall(agent, "config.get");
+        const baseHash =
+          typeof configSnapshot?.hash === "string" && configSnapshot.hash.trim()
+            ? configSnapshot.hash.trim()
+            : null;
+        if (!baseHash) throw new Error("runtime config hash unavailable");
+        await rpcCall(agent, "config.patch", {
+          raw: JSON.stringify({ env: envVars }),
+          baseHash,
+        });
         pushOk = true;
       } else {
         pushOk = true;
@@ -654,6 +666,113 @@ router.get("/integrations/linkedin/oauth/callback", async (req, res) => {
   }
 });
 
+async function registerEmailCronJob(agent, integrationId, pollingIntervalSeconds) {
+  if (!agent || !["running", "warning"].includes(agent.status)) return null;
+  const cronConfig = normalizeEmailConfigInput({
+    cron:
+      pollingIntervalSeconds && typeof pollingIntervalSeconds === "object"
+        ? pollingIntervalSeconds
+        : {},
+  }).cron;
+  const intervalMinutes = Number.parseInt(String(cronConfig?.intervalMinutes || 60), 10);
+  const safeIntervalMinutes =
+    Number.isFinite(intervalMinutes) && intervalMinutes > 0 ? intervalMinutes : 60;
+  const prompt =
+    String(cronConfig?.prompt || DEFAULT_EMAIL_CRON_PROMPT).trim() || DEFAULT_EMAIL_CRON_PROMPT;
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      const result = await rpcCall(agent, "cron.add", {
+        name: `email_checkin_${integrationId}`,
+        schedule: { kind: "interval", everyMs: safeIntervalMinutes * 60 * 1000 },
+        sessionTarget: "isolated",
+        payload: {
+          kind: "agentTurn",
+          message: prompt,
+          thinking: "minimal",
+          lightContext: true,
+          timeoutSeconds: 300,
+        },
+        delivery: { mode: "none" },
+        agentId: "main",
+      });
+      return result?.id || result?.cronId || null;
+    } catch (error) {
+      if (attempt === 4) {
+        console.warn(
+          `[email-cron] failed to create cron for integration ${integrationId}: ${error?.message || error}`,
+        );
+        return null;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
+    }
+  }
+}
+
+async function removeEmailCronJob(agent, cronJobId) {
+  if (!agent || !cronJobId) return;
+  try {
+    await rpcCall(agent, "cron.remove", { id: cronJobId });
+  } catch {
+    // best-effort; gateway may be unavailable during teardown
+  }
+}
+
+function extractCronJobs(result) {
+  if (Array.isArray(result)) return result;
+  if (Array.isArray(result?.jobs)) return result.jobs;
+  return [];
+}
+
+function cronJobReferencesIntegration(job, integrationId) {
+  if (!job || !integrationId) return false;
+  const idText = String(integrationId);
+  const name = String(job?.name || "");
+  if (name === `email_checkin_${idText}`) return true;
+
+  const payload = job?.payload;
+  const message = String(payload?.message || "");
+  return message.includes(idText);
+}
+
+async function findEmailCronJobIds(agent, integrationId) {
+  if (!agent || !integrationId || !["running", "warning"].includes(agent.status)) return [];
+  try {
+    const result = await rpcCall(agent, "cron.list");
+    return extractCronJobs(result)
+      .filter((job) => cronJobReferencesIntegration(job, integrationId))
+      .map((job) => String(job?.id || job?.cronId || ""))
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+async function removeEmailCronJobs(agent, cronJobIds = []) {
+  const uniqueIds = [...new Set((cronJobIds || []).filter(Boolean))];
+  for (const cronJobId of uniqueIds) {
+    await removeEmailCronJob(agent, cronJobId);
+  }
+}
+
+async function reconcileEmailCronJob(
+  agent,
+  integrationId,
+  previousCronJobId,
+  pollingIntervalSeconds,
+) {
+  if (!agent || !integrationId) return previousCronJobId || null;
+
+  if (previousCronJobId) {
+    await removeEmailCronJob(agent, previousCronJobId);
+  }
+
+  const nextCronJobId = await registerEmailCronJob(agent, integrationId, pollingIntervalSeconds);
+  if (!nextCronJobId) return previousCronJobId || null;
+
+  return nextCronJobId;
+}
+
 router.post("/agents/:id/integrations", async (req, res) => {
   try {
     const { provider, token, config } = req.body;
@@ -674,6 +793,19 @@ router.post("/agents/:id/integrations", async (req, res) => {
       }
     }
 
+    if (provider === "email" && result?.id) {
+      const normalizedConfig = normalizeEmailConfigInput(config || {});
+      const cronConfig = normalizedConfig?.cron || {};
+      const latestAgent = await getAgentIntegrationRuntimeTarget(req.params.id);
+      const cronJobId = cronConfig.enabled
+        ? await registerEmailCronJob(latestAgent || agent, result.id, cronConfig)
+        : null;
+      if (cronJobId != null) {
+        await integrations.updateEmailCronJobId(result.id, req.params.id, cronJobId);
+        result.cron_job_id = cronJobId;
+      }
+    }
+
     res.json(result);
   } catch (e) {
     res.status(e.statusCode || 500).json({ error: e.message });
@@ -684,6 +816,18 @@ router.delete("/agents/:id/integrations/:iid", async (req, res) => {
   try {
     const agent = await getAgentIntegrationRuntimeTarget(req.params.id);
     const runtimeFamily = resolveAgentRuntimeFamily(agent || {});
+    const existing = await integrations.listIntegrations(req.params.id);
+    const current = Array.isArray(existing)
+      ? existing.find((item) => String(item.id) === String(req.params.iid))
+      : null;
+    const linkedCronJobId = current?.cron_job_id || null;
+    const runtimeCronJobIds =
+      current?.provider === "email" ? await findEmailCronJobIds(agent, req.params.iid) : [];
+
+    if (linkedCronJobId || runtimeCronJobIds.length > 0) {
+      await removeEmailCronJobs(agent, [linkedCronJobId, ...runtimeCronJobIds]);
+    }
+
     const removed = await integrations.removeIntegration(req.params.iid, req.params.id);
 
     if (runtimeFamily === "hermes") {
@@ -695,7 +839,72 @@ router.delete("/agents/:id/integrations/:iid", async (req, res) => {
       }
     }
 
+    const fallbackCronJobId = removed?.cron_job_id || linkedCronJobId;
+    const fallbackRuntimeCronJobIds =
+      removed?.provider === "email" ? await findEmailCronJobIds(agent, req.params.iid) : [];
+    if (fallbackCronJobId || fallbackRuntimeCronJobIds.length > 0) {
+      await removeEmailCronJobs(agent, [fallbackCronJobId, ...fallbackRuntimeCronJobIds]);
+    }
+
     res.json({ success: true });
+  } catch (e) {
+    res.status(e.statusCode || 500).json({ error: e.message });
+  }
+});
+
+router.put("/agents/:id/integrations/:iid", async (req, res) => {
+  try {
+    const agent = await getAgentIntegrationRuntimeTarget(req.params.id);
+    const runtimeFamily = resolveAgentRuntimeFamily(agent || {});
+    const existing = await integrations.listIntegrations(req.params.id);
+    const current = Array.isArray(existing)
+      ? existing.find((item) => String(item.id) === String(req.params.iid))
+      : null;
+    if (!current) return res.status(404).json({ error: "Integration not found" });
+
+    const result = await integrations.updateIntegration(
+      req.params.iid,
+      req.params.id,
+      req.body?.token,
+      req.body?.config || {},
+    );
+
+    if (runtimeFamily === "hermes") {
+      await syncIntegrationsToAgent(req.params.id, { strictHermes: true });
+    } else {
+      await syncIntegrationsToAgent(req.params.id, { strict: true });
+      if (integrations.integrationProviderAffectsLlmAuth(result?.provider)) {
+        syncAuthToUserAgents(req.user.id, req.params.id).catch(() => {});
+      }
+    }
+
+    if (result?.provider === "email") {
+      const previousCronJobId = current?.cron_job_id || null;
+      const latestAgent = await getAgentIntegrationRuntimeTarget(req.params.id);
+      const runtimeCronJobIds = await findEmailCronJobIds(latestAgent || agent, result.id);
+      const cronConfig = normalizeEmailConfigInput(req.body?.config || {}).cron || {};
+      if (cronConfig.enabled) {
+        if (!previousCronJobId && runtimeCronJobIds.length > 0) {
+          await removeEmailCronJobs(latestAgent || agent, runtimeCronJobIds);
+        }
+        const nextCronJobId = await reconcileEmailCronJob(
+          latestAgent || agent,
+          result.id,
+          previousCronJobId,
+          cronConfig,
+        );
+        if (nextCronJobId !== previousCronJobId) {
+          await integrations.updateEmailCronJobId(result.id, req.params.id, nextCronJobId);
+          result.cron_job_id = nextCronJobId;
+        }
+      } else if (previousCronJobId || runtimeCronJobIds.length > 0) {
+        await removeEmailCronJobs(latestAgent || agent, [previousCronJobId, ...runtimeCronJobIds]);
+        await integrations.updateEmailCronJobId(result.id, req.params.id, null);
+        result.cron_job_id = null;
+      }
+    }
+
+    res.json(result);
   } catch (e) {
     res.status(e.statusCode || 500).json({ error: e.message });
   }

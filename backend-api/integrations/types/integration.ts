@@ -14,6 +14,8 @@ export interface IntegrationRow {
   access_token: string | null;
   config: ConfigBlob;
   status: string;
+  cron_job_id?: string | null;
+  mailbox_state?: ConfigBlob;
   created_at?: string | Date;
   // Optional fields populated by joined catalog reads (listIntegrations).
   catalog_name?: string | null;

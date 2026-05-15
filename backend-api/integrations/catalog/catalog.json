@@ -298,27 +298,68 @@
   },
   {
     "id": "email",
-    "name": "Email (SMTP)",
+    "name": "Email (IMAP + SMTP)",
     "icon": "mail",
     "category": "communication",
-    "description": "Send and receive emails via SMTP integration",
-    "authType": "credentials",
+    "description": "Connect a mailbox over IMAP and SMTP so the agent can use those credentials in scheduled or interactive workflows.",
+    "authType": "custom",
     "configFields": [
-      { "key": "smtp_host", "label": "SMTP Host", "type": "text", "required": true },
-      { "key": "smtp_port", "label": "SMTP Port", "type": "number", "required": true },
-      { "key": "smtp_user", "label": "Username", "type": "text", "required": true },
-      { "key": "smtp_pass", "label": "Password", "type": "password", "required": true },
-      { "key": "from_address", "label": "From Address", "type": "email", "required": true }
+      {
+        "key": "providerPreset",
+        "label": "Provider",
+        "type": "select",
+        "required": true,
+        "defaultValue": "gmail",
+        "options": [
+          { "label": "Gmail", "value": "gmail" },
+          { "label": "Outlook", "value": "outlook" },
+          { "label": "Custom", "value": "custom" }
+        ]
+      },
+      { "key": "auth.username", "label": "Username / Email", "type": "email", "required": true },
+      {
+        "key": "auth.password",
+        "label": "Password / App Password",
+        "type": "password",
+        "required": true
+      },
+      { "key": "imap.host", "label": "IMAP Host", "type": "text", "required": true },
+      { "key": "imap.port", "label": "IMAP Port", "type": "number", "required": true },
+      { "key": "imap.secure", "label": "Use TLS for IMAP", "type": "checkbox", "required": false },
+      { "key": "smtp.host", "label": "SMTP Host", "type": "text", "required": true },
+      { "key": "smtp.port", "label": "SMTP Port", "type": "number", "required": true },
+      { "key": "smtp.secure", "label": "Use TLS for SMTP", "type": "checkbox", "required": false },
+      { "key": "smtp.fromAddress", "label": "From Address", "type": "email", "required": true },
+      { "key": "smtp.fromName", "label": "From Name", "type": "text", "required": false },
+      {
+        "key": "cron.enabled",
+        "label": "Create reminder cron",
+        "type": "checkbox",
+        "required": false,
+        "defaultValue": false
+      },
+      {
+        "key": "cron.intervalMinutes",
+        "label": "Run Every (minutes)",
+        "type": "number",
+        "required": false,
+        "defaultValue": 60
+      },
+      {
+        "key": "cron.prompt",
+        "label": "Cron Prompt",
+        "type": "textarea",
+        "required": false,
+        "defaultValue": "Look for any new emails or calendar invites I should be aware of and summarize anything important for me."
+      }
     ],
-    "capabilities": ["read", "write"],
-    "credentialsUrl": "https://nodemailer.com/smtp/",
-    "setupGuide": {
-      "steps": [
-        "Pick an SMTP relay — most providers (SendGrid, Mailgun, AWS SES, your Google Workspace, your own Postfix) expose SMTP credentials in their console.",
-        "Get the SMTP host, port (usually 587 with STARTTLS or 465 with implicit TLS), username, and password.",
-        "The from_address must be an email the relay will accept as the sender — for shared relays this often has to match a verified domain or sender."
-      ]
-    },
+    "capabilities": ["connect", "verify", "schedule"],
+    "toolSpecs": [],
+    "usageHints": [
+      "Use Email when an agent needs seamless IMAP and SMTP credentials without Nora shipping opinionated inbox-processing behavior.",
+      "Gmail and Outlook presets prefill server settings; Custom exposes the raw host and port fields.",
+      "Enable the optional cron if you want Nora to seed a scheduled agent reminder based on this mailbox connection."
+    ],
     "mcp": { "available": false }
   },
   {

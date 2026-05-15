@@ -10,7 +10,11 @@ const {
 const DockerBackend = require("../../workers/provisioner/backends/docker");
 const tar = require(
   require.resolve("tar-stream", {
-    paths: [path.resolve(__dirname, "../../workers/provisioner")],
+    paths: [
+      path.resolve(__dirname, "../../workers/provisioner"),
+      path.resolve(__dirname, ".."),
+      path.resolve(__dirname, "../.."),
+    ],
   }),
 );
 

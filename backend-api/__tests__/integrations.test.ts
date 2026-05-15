@@ -34,6 +34,22 @@ describe("integration secret handling", () => {
     expect(integrations.integrationProviderAffectsLlmAuth("slack")).toBe(false);
   });
 
+  it("re-exports the email config normalizer through the legacy integrations shim", () => {
+    expect(typeof integrations.normalizeEmailConfigInput).toBe("function");
+    expect(
+      integrations.normalizeEmailConfigInput({
+        providerPreset: "gmail",
+        "auth.username": "ops@example.com",
+        "cron.enabled": true,
+        "cron.intervalMinutes": 15,
+      }),
+    ).toMatchObject({
+      providerPreset: "gmail",
+      auth: { username: "ops@example.com" },
+      cron: { enabled: true, intervalMinutes: 15 },
+    });
+  });
+
   it("redacts sensitive config and does not return access_token after create", async () => {
     mockDb.query.mockResolvedValueOnce({
       rows: [
@@ -105,6 +121,82 @@ describe("integration secret handling", () => {
         access_token: "[REDACTED]",
         username: "openai",
       },
+    });
+  });
+
+  it("updates an integration while preserving existing secret material when password fields are omitted", async () => {
+    mockDb.query
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: "int-email",
+            agent_id: "agent-1",
+            provider: "email",
+            catalog_id: "email",
+            access_token: "enc(existing-password)",
+            config: JSON.stringify({
+              providerPreset: "gmail",
+              auth: {
+                mode: "basic",
+                username: "ops@example.com",
+                password: "enc(existing-password)",
+              },
+              cron: { enabled: false, intervalMinutes: 60 },
+            }),
+            status: "active",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: "int-email",
+            agent_id: "agent-1",
+            provider: "email",
+            catalog_id: "email",
+            access_token: "enc(dec(enc(existing-password)))",
+            config: JSON.stringify({
+              providerPreset: "gmail",
+              auth: {
+                mode: "basic",
+                username: "alerts@example.com",
+                password: "enc(dec(enc(existing-password)))",
+              },
+              cron: { enabled: true, intervalMinutes: 120 },
+            }),
+            status: "active",
+          },
+        ],
+      });
+
+    const result = await integrations.updateIntegration("int-email", "agent-1", null, {
+      "auth.username": "alerts@example.com",
+      "cron.enabled": true,
+      "cron.intervalMinutes": 120,
+    });
+
+    expect(mockDb.query).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining("UPDATE integrations"),
+      expect.arrayContaining([
+        "enc(dec(enc(existing-password)))",
+        expect.any(String),
+        "int-email",
+        "agent-1",
+      ]),
+    );
+    expect(result).toMatchObject({
+      id: "int-email",
+      config: expect.objectContaining({
+        auth: expect.objectContaining({
+          username: "alerts@example.com",
+          password: "[REDACTED]",
+        }),
+        cron: expect.objectContaining({
+          enabled: false,
+          intervalMinutes: 120,
+        }),
+      }),
     });
   });
 

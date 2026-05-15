@@ -40,8 +40,48 @@ function parseConfig(config: ConfigBlob): Record<string, any> {
   return (config as Record<string, any>) || {};
 }
 
-function isSensitiveKey(key: string, sensitiveKeys: Set<string>): boolean {
-  return sensitiveKeys.has(key) || SECRET_CONFIG_KEY_RE.test(key);
+function isPlainObject(value: unknown): value is Record<string, any> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function isSensitiveKey(key: string, path: string, sensitiveKeys: Set<string>): boolean {
+  return (
+    sensitiveKeys.has(key) ||
+    sensitiveKeys.has(path) ||
+    SECRET_CONFIG_KEY_RE.test(key) ||
+    SECRET_CONFIG_KEY_RE.test(path)
+  );
+}
+
+function transformObject(
+  value: unknown,
+  sensitiveKeys: Set<string>,
+  onSensitive: (rawValue: unknown, key: string, path: string) => unknown,
+  onTouched?: () => void,
+  currentPath = "",
+): unknown {
+  if (Array.isArray(value)) {
+    return value.map((entry, index) =>
+      transformObject(entry, sensitiveKeys, onSensitive, onTouched, `${currentPath}.${index}`),
+    );
+  }
+  if (!isPlainObject(value)) return value;
+
+  const next: Record<string, unknown> = {};
+  for (const [key, child] of Object.entries(value)) {
+    const path = currentPath ? `${currentPath}.${key}` : key;
+    if (isPlainObject(child) || Array.isArray(child)) {
+      next[key] = transformObject(child, sensitiveKeys, onSensitive, onTouched, path);
+      continue;
+    }
+    if (child && isSensitiveKey(key, path, sensitiveKeys)) {
+      onTouched?.();
+      next[key] = onSensitive(child, key, path);
+      continue;
+    }
+    next[key] = child;
+  }
+  return next;
 }
 
 export function createSecretEncryption(deps: SecretEncryptionDeps): SecretEncryption {
@@ -51,17 +91,15 @@ export function createSecretEncryption(deps: SecretEncryptionDeps): SecretEncryp
     encryptSensitiveConfig(provider, config = {}) {
       const plain = parseConfig(config);
       const sensitiveKeys = getSensitiveConfigKeys(provider);
-      const secured: Record<string, any> = { ...plain };
       let hasSensitiveMaterial = false;
-
-      for (const key of Object.keys(secured)) {
-        const value = secured[key];
-        if (!value) continue;
-        if (isSensitiveKey(key, sensitiveKeys)) {
+      const secured = transformObject(
+        plain,
+        sensitiveKeys,
+        (rawValue) => encrypt(String(rawValue)),
+        () => {
           hasSensitiveMaterial = true;
-          secured[key] = encrypt(String(value));
-        }
-      }
+        },
+      ) as Record<string, unknown>;
 
       return { secured, hasSensitiveMaterial };
     },
@@ -69,45 +107,31 @@ export function createSecretEncryption(deps: SecretEncryptionDeps): SecretEncryp
     decryptSensitiveConfig(provider, config = {}) {
       const parsed = parseConfig(config);
       const sensitiveKeys = getSensitiveConfigKeys(provider);
-      const revealed: Record<string, any> = { ...parsed };
-
-      for (const key of Object.keys(revealed)) {
-        const value = revealed[key];
-        if (!value) continue;
-        if (isSensitiveKey(key, sensitiveKeys)) {
-          revealed[key] = decrypt(String(value));
-        }
-      }
-
-      return revealed;
+      return transformObject(parsed, sensitiveKeys, (rawValue) =>
+        decrypt(String(rawValue)),
+      ) as Record<string, unknown>;
     },
 
     redactSensitiveConfig(provider, config = {}) {
       const parsed = parseConfig(config);
       const sensitiveKeys = getSensitiveConfigKeys(provider);
-      const redacted: Record<string, any> = { ...parsed };
-
-      for (const key of Object.keys(redacted)) {
-        if (isSensitiveKey(key, sensitiveKeys)) {
-          if (redacted[key]) redacted[key] = REDACTED_SECRET;
-        }
-      }
-
-      return redacted;
+      return transformObject(parsed, sensitiveKeys, (rawValue) =>
+        rawValue ? REDACTED_SECRET : rawValue,
+      ) as Record<string, unknown>;
     },
 
     stripSensitiveConfig(provider, config = {}) {
       const parsed = parseConfig(config);
       const sensitiveKeys = getSensitiveConfigKeys(provider);
-      const stripped: Record<string, any> = { ...parsed };
       let removedSensitive = false;
-
-      for (const key of Object.keys(stripped)) {
-        if (isSensitiveKey(key, sensitiveKeys)) {
-          if (stripped[key]) removedSensitive = true;
-          stripped[key] = null;
-        }
-      }
+      const stripped = transformObject(
+        parsed,
+        sensitiveKeys,
+        (rawValue) => (rawValue ? null : rawValue),
+        () => {
+          removedSensitive = true;
+        },
+      ) as Record<string, unknown>;
 
       return { config: stripped, removedSensitive };
     },

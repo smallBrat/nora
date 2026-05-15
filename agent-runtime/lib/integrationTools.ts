@@ -1,6 +1,11 @@
 // @ts-nocheck
 const fs = require("fs");
 const path = require("path");
+const net = require("net");
+const tls = require("tls");
+const crypto = require("crypto");
+const { execFileSync } = require("child_process");
+const { DatabaseSync } = require("node:sqlite");
 
 const NORA_SYNC_INTEGRATIONS_DIR = "/root/.openclaw/workspace/integrations";
 const NORA_SYNC_INTEGRATIONS_CATALOG_FILE = `${NORA_SYNC_INTEGRATIONS_DIR}/integrations.json`;
@@ -25,25 +30,111 @@ const DEFAULT_GITHUB_API_BASE_URL = "https://api.github.com";
 const GITHUB_API_VERSION = "2022-11-28";
 const MAX_GITHUB_FILE_CONTENT_CHARS = 120000;
 const DEFAULT_TWITTER_API_BASE_URL = "https://api.x.com/2";
+const NORA_AGENT_STATE_ROOT = "/mnt/nora-agent-state";
+const OPENCLAW_AGENT_LOG_FILE = "/var/log/openclaw-agent.log";
+const OPENCLAW_CONFIG_FILE = "/root/.openclaw/openclaw.json";
+const OPENCLAW_CLI =
+  typeof process.env.OPENCLAW_CLI_PATH === "string" && process.env.OPENCLAW_CLI_PATH.trim()
+    ? process.env.OPENCLAW_CLI_PATH.trim()
+    : "/usr/local/bin/openclaw";
+const OPENCLAW_GATEWAY_PORT = Number.parseInt(process.env.OPENCLAW_GATEWAY_PORT || "19611", 10);
+const OPENCLAW_SESSIONS_ROOT = "/root/.openclaw/agents/main/sessions";
+const OPENCLAW_GATEWAY_TOKEN =
+  typeof process.env.OPENCLAW_GATEWAY_TOKEN === "string"
+    ? process.env.OPENCLAW_GATEWAY_TOKEN.trim()
+    : "";
 const SENSITIVE_CONFIG_KEY_RE =
   /(token|secret|password|api[_-]?key|private[_-]?key|service[_-]?account|credentials?)/i;
+const ED25519_SPKI_PREFIX = Buffer.from("302a300506032b6570032100", "hex");
+const PKCS8_ED25519_PREFIX = Buffer.from("302e020100300506032b657004220420", "hex");
+let sanitizeHtmlLib = null;
+
+function loadModuleFromKnownRoots(moduleName, extraPaths = []) {
+  const searchPaths = [__dirname, process.cwd(), path.resolve(__dirname, ".."), ...extraPaths];
+  return require(require.resolve(moduleName, { paths: searchPaths }));
+}
+
+function getSanitizeHtml() {
+  if (!sanitizeHtmlLib) {
+    sanitizeHtmlLib = loadModuleFromKnownRoots("sanitize-html", [
+      path.resolve(__dirname, "../../backend-api"),
+      path.resolve(__dirname, "../.."),
+    ]);
+  }
+  return sanitizeHtmlLib;
+}
 
 const SUPPORTED_INTEGRATION_TOOL_OPERATIONS = Object.freeze({
-  github: new Set([
-    "repos.list",
-    "repos.contents.get",
-    "pulls.list",
-    "issues.create",
-  ]),
-  twitter: new Set([
-    "users.me",
-    "users.tweets.list",
-    "tweets.create",
-  ]),
+  github: new Set(["repos.list", "repos.contents.get", "pulls.list", "issues.create"]),
+  twitter: new Set(["users.me", "users.tweets.list", "tweets.create"]),
+  email: new Set([]),
 });
 
 function normalizeString(value) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function base64UrlEncode(buf) {
+  return Buffer.from(buf)
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
+}
+
+function deriveGatewayDeviceIdentity(gatewayToken = "") {
+  const seed = crypto.createHash("sha256").update(`openclaw-device:${gatewayToken}`).digest();
+  const privateDer = Buffer.concat([PKCS8_ED25519_PREFIX, seed]);
+  const privateKey = crypto.createPrivateKey({ key: privateDer, format: "der", type: "pkcs8" });
+  const publicKey = crypto.createPublicKey(privateKey);
+  const spki = publicKey.export({ type: "spki", format: "der" });
+  const rawPublicKey = spki.subarray(ED25519_SPKI_PREFIX.length);
+  return {
+    deviceId: crypto.createHash("sha256").update(rawPublicKey).digest("hex"),
+    privateKeyPem: privateKey.export({ type: "pkcs8", format: "pem" }).toString(),
+    publicKeyB64: base64UrlEncode(rawPublicKey),
+  };
+}
+
+function signGatewayPayload(privateKeyPem, payload) {
+  const key = crypto.createPrivateKey(privateKeyPem);
+  return base64UrlEncode(crypto.sign(null, Buffer.from(payload, "utf8"), key));
+}
+
+function buildGatewayConnectDevice(identity, nonce) {
+  const signedAtMs = Date.now();
+  const role = "operator";
+  const scopes = [
+    "operator.admin",
+    "operator.read",
+    "operator.write",
+    "operator.approvals",
+    "operator.pairing",
+  ];
+  const payload = [
+    "v3",
+    identity.deviceId,
+    "gateway-client",
+    "backend",
+    role,
+    scopes.join(","),
+    String(signedAtMs),
+    "",
+    nonce,
+    process.platform,
+    "",
+  ].join("|");
+  return {
+    role,
+    scopes,
+    device: {
+      id: identity.deviceId,
+      publicKey: identity.publicKeyB64,
+      signature: signGatewayPayload(identity.privateKeyPem, payload),
+      signedAt: signedAtMs,
+      nonce,
+    },
+  };
 }
 
 function sanitizeIntegrationFilePart(value, fallback = "integration") {
@@ -87,9 +178,8 @@ function pickIntegrationTimestamp(integration = {}, keys = []) {
     const value = integration[key];
     if (value) return value;
   }
-  const config = integration.config && typeof integration.config === "object"
-    ? integration.config
-    : {};
+  const config =
+    integration.config && typeof integration.config === "object" ? integration.config : {};
   for (const key of keys) {
     const value = config[key];
     if (value) return value;
@@ -174,9 +264,9 @@ function readIntegrationDetailsFromCatalog(raw, catalogPath) {
       : path.join(baseDir, entry.detailsFile);
     const detail = readJsonFile(detailPath);
     if (detail && typeof detail === "object" && !Array.isArray(detail)) {
-      loaded.push(detail.integration && typeof detail.integration === "object"
-        ? detail.integration
-        : detail);
+      loaded.push(
+        detail.integration && typeof detail.integration === "object" ? detail.integration : detail,
+      );
     }
   }
 
@@ -260,9 +350,7 @@ function buildInvocationExample(spec = {}) {
         ? spec.parameters
         : {};
   const properties =
-    schema.properties && typeof schema.properties === "object"
-      ? schema.properties
-      : {};
+    schema.properties && typeof schema.properties === "object" ? schema.properties : {};
   const required = Array.isArray(schema.required) ? new Set(schema.required) : new Set();
   const input = {};
 
@@ -293,7 +381,7 @@ function normalizeToolName(rawName, fallback) {
 
 function integrationProviderId(integration = {}) {
   return normalizeString(
-    integration.provider || integration.catalog_id || integration.id
+    integration.provider || integration.catalog_id || integration.id,
   ).toLowerCase();
 }
 
@@ -320,7 +408,7 @@ function getIntegrationToolSpecs(integration = {}) {
     : [];
   const manifestTool = buildIntegrationManifestToolSpec(integration);
   const hasManifestTool = declaredToolSpecs.some(
-    (spec) => normalizeString(spec?.name) === manifestTool.name
+    (spec) => normalizeString(spec?.name) === manifestTool.name,
   );
   return hasManifestTool ? declaredToolSpecs : [manifestTool, ...declaredToolSpecs];
 }
@@ -419,7 +507,9 @@ function buildIntegrationSkillMarkdown(integrations = [], options = {}) {
   lines.push("");
 
   for (const integration of syncedIntegrations) {
-    const provider = normalizeString(integration.provider || integration.catalog_id || integration.id);
+    const provider = normalizeString(
+      integration.provider || integration.catalog_id || integration.id,
+    );
     const providerName = normalizeString(integration.name) || provider || "Integration";
     const capabilities = Array.isArray(integration.capabilities) ? integration.capabilities : [];
     const credentialEnv =
@@ -427,9 +517,7 @@ function buildIntegrationSkillMarkdown(integrations = [], options = {}) {
         ? integration.credentialEnv
         : {};
     const configEnv =
-      credentialEnv.config && typeof credentialEnv.config === "object"
-        ? credentialEnv.config
-        : {};
+      credentialEnv.config && typeof credentialEnv.config === "object" ? credentialEnv.config : {};
     const config =
       integration.config && typeof integration.config === "object" ? integration.config : {};
     const redactedConfig =
@@ -455,10 +543,14 @@ function buildIntegrationSkillMarkdown(integrations = [], options = {}) {
     } else if (api?.authEnv) {
       lines.push(`- Primary credential env: \`${api.authEnv}\``);
     } else {
-      lines.push("- Primary credential env: not declared; inspect `integrations/NORA_INTEGRATIONS.md` for synced config fields.");
+      lines.push(
+        "- Primary credential env: not declared; inspect `integrations/NORA_INTEGRATIONS.md` for synced config fields.",
+      );
     }
 
-    const configEnvEntries = Object.entries(configEnv).filter(([, envName]) => normalizeString(envName));
+    const configEnvEntries = Object.entries(configEnv).filter(([, envName]) =>
+      normalizeString(envName),
+    );
     if (configEnvEntries.length > 0) {
       lines.push("- Config env vars:");
       for (const [key, envName] of configEnvEntries) {
@@ -466,20 +558,21 @@ function buildIntegrationSkillMarkdown(integrations = [], options = {}) {
       }
     }
 
-    const nonSecretConfigEntries = Object.entries(config).filter(([, value]) => {
-      if (value == null || value === "") return false;
-      if (typeof value === "string" && value.length > 120) return false;
-      return true;
-    }).filter(([key]) => {
-      if (isSensitiveIntegrationConfigKey(key)) return false;
-      if (redactedConfig[key] === "[REDACTED]") return false;
-      return true;
-    });
+    const nonSecretConfigEntries = Object.entries(config)
+      .filter(([, value]) => {
+        if (value == null || value === "") return false;
+        if (typeof value === "string" && value.length > 120) return false;
+        return true;
+      })
+      .filter(([key]) => {
+        if (isSensitiveIntegrationConfigKey(key)) return false;
+        if (redactedConfig[key] === "[REDACTED]") return false;
+        return true;
+      });
     if (nonSecretConfigEntries.length > 0) {
       lines.push("- Synced config defaults:");
       for (const [key, value] of nonSecretConfigEntries) {
-        const rendered =
-          typeof value === "string" ? value : JSON.stringify(value);
+        const rendered = typeof value === "string" ? value : JSON.stringify(value);
         lines.push(`  - ${key}: ${rendered}`);
       }
     }
@@ -494,7 +587,7 @@ function buildIntegrationSkillMarkdown(integrations = [], options = {}) {
       lines.push("- Executable tools:");
       for (const { spec, execution } of executableForIntegration) {
         lines.push(
-          `  - \`${execution.runtimeToolName}\`: ${normalizeString(spec.description) || "No description provided."}`
+          `  - \`${execution.runtimeToolName}\`: ${normalizeString(spec.description) || "No description provided."}`,
         );
         lines.push(`    Example: \`${execution.invokeCommand}\``);
       }
@@ -548,9 +641,7 @@ function clampInteger(value, { fallback, min = 1, max = 100 }) {
 }
 
 function normalizeIntegrationConfig(integration = {}) {
-  return integration.config && typeof integration.config === "object"
-    ? integration.config
-    : {};
+  return integration.config && typeof integration.config === "object" ? integration.config : {};
 }
 
 function normalizeObject(value) {
@@ -662,6 +753,649 @@ function getTwitterBaseUrl(integration = {}) {
   return url;
 }
 
+function normalizeBoolean(value, fallback = false) {
+  return typeof value === "boolean" ? value : fallback;
+}
+
+function numberValue(value, fallback) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function normalizeStringArray(value) {
+  if (Array.isArray(value)) {
+    return value.map((entry) => normalizeString(entry)).filter(Boolean);
+  }
+  const single = normalizeString(value);
+  if (!single) return [];
+  return single
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function getEmailConfig(integration = {}) {
+  const config = normalizeIntegrationConfig(integration);
+  const auth = normalizeObject(config.auth);
+  const imap = normalizeObject(config.imap);
+  const smtp = normalizeObject(config.smtp);
+
+  return {
+    auth: {
+      mode: normalizeString(auth.mode) || "basic",
+      username: normalizeString(auth.username),
+      password: normalizeString(auth.password) || normalizeString(process.env.EMAIL_PASSWORD),
+      accessToken:
+        normalizeString(auth.accessToken) || normalizeString(process.env.EMAIL_ACCESS_TOKEN),
+    },
+    imap: {
+      host: normalizeString(imap.host),
+      port: numberValue(imap.port, 993),
+      secure: normalizeBoolean(imap.secure, true),
+    },
+    smtp: {
+      host: normalizeString(smtp.host),
+      port: numberValue(smtp.port, 465),
+      secure: normalizeBoolean(smtp.secure, false),
+      fromAddress: normalizeString(smtp.fromAddress),
+      fromName: normalizeString(smtp.fromName),
+    },
+    mailboxScope: {
+      mode: normalizeString(config?.mailboxScope?.mode) || "INBOX",
+    },
+  };
+}
+
+function getEmailStateDbPath(integration = {}) {
+  const id = sanitizeIntegrationFilePart(
+    integration.id || integrationProviderId(integration) || "email",
+  );
+  return path.join(NORA_AGENT_STATE_ROOT, `email_${id}.sqlite`);
+}
+
+function getEmailPollLogPath(integration = {}) {
+  const id = sanitizeIntegrationFilePart(
+    integration.id || integrationProviderId(integration) || "email",
+  );
+  return path.join(NORA_AGENT_STATE_ROOT, `email_${id}.poll.jsonl`);
+}
+
+function appendEmailPollLog(integration = {}, entry = {}) {
+  try {
+    fs.mkdirSync(NORA_AGENT_STATE_ROOT, { recursive: true });
+    const payload = {
+      ts: new Date().toISOString(),
+      integrationId: normalizeString(integration.id) || null,
+      provider: normalizeString(integration.provider) || "email",
+      ...entry,
+    };
+    fs.appendFileSync(getEmailPollLogPath(integration), `${JSON.stringify(payload)}\n`, "utf8");
+  } catch {
+    // Best-effort logging only.
+  }
+}
+
+function appendEmailPollContainerLog(entry = {}) {
+  try {
+    const line = `${new Date().toISOString()} [EMAIL_POLL] ${JSON.stringify(entry)}`;
+    process.stderr.write(`${line}\n`);
+    fs.appendFileSync(OPENCLAW_AGENT_LOG_FILE, `${line}\n`, "utf8");
+  } catch {
+    // Best-effort logging only.
+  }
+}
+
+function openEmailStateDb(integration = {}) {
+  fs.mkdirSync(NORA_AGENT_STATE_ROOT, { recursive: true });
+  const db = new DatabaseSync(getEmailStateDbPath(integration));
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS mailbox_checkpoint (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      mailbox TEXT NOT NULL,
+      uid_validity TEXT,
+      last_seen_uid INTEGER NOT NULL DEFAULT 0,
+      initialized_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS processed_messages (
+      uid INTEGER PRIMARY KEY,
+      message_id TEXT,
+      status TEXT NOT NULL DEFAULT 'processed',
+      processed_at TEXT NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_processed_messages_message_id
+      ON processed_messages(message_id)
+      WHERE message_id IS NOT NULL AND message_id != '';
+  `);
+  return db;
+}
+
+function emailStateGetCheckpoint(db) {
+  return (
+    db
+      .prepare(
+        `SELECT mailbox, uid_validity, last_seen_uid, initialized_at, updated_at
+           FROM mailbox_checkpoint
+          WHERE id = 1`,
+      )
+      .get() || null
+  );
+}
+
+function emailStateUpsertCheckpoint(
+  db,
+  { mailbox = "INBOX", uidValidity = "", lastSeenUid = 0, initializedAt = null },
+) {
+  const now = new Date().toISOString();
+  db.prepare(
+    `INSERT INTO mailbox_checkpoint(id, mailbox, uid_validity, last_seen_uid, initialized_at, updated_at)
+     VALUES(1, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+       mailbox = excluded.mailbox,
+       uid_validity = excluded.uid_validity,
+       last_seen_uid = excluded.last_seen_uid,
+       updated_at = excluded.updated_at`,
+  ).run(mailbox, uidValidity || null, lastSeenUid, initializedAt || now, now);
+}
+
+function emailStateHasProcessed(db, uid, messageId = "") {
+  const row = db
+    .prepare(
+      `SELECT uid, message_id
+         FROM processed_messages
+        WHERE uid = ? OR (message_id IS NOT NULL AND message_id != '' AND message_id = ?)
+        LIMIT 1`,
+    )
+    .get(uid, messageId || "");
+  return Boolean(row);
+}
+
+function emailStateMarkProcessed(db, { uid, messageId = "", status = "processed" }) {
+  db.prepare(
+    `INSERT INTO processed_messages(uid, message_id, status, processed_at)
+     VALUES(?, ?, ?, ?)
+     ON CONFLICT(uid) DO UPDATE SET
+       message_id = excluded.message_id,
+       status = excluded.status,
+       processed_at = excluded.processed_at`,
+  ).run(uid, messageId || null, status, new Date().toISOString());
+}
+
+function escapeImapString(value) {
+  return `"${String(value || "")
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')}"`;
+}
+
+function smtpBase64(value) {
+  return Buffer.from(String(value || ""), "utf8").toString("base64");
+}
+
+function buildSmtpMessageId(fromAddress) {
+  const domain = String(fromAddress || "localhost").split("@")[1] || "localhost";
+  return `<${crypto.randomUUID()}@${domain}>`;
+}
+
+function parseHeaderBlock(rawHeaders = "") {
+  const lines = String(rawHeaders || "")
+    .replace(/\r\n/g, "\n")
+    .split("\n");
+  const headers = {};
+  let currentKey = "";
+
+  for (const line of lines) {
+    if (!line) continue;
+    if (/^\s/.test(line) && currentKey) {
+      headers[currentKey] = `${headers[currentKey]} ${line.trim()}`.trim();
+      continue;
+    }
+    const separator = line.indexOf(":");
+    if (separator <= 0) continue;
+    currentKey = line.slice(0, separator).trim().toLowerCase();
+    headers[currentKey] = line.slice(separator + 1).trim();
+  }
+
+  return headers;
+}
+
+function splitRawMessage(rawMessage = "") {
+  const marker = rawMessage.indexOf("\r\n\r\n");
+  if (marker >= 0) {
+    return {
+      headers: rawMessage.slice(0, marker),
+      body: rawMessage.slice(marker + 4),
+    };
+  }
+  const alt = rawMessage.indexOf("\n\n");
+  if (alt >= 0) {
+    return {
+      headers: rawMessage.slice(0, alt),
+      body: rawMessage.slice(alt + 2),
+    };
+  }
+  return { headers: rawMessage, body: "" };
+}
+
+function normalizeEmailBody(rawBody = "") {
+  return String(rawBody || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function decodeHeaderValue(value = "") {
+  const raw = String(value || "");
+  if (!raw.includes("=?")) return raw;
+  return raw.replace(/=\?([^?]+)\?([bBqQ])\?([^?]*)\?=/g, (_match, _charset, encoding, content) => {
+    try {
+      if (String(encoding).toUpperCase() === "B") {
+        return Buffer.from(content, "base64").toString("utf8");
+      }
+      return content
+        .replace(/_/g, " ")
+        .replace(/=([A-Fa-f0-9]{2})/g, (_m, hex) => String.fromCharCode(Number.parseInt(hex, 16)));
+    } catch {
+      return raw;
+    }
+  });
+}
+
+function parseEmailAddresses(value = "") {
+  const raw = normalizeString(value);
+  if (!raw) return [];
+  return raw
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .map((entry) => {
+      const match = entry.match(/^(.*)<([^>]+)>$/);
+      if (match) {
+        return {
+          name: match[1].replace(/"/g, "").trim(),
+          address: match[2].trim(),
+          raw: entry,
+        };
+      }
+      const address = entry.replace(/[<>]/g, "").trim();
+      return { name: "", address, raw: entry };
+    });
+}
+
+function parseFetchLiteral(responseText = "") {
+  const literalMatch = responseText.match(/\{(\d+)\}\r?\n([\s\S]*)$/);
+  if (!literalMatch) return "";
+  const size = Number.parseInt(literalMatch[1], 10);
+  const after = literalMatch[2] || "";
+  return after.slice(0, size);
+}
+
+async function openImapSession(integration = {}) {
+  const email = getEmailConfig(integration);
+  const { host, port, secure } = email.imap;
+  const username = email.auth.username;
+  const password = email.auth.password;
+
+  if (!host || !username || !password) {
+    throw new Error("Email IMAP host, username, and password are required");
+  }
+
+  const socket = secure
+    ? tls.connect({ host, port, servername: host, rejectUnauthorized: true })
+    : net.connect({ host, port });
+
+  let buffer = "";
+  let tagCounter = 0;
+  let current = null;
+
+  const readReady = new Promise((resolve, reject) => {
+    socket.setTimeout(15000, () => reject(new Error("IMAP connection timed out")));
+    socket.on("error", reject);
+    socket.on("data", (chunk) => {
+      buffer += chunk.toString("utf8");
+      if (buffer.includes("\r\n") && !current && /\* OK/i.test(buffer)) {
+        resolve();
+      }
+      if (current && new RegExp(`^${current.tag} (OK|NO|BAD)\\b`, "im").test(buffer)) {
+        const response = buffer;
+        const ok = new RegExp(`^${current.tag} OK\\b`, "im").test(response);
+        const rejectFn = current.reject;
+        const resolveFn = current.resolve;
+        current = null;
+        buffer = "";
+        if (ok) resolveFn(response);
+        else rejectFn(new Error(response.trim()));
+      }
+    });
+  });
+
+  await readReady;
+
+  async function command(commandText) {
+    if (current) throw new Error("IMAP command already in flight");
+    const tag = `a${++tagCounter}`;
+    return await new Promise((resolve, reject) => {
+      current = { tag, resolve, reject };
+      buffer = "";
+      socket.write(`${tag} ${commandText}\r\n`);
+    });
+  }
+
+  await command(`LOGIN ${escapeImapString(username)} ${escapeImapString(password)}`);
+  const selectResponse = await command(
+    `SELECT ${escapeImapString(email.mailboxScope.mode || "INBOX")}`,
+  );
+  const uidValidityMatch = selectResponse.match(/\[UIDVALIDITY\s+([^\]\s]+)\]/i);
+  const existsMatch = selectResponse.match(/\*\s+(\d+)\s+EXISTS/i);
+  const mailboxStatus = {
+    mailbox: email.mailboxScope.mode || "INBOX",
+    uidValidity: uidValidityMatch ? uidValidityMatch[1] : "",
+    exists: existsMatch ? Number.parseInt(existsMatch[1], 10) : 0,
+  };
+
+  return {
+    getMailboxStatus() {
+      return { ...mailboxStatus };
+    },
+    async searchAll(limit = 100) {
+      const response = await command("UID SEARCH ALL");
+      const match = response.match(/\* SEARCH([^\r\n]*)/i);
+      const uids = (match?.[1] || "")
+        .trim()
+        .split(/\s+/)
+        .map((entry) => Number.parseInt(entry, 10))
+        .filter((entry) => Number.isFinite(entry));
+      return uids.slice(Math.max(0, uids.length - limit));
+    },
+    async searchAfterUid(lastSeenUid, limit = 100) {
+      const floor = Math.max(0, Number.parseInt(String(lastSeenUid || 0), 10));
+      const response = await command(`UID SEARCH UID ${floor + 1}:*`);
+      const match = response.match(/\* SEARCH([^\r\n]*)/i);
+      const uids = (match?.[1] || "")
+        .trim()
+        .split(/\s+/)
+        .map((entry) => Number.parseInt(entry, 10))
+        .filter((entry) => Number.isFinite(entry));
+      return uids.slice(0, limit);
+    },
+    async searchNew(limit = 10) {
+      const response = await command("UID SEARCH UNSEEN");
+      const match = response.match(/\* SEARCH([^\r\n]*)/i);
+      const uids = (match?.[1] || "")
+        .trim()
+        .split(/\s+/)
+        .map((entry) => Number.parseInt(entry, 10))
+        .filter((entry) => Number.isFinite(entry));
+      return uids.slice(Math.max(0, uids.length - limit));
+    },
+    async fetchHeaders(uid) {
+      const response = await command(
+        `UID FETCH ${uid} (UID RFC822.SIZE BODY.PEEK[HEADER.FIELDS (SUBJECT FROM TO CC DATE MESSAGE-ID IN-REPLY-TO REFERENCES REPLY-TO)])`,
+      );
+      const headers = parseHeaderBlock(parseFetchLiteral(response));
+      const uidMatch = response.match(/\bUID\s+(\d+)\b/i);
+      const sizeMatch = response.match(/\bRFC822\.SIZE\s+(\d+)\b/i);
+      return {
+        uid: uidMatch ? Number.parseInt(uidMatch[1], 10) : uid,
+        size: sizeMatch ? Number.parseInt(sizeMatch[1], 10) : null,
+        headers,
+      };
+    },
+    async fetchRawMessage(uid) {
+      const response = await command(`UID FETCH ${uid} (UID BODY.PEEK[])`);
+      return {
+        uid,
+        raw: parseFetchLiteral(response),
+      };
+    },
+    async close() {
+      try {
+        await command("LOGOUT");
+      } catch {
+        // ignore logout failures
+      }
+      socket.destroy();
+    },
+  };
+}
+
+async function runSmtpSession(integration = {}, message = {}) {
+  const email = getEmailConfig(integration);
+  const { host, port, secure, fromAddress, fromName } = email.smtp;
+  const username = email.auth.username;
+  const password = email.auth.password;
+  const to = normalizeStringArray(message.to);
+  const cc = normalizeStringArray(message.cc);
+  const bcc = normalizeStringArray(message.bcc);
+  const recipients = [...to, ...cc, ...bcc];
+
+  if (!host || !username || !password || !fromAddress) {
+    throw new Error("Email SMTP host, username, password, and from address are required");
+  }
+  if (!recipients.length) {
+    throw new Error("At least one recipient is required");
+  }
+
+  let socket = secure
+    ? tls.connect({ host, port, servername: host, rejectUnauthorized: true })
+    : net.connect({ host, port });
+  let buffer = "";
+  const waitFor = (patterns, { timeoutMs = 15000 } = {}) =>
+    new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("SMTP command timed out")), timeoutMs);
+      const onError = (error) => {
+        cleanup();
+        reject(error instanceof Error ? error : new Error(String(error)));
+      };
+      const onData = (chunk) => {
+        buffer += chunk.toString("utf8");
+        const lines = buffer.split(/\r?\n/).filter(Boolean);
+        const lastLine = lines[lines.length - 1] || "";
+        if (!/^\d{3} /.test(lastLine)) return;
+        cleanup();
+        resolve(lastLine);
+      };
+      const cleanup = () => {
+        clearTimeout(timer);
+        socket.off("error", onError);
+        socket.off("data", onData);
+      };
+      socket.on("error", onError);
+      socket.on("data", onData);
+    }).then((line) => {
+      const ok = patterns.some((pattern) => pattern.test(String(line)));
+      if (!ok) throw new Error(String(line).trim());
+      buffer = "";
+      return line;
+    });
+
+  const sendLine = async (line, patterns) => {
+    socket.write(`${line}\r\n`);
+    return await waitFor(patterns);
+  };
+
+  await waitFor([/^220\b/]);
+  await sendLine("EHLO nora-agent", [/^250\b/]);
+
+  if (!secure) {
+    await sendLine("STARTTLS", [/^220\b/]);
+    socket = tls.connect({
+      socket,
+      servername: host,
+      rejectUnauthorized: true,
+    });
+    buffer = "";
+    await waitFor([/^220\b/, /^250\b/]).catch(() => null);
+    await sendLine("EHLO nora-agent", [/^250\b/]);
+  }
+
+  await sendLine("AUTH LOGIN", [/^334\b/]);
+  await sendLine(smtpBase64(username), [/^334\b/]);
+  await sendLine(smtpBase64(password), [/^235\b/]);
+  await sendLine(`MAIL FROM:<${fromAddress}>`, [/^250\b/]);
+  for (const recipient of recipients) {
+    await sendLine(`RCPT TO:<${recipient}>`, [/^250\b/, /^251\b/]);
+  }
+  await sendLine("DATA", [/^354\b/]);
+
+  const subject = normalizeString(message.subject);
+  const text = normalizeString(message.text);
+  const messageId = normalizeString(message.messageId) || buildSmtpMessageId(fromAddress);
+  const headers = [
+    `From: ${fromName ? `${fromName} <${fromAddress}>` : fromAddress}`,
+    `To: ${to.join(", ")}`,
+    ...(cc.length ? [`Cc: ${cc.join(", ")}`] : []),
+    `Subject: ${subject}`,
+    `Date: ${new Date().toUTCString()}`,
+    `Message-ID: ${messageId}`,
+    ...(normalizeString(message.inReplyTo)
+      ? [`In-Reply-To: ${normalizeString(message.inReplyTo)}`]
+      : []),
+    ...(normalizeString(message.references)
+      ? [`References: ${normalizeString(message.references)}`]
+      : []),
+    "MIME-Version: 1.0",
+    "Content-Type: text/plain; charset=utf-8",
+    "Content-Transfer-Encoding: 8bit",
+  ];
+  socket.write(`${headers.join("\r\n")}\r\n\r\n${text.replace(/\r?\n/g, "\r\n")}\r\n.\r\n`);
+  await waitFor([/^250\b/], { timeoutMs: 20000 });
+  await sendLine("QUIT", [/^221\b/]).catch(() => null);
+  socket.destroy();
+
+  return {
+    accepted: recipients,
+    from: fromAddress,
+    subject,
+    messageId,
+  };
+}
+
+function parseMimeParts(rawMessage = "") {
+  const { headers: topHeaders, body: topBody } = splitRawMessage(rawMessage);
+  const contentType = String(parseHeaderBlock(topHeaders)["content-type"] || "");
+  const boundaryMatch = contentType.match(/boundary="?([^";\r\n]+)"?/i);
+
+  if (!boundaryMatch) {
+    return { textBody: topBody, htmlBody: "", attachments: [] };
+  }
+
+  const boundary = boundaryMatch[1].trim();
+  const parts = topBody
+    .split(new RegExp(`--${boundary.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:--)?`, "g"))
+    .slice(1)
+    .filter((part) => part && !part.match(/^--\s*$/));
+
+  let textBody = "";
+  let htmlBody = "";
+  const attachments = [];
+
+  for (const part of parts) {
+    const { headers: partHeaders, body: partBody } = splitRawMessage(part.replace(/^\r?\n/, ""));
+    const parsed = parseHeaderBlock(partHeaders);
+    const partContentType = String(parsed["content-type"] || "").toLowerCase();
+    const disposition = String(parsed["content-disposition"] || "").toLowerCase();
+    const encoding = String(parsed["content-transfer-encoding"] || "")
+      .trim()
+      .toLowerCase();
+
+    const decode = (raw) => {
+      if (encoding === "base64")
+        return Buffer.from(raw.replace(/\s/g, ""), "base64").toString("utf8");
+      if (encoding === "quoted-printable") {
+        return raw
+          .replace(/=\r?\n/g, "")
+          .replace(/=([A-Fa-f0-9]{2})/g, (_m, hex) =>
+            String.fromCharCode(Number.parseInt(hex, 16)),
+          );
+      }
+      return raw;
+    };
+
+    const filenameMatch = (parsed["content-disposition"] || parsed["content-type"] || "").match(
+      /(?:filename|name)="?([^";\r\n]+)"?/i,
+    );
+    const filename = filenameMatch ? filenameMatch[1].trim() : "";
+
+    if (disposition.includes("attachment") || (filename && !partContentType.startsWith("text/"))) {
+      attachments.push({
+        filename,
+        contentType: partContentType.split(";")[0].trim(),
+        size: partBody.replace(/\s/g, "").length,
+      });
+    } else if (partContentType.startsWith("text/html")) {
+      htmlBody = normalizeEmailBody(decode(partBody));
+    } else if (partContentType.startsWith("text/plain") || (!textBody && !partContentType)) {
+      textBody = normalizeEmailBody(decode(partBody));
+    }
+  }
+
+  return { textBody, htmlBody, attachments };
+}
+
+function sanitizeHtmlBody(html = "") {
+  const sanitizeHtml = getSanitizeHtml();
+  return sanitizeHtml(String(html || ""), {
+    disallowedTagsMode: "discard",
+    allowedTags: (sanitizeHtml.defaults.allowedTags || []).filter((tag) => tag !== "style"),
+    allowedAttributes: {
+      ...sanitizeHtml.defaults.allowedAttributes,
+      "*": (sanitizeHtml.defaults.allowedAttributes?.["*"] || []).filter(
+        (attr) => !/^on/i.test(String(attr || "")),
+      ),
+    },
+    allowedSchemes: ["http", "https", "mailto"],
+    allowProtocolRelative: false,
+  }).trim();
+}
+
+function normalizeEmailMessage(uid, rawMessage = "", fallbackHeaders = {}) {
+  const { headers: rawHeaders, body } = splitRawMessage(rawMessage);
+  const headers = {
+    ...fallbackHeaders,
+    ...parseHeaderBlock(rawHeaders),
+  };
+  const from = parseEmailAddresses(headers.from);
+  const to = parseEmailAddresses(headers.to);
+  const cc = parseEmailAddresses(headers.cc);
+  const replyTo = parseEmailAddresses(headers["reply-to"]);
+  const messageId = decodeHeaderValue(headers["message-id"] || headers["messageid"] || "");
+  const inReplyTo = decodeHeaderValue(headers["in-reply-to"] || "");
+  const references = decodeHeaderValue(headers.references || "");
+
+  const contentType = String(headers["content-type"] || "").toLowerCase();
+  let textBody = "";
+  let htmlBody = "";
+  let attachments = [];
+
+  if (contentType.includes("multipart/")) {
+    const parts = parseMimeParts(rawMessage);
+    textBody = parts.textBody;
+    htmlBody = sanitizeHtmlBody(parts.htmlBody);
+    attachments = parts.attachments;
+  } else if (contentType.startsWith("text/html")) {
+    htmlBody = sanitizeHtmlBody(normalizeEmailBody(body));
+  } else {
+    textBody = normalizeEmailBody(body);
+  }
+
+  return {
+    uid,
+    messageId,
+    subject: decodeHeaderValue(headers.subject || ""),
+    date: decodeHeaderValue(headers.date || ""),
+    from,
+    to,
+    cc,
+    replyTo,
+    inReplyTo,
+    references,
+    textBody,
+    htmlBody,
+    attachments,
+    rawHeaders,
+  };
+}
+
 async function readResponseBody(response) {
   const rawText = await response.text();
   if (!rawText) return { rawText: "", data: null };
@@ -677,9 +1411,7 @@ function buildGitHubRequestUrl(integration, requestPath, query = {}) {
   const baseUrl = getGitHubBaseUrl(integration);
   const normalizedPath = requestPath.startsWith("/") ? requestPath : `/${requestPath}`;
   const basePath =
-    baseUrl.pathname && baseUrl.pathname !== "/"
-      ? baseUrl.pathname.replace(/\/+$/, "")
-      : "";
+    baseUrl.pathname && baseUrl.pathname !== "/" ? baseUrl.pathname.replace(/\/+$/, "") : "";
   baseUrl.pathname = `${basePath}${normalizedPath}`;
 
   for (const [key, value] of Object.entries(query)) {
@@ -733,15 +1465,16 @@ function buildTwitterRequestUrl(integration, requestPath, query = {}) {
   const baseUrl = getTwitterBaseUrl(integration);
   const normalizedPath = requestPath.startsWith("/") ? requestPath : `/${requestPath}`;
   const basePath =
-    baseUrl.pathname && baseUrl.pathname !== "/"
-      ? baseUrl.pathname.replace(/\/+$/, "")
-      : "";
+    baseUrl.pathname && baseUrl.pathname !== "/" ? baseUrl.pathname.replace(/\/+$/, "") : "";
   baseUrl.pathname = `${basePath}${normalizedPath}`;
 
   for (const [key, value] of Object.entries(query)) {
     if (value == null || value === "") continue;
     if (Array.isArray(value)) {
-      const joined = value.map((entry) => normalizeString(entry)).filter(Boolean).join(",");
+      const joined = value
+        .map((entry) => normalizeString(entry))
+        .filter(Boolean)
+        .join(",");
       if (joined) baseUrl.searchParams.set(key, joined);
       continue;
     }
@@ -903,7 +1636,10 @@ function normalizeStringList(value) {
   }
   const normalized = normalizeString(value);
   if (!normalized) return [];
-  return normalized.split(",").map((entry) => normalizeString(entry)).filter(Boolean);
+  return normalized
+    .split(",")
+    .map((entry) => normalizeString(entry))
+    .filter(Boolean);
 }
 
 function normalizeTwitterUsername(value) {
@@ -994,12 +1730,7 @@ function decodeGitHubFileContent(file = {}) {
   };
 }
 
-async function executeGitHubOperation({
-  integration,
-  spec,
-  input,
-  fetchImpl,
-}) {
+async function executeGitHubOperation({ integration, spec, input, fetchImpl }) {
   const normalizedInput = normalizeIntegrationToolInput(input);
   const operation = normalizeString(spec.operation);
 
@@ -1034,7 +1765,7 @@ async function executeGitHubOperation({
           ownerType,
           repositories: filterRepositoriesByVisibility(
             Array.isArray(repositories) ? repositories : [],
-            visibility
+            visibility,
           ).map(mapGitHubRepository),
         };
       }
@@ -1054,9 +1785,7 @@ async function executeGitHubOperation({
       return {
         owner: null,
         ownerType: "AuthenticatedUser",
-        repositories: (Array.isArray(repositories) ? repositories : []).map(
-          mapGitHubRepository
-        ),
+        repositories: (Array.isArray(repositories) ? repositories : []).map(mapGitHubRepository),
       };
     }
 
@@ -1164,12 +1893,7 @@ async function executeGitHubOperation({
   }
 }
 
-async function executeTwitterOperation({
-  integration,
-  spec,
-  input,
-  fetchImpl,
-}) {
+async function executeTwitterOperation({ integration, spec, input, fetchImpl }) {
   const normalizedInput = normalizeIntegrationToolInput(input);
   const operation = normalizeString(spec.operation);
 
@@ -1250,15 +1974,866 @@ async function executeTwitterOperation({
   }
 }
 
+function resolveEmailUid(input = {}) {
+  const uid = Number.parseInt(input.uid, 10);
+  if (!Number.isFinite(uid) || uid <= 0) {
+    throw new Error("Email message uid is required");
+  }
+  return uid;
+}
+
+function emailAddressString(address = {}) {
+  const name = normalizeString(address?.name);
+  const value = normalizeString(address?.address);
+  if (!value) return "";
+  return name ? `${name} <${value}>` : value;
+}
+
+function formatInboundEmailDispatchMessage(message = {}) {
+  const from = (Array.isArray(message.from) ? message.from : [])
+    .map(emailAddressString)
+    .filter(Boolean)
+    .join(", ");
+  const to = (Array.isArray(message.to) ? message.to : [])
+    .map(emailAddressString)
+    .filter(Boolean)
+    .join(", ");
+  const replyTo = (Array.isArray(message.replyTo) ? message.replyTo : [])
+    .map(emailAddressString)
+    .filter(Boolean)
+    .join(", ");
+  const body = normalizeString(message.textBody || message.htmlBody || "");
+  const compactBody = body.replace(/\s+/g, " ").trim();
+  const snippet = compactBody.length > 400 ? `${compactBody.slice(0, 397)}...` : compactBody;
+
+  return [
+    "New inbound email received in your connected inbox.",
+    "",
+    `UID: ${message.uid}`,
+    `Message-ID: ${message.messageId || ""}`,
+    `From: ${from}`,
+    `To: ${to}`,
+    `Reply-To: ${replyTo}`,
+    `Subject: ${message.subject || ""}`,
+    `Date: ${message.date || ""}`,
+    "",
+    "Summary:",
+    snippet || "(No preview available)",
+    "",
+    "Use the email integration tools if you want to inspect the message, reply, or mark it processed.",
+  ].join("\n");
+}
+
+function formatInboundEmailMainNotification(message = {}) {
+  const from = (Array.isArray(message.from) ? message.from : [])
+    .map(emailAddressString)
+    .filter(Boolean)
+    .join(", ");
+  const subject = normalizeString(message.subject);
+  const date = normalizeString(message.date);
+  return [
+    from ? `New email received from ${from}.` : "New email received in your connected inbox.",
+    subject ? `Subject: ${subject}` : "Subject: (No subject)",
+    date ? `Date: ${date}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function buildAssistantSessionEntry(text, parentId = null) {
+  const timestamp = new Date().toISOString();
+  return {
+    type: "message",
+    id: crypto.randomBytes(4).toString("hex"),
+    parentId: parentId || null,
+    timestamp,
+    message: {
+      role: "assistant",
+      content: [{ type: "text", text }],
+      timestamp: Date.now(),
+    },
+  };
+}
+
+function findCurrentMainSessionFile() {
+  if (!fs.existsSync(OPENCLAW_SESSIONS_ROOT)) return null;
+  const files = fs
+    .readdirSync(OPENCLAW_SESSIONS_ROOT)
+    .filter((name) => name.endsWith(".trajectory.jsonl"))
+    .map((name) => {
+      const absPath = path.join(OPENCLAW_SESSIONS_ROOT, name);
+      const stat = fs.statSync(absPath);
+      return {
+        name,
+        absPath,
+        mtimeMs: Number(stat?.mtimeMs || 0),
+      };
+    })
+    .sort((a, b) => b.mtimeMs - a.mtimeMs);
+
+  for (const file of files) {
+    try {
+      const content = fs.readFileSync(file.absPath, "utf8");
+      if (!content.includes('"sessionKey":"agent:main:main"')) continue;
+      const sessionId = file.name.replace(/\.trajectory\.jsonl$/u, "");
+      const sessionFile = path.join(OPENCLAW_SESSIONS_ROOT, `${sessionId}.jsonl`);
+      if (!fs.existsSync(sessionFile)) continue;
+      return { sessionId, sessionFile, trajectoryFile: file.absPath };
+    } catch {
+      // Try the next candidate.
+    }
+  }
+
+  return null;
+}
+
+function appendAssistantNotificationToMainSession(message = {}) {
+  const sessionRef = findCurrentMainSessionFile();
+  if (!sessionRef?.sessionFile) {
+    throw new Error("Unable to locate the current main session file");
+  }
+
+  const notificationText = normalizeString(message);
+  if (!notificationText) {
+    throw new Error("Notification text is required");
+  }
+
+  const raw = fs.readFileSync(sessionRef.sessionFile, "utf8");
+  const lines = raw.split("\n").filter((line) => line.trim());
+  let parentId = null;
+
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    try {
+      const parsed = JSON.parse(lines[index]);
+      if (parsed?.id) {
+        parentId = parsed.id;
+        break;
+      }
+    } catch {
+      // Ignore malformed trailing lines and keep scanning backward.
+    }
+  }
+
+  const entry = buildAssistantSessionEntry(notificationText, parentId);
+  fs.appendFileSync(sessionRef.sessionFile, `${JSON.stringify(entry)}\n`, "utf8");
+  return {
+    ok: true,
+    sessionId: sessionRef.sessionId,
+    sessionFile: sessionRef.sessionFile,
+    entryId: entry.id,
+  };
+}
+
+function loadOpenClawConfig() {
+  try {
+    if (!fs.existsSync(OPENCLAW_CONFIG_FILE)) return {};
+    const raw = fs.readFileSync(OPENCLAW_CONFIG_FILE, "utf8");
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+function parseNotificationRecipient(value) {
+  const raw = normalizeString(value);
+  if (!raw) return null;
+  const separatorIndex = raw.indexOf(":");
+  if (separatorIndex <= 0) return null;
+  const channel = normalizeString(raw.slice(0, separatorIndex)).toLowerCase();
+  const target = normalizeString(raw.slice(separatorIndex + 1));
+  if (!channel || !target) return null;
+  return { channel, target };
+}
+
+function resolveConfiguredNotificationTargets() {
+  const config = loadOpenClawConfig();
+  const channelsConfig =
+    config?.channels && typeof config.channels === "object" ? config.channels : {};
+  const ownerAllowFrom = Array.isArray(config?.commands?.ownerAllowFrom)
+    ? config.commands.ownerAllowFrom
+    : [];
+  const targets = [];
+  const seen = new Set();
+
+  for (const rawRecipient of ownerAllowFrom) {
+    const parsed = parseNotificationRecipient(rawRecipient);
+    if (!parsed) continue;
+    const channelConfig =
+      channelsConfig?.[parsed.channel] && typeof channelsConfig[parsed.channel] === "object"
+        ? channelsConfig[parsed.channel]
+        : null;
+    if (channelConfig?.enabled === false) continue;
+    const accounts =
+      channelConfig?.accounts && typeof channelConfig.accounts === "object"
+        ? channelConfig.accounts
+        : null;
+    const enabledAccountId =
+      Object.entries(accounts || {}).find(([, value]) => value && value.enabled !== false)?.[0] ||
+      "default";
+    const dedupeKey = `${parsed.channel}:${enabledAccountId}:${parsed.target}`;
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+    targets.push({
+      channel: parsed.channel,
+      accountId: enabledAccountId,
+      target: parsed.target,
+      source: "ownerAllowFrom",
+    });
+  }
+
+  return targets;
+}
+
+function sendChannelNotification({ channel, accountId, target, message } = {}) {
+  const safeChannel = normalizeString(channel).toLowerCase();
+  const safeAccountId = normalizeString(accountId) || "default";
+  const safeTarget = normalizeString(target);
+  const safeMessage = normalizeString(message);
+  if (!safeChannel || !safeTarget || !safeMessage) {
+    throw new Error("Channel, target, and message are required");
+  }
+
+  const argv = [
+    "message",
+    "send",
+    "--channel",
+    safeChannel,
+    "--account",
+    safeAccountId,
+    "--target",
+    safeTarget,
+    "--message",
+    safeMessage,
+    "--json",
+  ];
+  const raw = execFileSync(OPENCLAW_CLI, argv, {
+    encoding: "utf8",
+    timeout: 120000,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  const trimmed = normalizeString(raw);
+  let parsed = null;
+  if (trimmed) {
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch {
+      parsed = { raw: trimmed };
+    }
+  }
+  return {
+    ok: true,
+    channel: safeChannel,
+    accountId: safeAccountId,
+    target: safeTarget,
+    result: parsed,
+  };
+}
+
+function deliverNotificationToConfiguredChannels(message = {}) {
+  const notificationText = normalizeString(message);
+  if (!notificationText) {
+    return {
+      ok: true,
+      attempted: 0,
+      delivered: 0,
+      skipped: 1,
+      deliveries: [],
+      errors: [],
+    };
+  }
+
+  const targets = resolveConfiguredNotificationTargets();
+  const deliveries = [];
+  const errors = [];
+
+  for (const target of targets) {
+    try {
+      deliveries.push(
+        sendChannelNotification({
+          channel: target.channel,
+          accountId: target.accountId,
+          target: target.target,
+          message: notificationText,
+        }),
+      );
+    } catch (error) {
+      const entry = {
+        channel: target.channel,
+        accountId: target.accountId,
+        target: target.target,
+        error: error?.message || "Unknown notification delivery failure",
+      };
+      errors.push(entry);
+      appendEmailPollContainerLog({
+        notificationDispatch: "channel_failed",
+        ...entry,
+      });
+    }
+  }
+
+  return {
+    ok: errors.length === 0,
+    attempted: targets.length,
+    delivered: deliveries.length,
+    skipped: targets.length === 0 ? 1 : 0,
+    deliveries,
+    errors,
+  };
+}
+
+async function sendGatewayChatMessage({ sessionKey, message } = {}) {
+  const WebSocketImpl = globalThis.WebSocket;
+  if (typeof WebSocketImpl !== "function") {
+    throw new Error("WebSocket is not available in this runtime");
+  }
+
+  const gatewayUrl = `ws://127.0.0.1:${OPENCLAW_GATEWAY_PORT}`;
+  const identity = deriveGatewayDeviceIdentity(OPENCLAW_GATEWAY_TOKEN || "");
+  const idempotencyKey = crypto.randomUUID();
+  const safeSessionKey = normalizeString(sessionKey) || "main";
+  const outboundMessage = normalizeString(message);
+  if (!outboundMessage) {
+    throw new Error("Gateway message content is required");
+  }
+
+  return await new Promise((resolve, reject) => {
+    let settled = false;
+    let requestId = 0;
+    let sendRequestId = "";
+    const ws = new WebSocketImpl(gatewayUrl);
+    const timeout = setTimeout(() => {
+      cleanup();
+      reject(new Error("Gateway dispatch timed out"));
+    }, 120000);
+
+    const cleanup = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      try {
+        ws.close();
+      } catch {
+        // ignore close failures
+      }
+    };
+
+    ws.addEventListener("message", (event) => {
+      let msg;
+      try {
+        msg = JSON.parse(String(event.data || ""));
+      } catch {
+        return;
+      }
+
+      if (msg.type === "event" && msg.event === "connect.challenge") {
+        const { role, scopes, device } = buildGatewayConnectDevice(
+          identity,
+          msg.payload?.nonce || "",
+        );
+        ws.send(
+          JSON.stringify({
+            type: "req",
+            id: "__connect__",
+            method: "connect",
+            params: {
+              minProtocol: 3,
+              maxProtocol: 3,
+              client: {
+                id: "gateway-client",
+                version: "1.0.0",
+                platform: "linux",
+                mode: "backend",
+              },
+              role,
+              scopes,
+              caps: ["thinking-events"],
+              commands: [],
+              auth: OPENCLAW_GATEWAY_TOKEN ? { password: OPENCLAW_GATEWAY_TOKEN } : {},
+              device,
+            },
+          }),
+        );
+        return;
+      }
+
+      if (msg.id === "__connect__") {
+        if (!msg.ok) {
+          cleanup();
+          reject(new Error(msg.error?.message || "Gateway connect failed"));
+          return;
+        }
+        const sendId = `r${++requestId}`;
+        sendRequestId = sendId;
+        ws.send(
+          JSON.stringify({
+            type: "req",
+            id: sendId,
+            method: "chat.send",
+            params: {
+              sessionKey: safeSessionKey,
+              idempotencyKey,
+              message: outboundMessage,
+            },
+          }),
+        );
+        return;
+      }
+
+      if (msg.id === sendRequestId) {
+        if (!msg.ok) {
+          cleanup();
+          reject(new Error(msg.error?.message || "Gateway chat.send failed"));
+          return;
+        }
+        cleanup();
+        resolve({
+          ok: true,
+          sessionKey: safeSessionKey,
+          idempotencyKey,
+          accepted: true,
+        });
+        return;
+      }
+
+      if (msg.id && msg.ok === false) {
+        cleanup();
+        reject(new Error(msg.error?.message || "Gateway RPC failed"));
+      }
+    });
+
+    ws.addEventListener("error", (event) => {
+      cleanup();
+      reject(new Error(event?.message || "Gateway WebSocket error"));
+    });
+
+    ws.addEventListener("close", () => {
+      if (!settled) {
+        cleanup();
+        reject(new Error("Gateway connection closed during dispatch"));
+      }
+    });
+  });
+}
+
+async function dispatchEmailMessageToGateway(message = {}) {
+  const processingMessage = formatInboundEmailDispatchMessage(message);
+  const notificationMessage = formatInboundEmailMainNotification(message);
+  const processingResult = await sendGatewayChatMessage({
+    sessionKey: "email:inbox",
+    message: processingMessage,
+  });
+  const notificationResult = appendAssistantNotificationToMainSession(notificationMessage);
+  const channelNotificationResult = deliverNotificationToConfiguredChannels(notificationMessage);
+  return {
+    ok: true,
+    processing: processingResult,
+    notification: notificationResult,
+    channels: channelNotificationResult,
+  };
+}
+
+function resolveEmailIntegrationForPoll(integrations = [], input = {}) {
+  const requestedId = normalizeString(input.integrationId);
+  const emailIntegrations = (Array.isArray(integrations) ? integrations : []).filter(
+    (entry) => integrationProviderId(entry) === "email",
+  );
+  if (requestedId) {
+    const match = emailIntegrations.find((entry) => normalizeString(entry.id) === requestedId);
+    if (!match) {
+      throw new Error(`Email integration "${requestedId}" is not synced to this agent`);
+    }
+    return match;
+  }
+  if (emailIntegrations.length === 1) return emailIntegrations[0];
+  if (!emailIntegrations.length) {
+    throw new Error("No Email integration is synced to this agent");
+  }
+  throw new Error("Multiple Email integrations are synced; integrationId is required");
+}
+
+async function executeEmailPoll({ integration, input }) {
+  const normalizedInput = normalizeIntegrationToolInput(input);
+  const startedAt = Date.now();
+  const db = openEmailStateDb(integration);
+  const session = await openImapSession(integration);
+  try {
+    const mailboxStatus = session.getMailboxStatus();
+    const checkpoint = emailStateGetCheckpoint(db);
+    const mailbox = mailboxStatus.mailbox || "INBOX";
+    const uidValidity = mailboxStatus.uidValidity || "";
+    const scanLimit = clampInteger(normalizedInput.limit, {
+      fallback: 25,
+      min: 1,
+      max: 100,
+    });
+    appendEmailPollLog(integration, {
+      event: "poll_started",
+      mailbox,
+      uidValidity,
+      scanLimit,
+      checkpointPresent: !!checkpoint,
+      lastSeenUid: checkpoint?.last_seen_uid ?? null,
+    });
+    appendEmailPollContainerLog({
+      event: "poll_started",
+      integrationId: normalizeString(integration.id) || null,
+      mailbox,
+      uidValidity,
+      scanLimit,
+      checkpointPresent: !!checkpoint,
+      lastSeenUid: checkpoint?.last_seen_uid ?? null,
+    });
+
+    if (!checkpoint) {
+      const allUids = await session.searchAll(500);
+      const lastSeenUid = allUids.length ? Math.max(...allUids) : 0;
+      emailStateUpsertCheckpoint(db, {
+        mailbox,
+        uidValidity,
+        lastSeenUid,
+      });
+      return {
+        mailbox,
+        initialized: true,
+        initialSyncMode: "start_from_now",
+        lastSeenUid,
+        dispatched: 0,
+        skippedHistorical: allUids.length,
+      };
+      appendEmailPollLog(integration, {
+        event: "poll_initialized",
+        mailbox,
+        uidValidity,
+        durationMs: Date.now() - startedAt,
+        lastSeenUid,
+        skippedHistorical: allUids.length,
+      });
+      appendEmailPollContainerLog({
+        event: "poll_initialized",
+        integrationId: normalizeString(integration.id) || null,
+        mailbox,
+        uidValidity,
+        durationMs: Date.now() - startedAt,
+        lastSeenUid,
+        skippedHistorical: allUids.length,
+      });
+      return result;
+    }
+
+    if (checkpoint.uid_validity && uidValidity && checkpoint.uid_validity !== uidValidity) {
+      const allUids = await session.searchAll(500);
+      const lastSeenUid = allUids.length ? Math.max(...allUids) : 0;
+      emailStateUpsertCheckpoint(db, {
+        mailbox,
+        uidValidity,
+        lastSeenUid,
+        initializedAt: checkpoint.initialized_at,
+      });
+      return {
+        mailbox,
+        checkpointReset: true,
+        reason: "uidvalidity_changed",
+        lastSeenUid,
+        dispatched: 0,
+      };
+      appendEmailPollLog(integration, {
+        event: "poll_checkpoint_reset",
+        mailbox,
+        uidValidity,
+        durationMs: Date.now() - startedAt,
+        reason: "uidvalidity_changed",
+        lastSeenUid,
+      });
+      appendEmailPollContainerLog({
+        event: "poll_checkpoint_reset",
+        integrationId: normalizeString(integration.id) || null,
+        mailbox,
+        uidValidity,
+        durationMs: Date.now() - startedAt,
+        reason: "uidvalidity_changed",
+        lastSeenUid,
+      });
+      return result;
+    }
+
+    const lastSeenUid = Number.parseInt(String(checkpoint.last_seen_uid || 0), 10) || 0;
+    const candidateUids = await session.searchAfterUid(lastSeenUid, scanLimit);
+    let newLastSeenUid = lastSeenUid;
+    const dispatched = [];
+
+    for (const uid of candidateUids) {
+      const headerResult = await session.fetchHeaders(uid);
+      const rawResult = await session.fetchRawMessage(uid);
+      const message = normalizeEmailMessage(uid, rawResult.raw, headerResult.headers);
+      if (emailStateHasProcessed(db, uid, message.messageId)) {
+        newLastSeenUid = Math.max(newLastSeenUid, uid);
+        continue;
+      }
+      const dispatchResult = await dispatchEmailMessageToGateway(message);
+      emailStateMarkProcessed(db, {
+        uid,
+        messageId: message.messageId,
+        status: "dispatched",
+      });
+      newLastSeenUid = Math.max(newLastSeenUid, uid);
+      dispatched.push({
+        uid,
+        messageId: message.messageId,
+        subject: message.subject,
+        dispatch: dispatchResult,
+      });
+    }
+
+    if (newLastSeenUid !== lastSeenUid) {
+      emailStateUpsertCheckpoint(db, {
+        mailbox,
+        uidValidity,
+        lastSeenUid: newLastSeenUid,
+        initializedAt: checkpoint.initialized_at,
+      });
+    }
+
+    const result = {
+      mailbox,
+      initialized: false,
+      lastSeenUid: newLastSeenUid,
+      scanned: candidateUids.length,
+      dispatched: dispatched.length,
+      messages: dispatched,
+    };
+    appendEmailPollLog(integration, {
+      event: "poll_completed",
+      mailbox,
+      uidValidity,
+      durationMs: Date.now() - startedAt,
+      scanned: candidateUids.length,
+      dispatched: dispatched.length,
+      lastSeenUid: newLastSeenUid,
+      messageUids: dispatched.map((entry) => entry.uid),
+    });
+    appendEmailPollContainerLog({
+      event: "poll_completed",
+      integrationId: normalizeString(integration.id) || null,
+      mailbox,
+      uidValidity,
+      durationMs: Date.now() - startedAt,
+      scanned: candidateUids.length,
+      dispatched: dispatched.length,
+      lastSeenUid: newLastSeenUid,
+      messageUids: dispatched.map((entry) => entry.uid),
+    });
+    return result;
+  } catch (error) {
+    appendEmailPollLog(integration, {
+      event: "poll_failed",
+      durationMs: Date.now() - startedAt,
+      error: String(error?.message || error),
+    });
+    appendEmailPollContainerLog({
+      event: "poll_failed",
+      integrationId: normalizeString(integration.id) || null,
+      durationMs: Date.now() - startedAt,
+      error: String(error?.message || error),
+    });
+    throw error;
+  } finally {
+    try {
+      await session.close();
+    } catch {
+      // ignore close failures
+    }
+    db.close();
+  }
+}
+
+function emailSummaryFromHeaders(uid, headerResult = {}) {
+  const headers = normalizeObject(headerResult.headers);
+  const from = parseEmailAddresses(headers.from);
+  const to = parseEmailAddresses(headers.to);
+  const cc = parseEmailAddresses(headers.cc);
+  const replyTo = parseEmailAddresses(headers["reply-to"]);
+  return {
+    uid,
+    size: headerResult.size || null,
+    messageId: decodeHeaderValue(headers["message-id"] || headers["messageid"] || ""),
+    subject: decodeHeaderValue(headers.subject || ""),
+    date: decodeHeaderValue(headers.date || ""),
+    from,
+    to,
+    cc,
+    replyTo,
+    inReplyTo: decodeHeaderValue(headers["in-reply-to"] || ""),
+    references: decodeHeaderValue(headers.references || ""),
+  };
+}
+
+async function executeEmailOperation({ integration, spec, input }) {
+  const normalizedInput = normalizeIntegrationToolInput(input);
+  const operation = normalizeString(spec.operation);
+
+  switch (operation) {
+    case "messages.list_new": {
+      const db = openEmailStateDb(integration);
+      const session = await openImapSession(integration);
+      try {
+        const limit = clampInteger(normalizedInput.limit, {
+          fallback: 10,
+          min: 1,
+          max: 100,
+        });
+        const uids = await session.searchNew(limit);
+        const messages = [];
+
+        for (const uid of uids) {
+          const headerResult = await session.fetchHeaders(uid);
+          const summary = emailSummaryFromHeaders(uid, headerResult);
+          const processed = emailStateHasProcessed(db, uid, summary.messageId);
+          if (processed) continue;
+          messages.push(summary);
+        }
+
+        return {
+          mailbox: getEmailConfig(integration).mailboxScope.mode || "INBOX",
+          messages,
+        };
+      } finally {
+        try {
+          await session.close();
+        } catch {
+          // ignore close failures
+        }
+        db.close();
+      }
+    }
+
+    case "messages.get": {
+      const session = await openImapSession(integration);
+      try {
+        const uid = resolveEmailUid(normalizedInput);
+        const headerResult = await session.fetchHeaders(uid);
+        const rawResult = await session.fetchRawMessage(uid);
+        return {
+          message: normalizeEmailMessage(uid, rawResult.raw, headerResult.headers),
+        };
+      } finally {
+        try {
+          await session.close();
+        } catch {
+          // ignore close failures
+        }
+      }
+    }
+
+    case "messages.send": {
+      const subject = normalizeString(normalizedInput.subject);
+      const text = normalizeString(normalizedInput.text);
+      if (!subject) throw new Error("Email subject is required");
+      if (!text) throw new Error("Email text is required");
+
+      const sendResult = await runSmtpSession(integration, {
+        to: normalizeStringArray(normalizedInput.to),
+        cc: normalizeStringArray(normalizedInput.cc),
+        bcc: normalizeStringArray(normalizedInput.bcc),
+        subject,
+        text,
+      });
+
+      return {
+        delivery: sendResult,
+      };
+    }
+
+    case "messages.reply": {
+      const uid = resolveEmailUid(normalizedInput);
+      const session = await openImapSession(integration);
+      try {
+        const headerResult = await session.fetchHeaders(uid);
+        const rawResult = await session.fetchRawMessage(uid);
+        const original = normalizeEmailMessage(uid, rawResult.raw, headerResult.headers);
+        const replyText = normalizeString(normalizedInput.text);
+        if (!replyText) {
+          throw new Error("Reply text is required");
+        }
+
+        const preferredRecipients = original.replyTo.length > 0 ? original.replyTo : original.from;
+        const to = preferredRecipients
+          .map((entry) => normalizeString(entry.address))
+          .filter(Boolean);
+        if (!to.length) {
+          throw new Error("Could not resolve a reply recipient");
+        }
+
+        const subject = /^re:/i.test(original.subject)
+          ? original.subject
+          : `Re: ${original.subject || "Message"}`;
+        const references = [original.references, original.messageId]
+          .map((value) => normalizeString(value))
+          .filter(Boolean)
+          .join(" ")
+          .trim();
+
+        const sendResult = await runSmtpSession(integration, {
+          to,
+          subject,
+          text: replyText,
+          inReplyTo: original.messageId,
+          references,
+        });
+
+        return {
+          original: {
+            uid: original.uid,
+            messageId: original.messageId,
+            subject: original.subject,
+            from: original.from.map(emailAddressString).filter(Boolean),
+          },
+          delivery: sendResult,
+        };
+      } finally {
+        try {
+          await session.close();
+        } catch {
+          // ignore close failures
+        }
+      }
+    }
+
+    case "messages.mark_processed": {
+      const uid = resolveEmailUid(normalizedInput);
+      const normalizedMessageId =
+        normalizeString(normalizedInput.messageId) || normalizeString(normalizedInput.message_id);
+      const db = openEmailStateDb(integration);
+      try {
+        emailStateMarkProcessed(db, {
+          uid,
+          messageId: normalizedMessageId,
+          status: normalizeString(normalizedInput.status) || "processed",
+        });
+        return {
+          uid,
+          messageId: normalizedMessageId || null,
+          status: normalizeString(normalizedInput.status) || "processed",
+          recorded: true,
+        };
+      } finally {
+        db.close();
+      }
+    }
+
+    default:
+      throw new Error(`Unsupported Email integration operation: ${operation}`);
+  }
+}
+
 async function executeIntegrationToolInvocation({
   toolName,
   input = {},
   integrations = null,
   fetchImpl,
 }) {
-  const syncedIntegrations = Array.isArray(integrations)
-    ? integrations
-    : loadSyncedIntegrations();
+  const syncedIntegrations = Array.isArray(integrations) ? integrations : loadSyncedIntegrations();
+  const normalizedToolName = normalizeString(toolName);
+
   const match = findIntegrationTool(syncedIntegrations, toolName);
 
   if (!match) {
@@ -1267,7 +2842,7 @@ async function executeIntegrationToolInvocation({
 
   if (!match.execution.executable) {
     throw new Error(
-      `Nora integration tool "${toolName}" is connected but not executable in this runtime`
+      `Nora integration tool "${toolName}" is connected but not executable in this runtime`,
     );
   }
 
@@ -1294,9 +2869,17 @@ async function executeIntegrationToolInvocation({
           fetchImpl,
         });
         break;
+      case "email":
+        result = await executeEmailOperation({
+          integration: match.integration,
+          spec: match.spec,
+          input,
+          fetchImpl,
+        });
+        break;
       default:
         throw new Error(
-          `Nora integration provider "${match.integration.provider}" is not executable in this runtime`
+          `Nora integration provider "${match.integration.provider}" is not executable in this runtime`,
         );
     }
   }
@@ -1334,5 +2917,6 @@ module.exports = {
   getIntegrationToolSpecs,
   isIntegrationToolExecutable,
   loadSyncedIntegrations,
+  normalizeEmailMessage,
   normalizeIntegrationToolInput,
 };

@@ -460,6 +460,8 @@ CREATE TABLE IF NOT EXISTS integrations (
   access_token TEXT,
   config JSONB DEFAULT '{}',
   status VARCHAR(20) DEFAULT 'active',
+  cron_job_id TEXT,
+  mailbox_state JSONB DEFAULT NULL,
   created_at TIMESTAMP DEFAULT NOW()
 );
 
