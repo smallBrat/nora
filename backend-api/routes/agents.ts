@@ -1117,10 +1117,10 @@ router.delete(
 
     try {
       const integrations = require("../integrations");
-      const linkedIntegration = await integrations.findActiveIntegrationByCronJobId(
-        req.params.id,
-        req.params.jobId,
-      );
+      const linkedIntegration =
+        typeof integrations.findActiveIntegrationByCronJobId === "function"
+          ? await integrations.findActiveIntegrationByCronJobId(req.params.id, req.params.jobId)
+          : null;
 
       const cronResponse = await fetchHermesApi(
         agent,
@@ -1140,8 +1140,13 @@ router.delete(
       }
 
       if (linkedIntegration) {
-        await integrations.updateEmailCronJobId(linkedIntegration.id, req.params.id, null);
-        if (linkedIntegration.provider === "email") {
+        if (typeof integrations.updateEmailCronJobId === "function") {
+          await integrations.updateEmailCronJobId(linkedIntegration.id, req.params.id, null);
+        }
+        if (
+          linkedIntegration.provider === "email" &&
+          typeof integrations.updateIntegration === "function"
+        ) {
           await integrations.updateIntegration(linkedIntegration.id, req.params.id, null, {
             "cron.enabled": false,
           });

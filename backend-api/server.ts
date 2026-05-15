@@ -103,31 +103,6 @@ function requestProtocol(req) {
   return req.protocol;
 }
 
-function requestHost(req) {
-  const forwardedHost = req.headers["x-forwarded-host"];
-  const forwardedPort = req.headers["x-forwarded-port"];
-  const rawHostHeader =
-    (typeof forwardedHost === "string" && forwardedHost.trim()) ||
-    (Array.isArray(forwardedHost) && forwardedHost.find((value) => String(value || "").trim())) ||
-    req.headers.host ||
-    "";
-
-  const host = String(rawHostHeader).split(",")[0].trim();
-  if (!host) return host;
-  if (host.includes(":")) return host;
-
-  const rawPort =
-    (typeof forwardedPort === "string" && forwardedPort.trim()) ||
-    (Array.isArray(forwardedPort) && forwardedPort.find((value) => String(value || "").trim())) ||
-    "";
-  const port = String(rawPort).split(",")[0].trim();
-  if (!port) return host;
-
-  const proto = requestProtocol(req);
-  const isDefaultPort = (proto === "https" && port === "443") || (proto !== "https" && port === "80");
-  return isDefaultPort ? host : `${host}:${port}`;
-}
-
 function getEmbedSessionCookieName(agentId, prefix = EMBED_SESSION_COOKIE_PREFIX) {
   return `${prefix}${agentId}`;
 }
@@ -168,21 +143,16 @@ function buildForwardedSearch(req) {
 
 function buildEmbedBootstrapScript({ agentId, requestHost, requestScheme, gatewayToken }) {
   const wsProto = requestScheme === "https" ? "wss" : "ws";
-  const wsDisplayUrl = `${wsProto}://${requestHost}`;
   // Intentionally no `?token=` — the WebSocket upgrade is authenticated via
   // the HttpOnly embed session cookie (`__nora_gateway_embed_<agentId>`) that
   // the browser sends automatically on same-origin upgrade requests. Keeping
   // the JWT out of the URL prevents it from surfacing in nginx/access logs,
   // browser history, and DevTools network panels.
   const wsRelayUrl = `${wsProto}://${requestHost}/api/ws/gateway/${agentId}`;
-  const controlUiBasePath = `/api/agents/${agentId}/gateway/embed`;
   return `(function(){
-  var D=${JSON.stringify(wsDisplayUrl)};
   var R=${JSON.stringify(wsRelayUrl)};
-  var B=${JSON.stringify(controlUiBasePath)};
   var P=${JSON.stringify(gatewayToken)};
   window.__NORA_EMBED_AUTO_LOGIN__ = true;
-  window.__OPENCLAW_CONTROL_UI_BASE_PATH__ = B;
   var _WS=window.WebSocket;
   window.WebSocket=function(u,p){return p?new _WS(R,p):new _WS(R)};
   window.WebSocket.prototype=_WS.prototype;
@@ -191,53 +161,14 @@ function buildEmbedBootstrapScript({ agentId, requestHost, requestScheme, gatewa
   window.WebSocket.CLOSING=_WS.CLOSING;
   window.WebSocket.CLOSED=_WS.CLOSED;
 
-  function settingsStorageKey(url) {
-    return "openclaw.control.settings.v1:" + String(url || "");
-  }
-
-  function tokenStorageKey(url) {
-    return "openclaw.control.token.v1:" + String(url || "");
-  }
-
-  function seedGatewayStorage() {
+  function setPasswordHash() {
     try {
-      var key = settingsStorageKey(D);
-      var raw = window.localStorage ? window.localStorage.getItem(key) : null;
-      var base = {
-        gatewayUrl: D,
-        sessionKey: "main",
-        lastActiveSessionKey: "main",
-      };
-      if (raw) {
-        try {
-          var parsed = JSON.parse(raw);
-          if (parsed && typeof parsed === "object") {
-            base = Object.assign({}, parsed, base);
-          }
-        } catch {}
-      }
-      if (window.localStorage) {
-        window.localStorage.setItem(key, JSON.stringify(base));
-        if (!window.localStorage.getItem("openclaw.control.settings.v1")) {
-          window.localStorage.setItem("openclaw.control.settings.v1", JSON.stringify(base));
-        }
-        if (P) {
-          window.localStorage.setItem(tokenStorageKey(D), P);
-          window.localStorage.setItem("openclaw.control.token.v1", P);
-        }
-      }
-      if (window.sessionStorage) {
-        if (P) {
-          window.sessionStorage.setItem(tokenStorageKey(D), P);
-          window.sessionStorage.setItem("openclaw.control.token.v1", P);
-        } else if (!window.sessionStorage.getItem(tokenStorageKey(D))) {
-          window.sessionStorage.removeItem("openclaw.control.token.v1");
-        }
+      var nextHash = "password=" + encodeURIComponent(P);
+      if (window.location.hash !== "#" + nextHash) {
+        window.location.hash = nextHash;
       }
     } catch {}
   }
-
-  seedGatewayStorage();
 
   function visible(el) {
     if (!el) return false;
@@ -270,41 +201,14 @@ function buildEmbedBootstrapScript({ agentId, requestHost, requestScheme, gatewa
 
   function tryAutoLogin() {
     if (window.__NORA_EMBED_AUTO_LOGIN_DONE__) return true;
-    seedGatewayStorage();
+    setPasswordHash();
 
     var pw = document.querySelector("input[type='password'], input[name='password'], input[id*='password']");
-    if (pw && visible(pw) && P && pw.value !== P) {
+    if (pw && visible(pw) && pw.value !== P) {
       pw.focus();
       pw.value = P;
       pw.dispatchEvent(new Event("input", { bubbles: true }));
       pw.dispatchEvent(new Event("change", { bubbles: true }));
-    }
-    if (pw && visible(pw) && pw.value === P) {
-      var submitBtn = findLoginButton();
-      if (submitBtn) submitBtn.click();
-    }
-
-    var gatewayInput =
-      document.querySelector("input[name='gatewayUrl']") ||
-      document.querySelector("input[id*='gateway-url']") ||
-      Array.prototype.find.call(document.querySelectorAll("input[type='text']"), function(el) {
-        var placeholder = String(el.getAttribute("placeholder") || "");
-        return placeholder.indexOf("ws://") !== -1 || placeholder.indexOf("wss://") !== -1;
-      });
-    if (gatewayInput && visible(gatewayInput) && gatewayInput.value !== D) {
-      gatewayInput.focus();
-      gatewayInput.value = D;
-      gatewayInput.dispatchEvent(new Event("input", { bubbles: true }));
-      gatewayInput.dispatchEvent(new Event("change", { bubbles: true }));
-    }
-
-    var bodyText = String(document.body ? (document.body.innerText || document.body.textContent || "") : "").toLowerCase();
-    if (bodyText.indexOf("change gateway url") !== -1) {
-      var confirmBtn = findConfirmGatewayUrlButton();
-      if (confirmBtn) {
-        confirmBtn.click();
-        return false;
-      }
     }
 
     var form = pw && (pw.form || pw.closest("form"));
@@ -327,7 +231,7 @@ function buildEmbedBootstrapScript({ agentId, requestHost, requestScheme, gatewa
   function startAutoLogin() {
     if (window.__NORA_EMBED_AUTO_LOGIN_STARTED__) return;
     window.__NORA_EMBED_AUTO_LOGIN_STARTED__ = true;
-    setGatewayHash();
+    setPasswordHash();
 
     var attempts = 0;
     var maxAttempts = 80;
@@ -797,7 +701,7 @@ gatewayUIAssetProxy.get("/agents/:agentId/gateway/embed/bootstrap.js", async (re
     res.send(
       buildEmbedBootstrapScript({
         agentId: access.agentId,
-        requestHost: requestHost(req),
+        requestHost: req.headers.host,
         requestScheme: requestProtocol(req),
         gatewayToken: access.agent.gateway_token,
       }),
@@ -821,9 +725,6 @@ async function proxyEmbeddedGateway(req, res) {
       Accept: req.headers.accept || "*/*",
       "Accept-Encoding": "identity",
     };
-    if (access.agent?.gateway_token) {
-      headers.Authorization = `Bearer ${access.agent.gateway_token}`;
-    }
 
     const method = req.method.toUpperCase();
     let body;

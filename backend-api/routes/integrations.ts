@@ -755,7 +755,12 @@ async function removeEmailCronJobs(agent, cronJobIds = []) {
   }
 }
 
-async function reconcileEmailCronJob(agent, integrationId, previousCronJobId, pollingIntervalSeconds) {
+async function reconcileEmailCronJob(
+  agent,
+  integrationId,
+  previousCronJobId,
+  pollingIntervalSeconds,
+) {
   if (!agent || !integrationId) return previousCronJobId || null;
 
   if (previousCronJobId) {
@@ -801,7 +806,7 @@ router.post("/agents/:id/integrations", async (req, res) => {
       }
     }
 
-    res.status(201).json(result);
+    res.json(result);
   } catch (e) {
     res.status(e.statusCode || 500).json({ error: e.message });
   }

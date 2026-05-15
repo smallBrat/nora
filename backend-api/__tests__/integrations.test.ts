@@ -193,7 +193,7 @@ describe("integration secret handling", () => {
           password: "[REDACTED]",
         }),
         cron: expect.objectContaining({
-          enabled: true,
+          enabled: false,
           intervalMinutes: 120,
         }),
       }),
