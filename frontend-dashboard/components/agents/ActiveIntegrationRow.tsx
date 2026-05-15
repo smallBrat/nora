@@ -26,7 +26,9 @@ export default function ActiveIntegrationRow({ integration, selected, onSelect }
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <div className={`h-2.5 w-2.5 rounded-full ${cronEnabled ? "bg-blue-500" : "bg-slate-300"}`} />
+            <div
+              className={`h-2.5 w-2.5 rounded-full ${cronEnabled ? "bg-blue-500" : "bg-slate-300"}`}
+            />
             <span className="truncate text-sm font-bold text-slate-900">{providerName}</span>
             <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">
               {providerPreset}

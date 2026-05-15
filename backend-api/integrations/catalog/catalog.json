@@ -317,7 +317,12 @@
         ]
       },
       { "key": "auth.username", "label": "Username / Email", "type": "email", "required": true },
-      { "key": "auth.password", "label": "Password / App Password", "type": "password", "required": true },
+      {
+        "key": "auth.password",
+        "label": "Password / App Password",
+        "type": "password",
+        "required": true
+      },
       { "key": "imap.host", "label": "IMAP Host", "type": "text", "required": true },
       { "key": "imap.port", "label": "IMAP Port", "type": "number", "required": true },
       { "key": "imap.secure", "label": "Use TLS for IMAP", "type": "checkbox", "required": false },
@@ -326,8 +331,20 @@
       { "key": "smtp.secure", "label": "Use TLS for SMTP", "type": "checkbox", "required": false },
       { "key": "smtp.fromAddress", "label": "From Address", "type": "email", "required": true },
       { "key": "smtp.fromName", "label": "From Name", "type": "text", "required": false },
-      { "key": "cron.enabled", "label": "Create reminder cron", "type": "checkbox", "required": false, "defaultValue": false },
-      { "key": "cron.intervalMinutes", "label": "Run Every (minutes)", "type": "number", "required": false, "defaultValue": 60 },
+      {
+        "key": "cron.enabled",
+        "label": "Create reminder cron",
+        "type": "checkbox",
+        "required": false,
+        "defaultValue": false
+      },
+      {
+        "key": "cron.intervalMinutes",
+        "label": "Run Every (minutes)",
+        "type": "number",
+        "required": false,
+        "defaultValue": 60
+      },
       {
         "key": "cron.prompt",
         "label": "Cron Prompt",

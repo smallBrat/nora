@@ -51,7 +51,8 @@ export function normalizeEmailConfigInput(rawConfig: Record<string, unknown> = {
     }
   }
 
-  const providerPreset = (stringValue(next.providerPreset || "gmail") || "gmail") as EmailProviderPresetId;
+  const providerPreset = (stringValue(next.providerPreset || "gmail") ||
+    "gmail") as EmailProviderPresetId;
   const preset = EMAIL_PROVIDER_PRESETS[providerPreset] || EMAIL_PROVIDER_PRESETS.gmail;
 
   next.providerPreset = providerPreset;

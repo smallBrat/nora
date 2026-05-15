@@ -21,11 +21,7 @@ const EMAIL_CONNECTION_ADVANCED_KEYS = new Set([
   "smtp.secure",
 ]);
 
-const EMAIL_CRON_KEYS = new Set([
-  "cron.enabled",
-  "cron.intervalMinutes",
-  "cron.prompt",
-]);
+const EMAIL_CRON_KEYS = new Set(["cron.enabled", "cron.intervalMinutes", "cron.prompt"]);
 
 function connectionStatusLabel(integration: any) {
   return integration?.status || "active";
@@ -55,10 +51,16 @@ function normalizeFieldValue(field: any, value: any) {
 }
 
 function buildInitialValues(integration: any, configFields: any[]) {
-  return (configFields || []).reduce((acc, field) => {
-    acc[field.key] = normalizeFieldValue(field, readFieldValue(integration?.config || {}, field.key));
-    return acc;
-  }, {} as Record<string, any>);
+  return (configFields || []).reduce(
+    (acc, field) => {
+      acc[field.key] = normalizeFieldValue(
+        field,
+        readFieldValue(integration?.config || {}, field.key),
+      );
+      return acc;
+    },
+    {} as Record<string, any>,
+  );
 }
 
 export default function IntegrationDetailPanel({
@@ -132,17 +134,20 @@ export default function IntegrationDetailPanel({
   }
 
   async function handleSave() {
-    const nextConfig = (configFields || []).reduce((acc, field) => {
-      const value = formValues[field.key];
-      if (field.type === "password") {
-        if (typeof value === "string" && value.trim()) {
-          acc[field.key] = value;
+    const nextConfig = (configFields || []).reduce(
+      (acc, field) => {
+        const value = formValues[field.key];
+        if (field.type === "password") {
+          if (typeof value === "string" && value.trim()) {
+            acc[field.key] = value;
+          }
+          return acc;
         }
+        acc[field.key] = value;
         return acc;
-      }
-      acc[field.key] = value;
-      return acc;
-    }, {} as Record<string, any>);
+      },
+      {} as Record<string, any>,
+    );
     await onSave?.(integration, nextConfig);
   }
 
@@ -280,9 +285,7 @@ export default function IntegrationDetailPanel({
           <dl className="mt-3 space-y-2 text-sm">
             <div>
               <dt className="text-xs text-slate-500">Reminder Cron Enabled</dt>
-              <dd className="font-medium text-slate-900">
-                {config?.cron?.enabled ? "Yes" : "No"}
-              </dd>
+              <dd className="font-medium text-slate-900">{config?.cron?.enabled ? "Yes" : "No"}</dd>
             </div>
             <div>
               <dt className="text-xs text-slate-500">Interval</dt>
@@ -310,7 +313,8 @@ export default function IntegrationDetailPanel({
           </div>
           {hasCronAssociation ? (
             <p className="mt-3 text-xs text-slate-500">
-              This integration manages cron job <span className="font-mono">{integration.cron_job_id}</span>.
+              This integration manages cron job{" "}
+              <span className="font-mono">{integration.cron_job_id}</span>.
             </p>
           ) : null}
           <div className="mt-3 flex flex-wrap gap-2">
@@ -361,9 +365,7 @@ export default function IntegrationDetailPanel({
               />
             </button>
             {configExpanded ? (
-              <div className="mt-3 grid gap-3 md:grid-cols-2">
-                {basicFields.map(renderField)}
-              </div>
+              <div className="mt-3 grid gap-3 md:grid-cols-2">{basicFields.map(renderField)}</div>
             ) : null}
           </section>
 
@@ -392,7 +394,8 @@ export default function IntegrationDetailPanel({
                           Connection Overrides
                         </div>
                         <p className="mt-1 text-xs text-slate-500">
-                          Adjust IMAP and SMTP server settings only if you need something other than the provider preset defaults.
+                          Adjust IMAP and SMTP server settings only if you need something other than
+                          the provider preset defaults.
                         </p>
                       </div>
                       <div className="grid gap-3 md:grid-cols-2">
@@ -420,7 +423,8 @@ export default function IntegrationDetailPanel({
                         </div>
                       ) : (
                         <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
-                          Turn on the reminder cron to choose how often it runs and what prompt it should use.
+                          Turn on the reminder cron to choose how often it runs and what prompt it
+                          should use.
                         </div>
                       )}
                     </div>

@@ -65,11 +65,7 @@ const EMAIL_CONNECTION_ADVANCED_KEYS = new Set([
   "smtp.secure",
 ]);
 
-const EMAIL_CRON_KEYS = new Set([
-  "cron.enabled",
-  "cron.intervalMinutes",
-  "cron.prompt",
-]);
+const EMAIL_CRON_KEYS = new Set(["cron.enabled", "cron.intervalMinutes", "cron.prompt"]);
 
 export default function IntegrationCard({
   item,
@@ -244,7 +240,9 @@ export default function IntegrationCard({
     ? configFields.find((field) => field.key === "cron.enabled")
     : null;
   const cronConfigFields = isEmailIntegration
-    ? configFields.filter((field) => field.key === "cron.intervalMinutes" || field.key === "cron.prompt")
+    ? configFields.filter(
+        (field) => field.key === "cron.intervalMinutes" || field.key === "cron.prompt",
+      )
     : [];
   const cronEnabled = Boolean(configValues["cron.enabled"]);
 
@@ -528,65 +526,78 @@ export default function IntegrationCard({
               )}
               {basicFields.map(renderField)}
 
-              {isEmailIntegration && (advancedConnectionFields.length > 0 || cronToggleField || cronConfigFields.length > 0) && (
-                <div className="rounded-xl border border-slate-200 bg-slate-50/70">
-                  <button
-                    type="button"
-                    onClick={() => setShowAdvanced((prev) => !prev)}
-                    className="w-full flex items-center justify-between px-3 py-2 text-left"
-                  >
-                    <div>
-                      <div className="text-[11px] font-bold text-slate-800">Advanced Connection & Cron Settings</div>
-                      <div className="text-[10px] text-slate-500">
-                        Provider defaults are prefilled. Use this section for custom server overrides and the optional reminder cron.
+              {isEmailIntegration &&
+                (advancedConnectionFields.length > 0 ||
+                  cronToggleField ||
+                  cronConfigFields.length > 0) && (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50/70">
+                    <button
+                      type="button"
+                      onClick={() => setShowAdvanced((prev) => !prev)}
+                      className="w-full flex items-center justify-between px-3 py-2 text-left"
+                    >
+                      <div>
+                        <div className="text-[11px] font-bold text-slate-800">
+                          Advanced Connection & Cron Settings
+                        </div>
+                        <div className="text-[10px] text-slate-500">
+                          Provider defaults are prefilled. Use this section for custom server
+                          overrides and the optional reminder cron.
+                        </div>
                       </div>
-                    </div>
-                    <span className="text-[10px] font-bold text-slate-500">
-                      {showAdvanced ? "Hide" : "Show"}
-                    </span>
-                  </button>
-                  {showAdvanced && (
-                    <div className="border-t border-slate-200 p-3 space-y-3">
-                      {advancedConnectionFields.length > 0 && (
-                        <div className="space-y-3">
-                          <div>
-                            <div className="text-[11px] font-bold text-slate-800">Connection Overrides</div>
-                            <div className="mt-1 text-[10px] text-slate-500">
-                              Adjust IMAP and SMTP host settings only if you need something other than the preset defaults.
+                      <span className="text-[10px] font-bold text-slate-500">
+                        {showAdvanced ? "Hide" : "Show"}
+                      </span>
+                    </button>
+                    {showAdvanced && (
+                      <div className="border-t border-slate-200 p-3 space-y-3">
+                        {advancedConnectionFields.length > 0 && (
+                          <div className="space-y-3">
+                            <div>
+                              <div className="text-[11px] font-bold text-slate-800">
+                                Connection Overrides
+                              </div>
+                              <div className="mt-1 text-[10px] text-slate-500">
+                                Adjust IMAP and SMTP host settings only if you need something other
+                                than the preset defaults.
+                              </div>
                             </div>
-                          </div>
-                          <div className="grid gap-3 md:grid-cols-2">
-                            {advancedConnectionFields.map(renderField)}
-                          </div>
-                        </div>
-                      )}
-
-                      {(cronToggleField || cronConfigFields.length > 0) && (
-                        <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-3">
-                          <div>
-                            <div className="text-[11px] font-bold text-slate-800">Reminder Cron</div>
-                            <div className="mt-1 text-[10px] text-slate-500">
-                              Nora can optionally create a normal scheduled agent turn seeded from this mailbox connection.
-                            </div>
-                          </div>
-
-                          {cronToggleField ? renderField(cronToggleField) : null}
-
-                          {cronEnabled ? (
                             <div className="grid gap-3 md:grid-cols-2">
-                              {cronConfigFields.map(renderField)}
+                              {advancedConnectionFields.map(renderField)}
                             </div>
-                          ) : (
-                            <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-500">
-                              Turn on the reminder cron to choose how often it runs and what prompt it should use.
+                          </div>
+                        )}
+
+                        {(cronToggleField || cronConfigFields.length > 0) && (
+                          <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-3">
+                            <div>
+                              <div className="text-[11px] font-bold text-slate-800">
+                                Reminder Cron
+                              </div>
+                              <div className="mt-1 text-[10px] text-slate-500">
+                                Nora can optionally create a normal scheduled agent turn seeded from
+                                this mailbox connection.
+                              </div>
                             </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
+
+                            {cronToggleField ? renderField(cronToggleField) : null}
+
+                            {cronEnabled ? (
+                              <div className="grid gap-3 md:grid-cols-2">
+                                {cronConfigFields.map(renderField)}
+                              </div>
+                            ) : (
+                              <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-500">
+                                Turn on the reminder cron to choose how often it runs and what
+                                prompt it should use.
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
             </div>
             {/* Test result banner in modal */}
             {testResult && (

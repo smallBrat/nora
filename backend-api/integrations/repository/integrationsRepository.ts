@@ -54,11 +54,7 @@ export interface IntegrationsRepository {
     encryptedToken: string;
     encryptedConfigJson: string;
   }): Promise<void>;
-  updateCronJobId(input: {
-    id: string;
-    agentId: string;
-    cronJobId: string | null;
-  }): Promise<void>;
+  updateCronJobId(input: { id: string; agentId: string; cronJobId: string | null }): Promise<void>;
   findActiveEmailIntegrations(agentId: string): Promise<IntegrationRow[]>;
   findActiveIntegrationByCronJobId(input: {
     agentId: string;
@@ -197,10 +193,11 @@ export function createIntegrationsRepository(db: DbLike): IntegrationsRepository
     },
 
     async updateCronJobId({ id, agentId, cronJobId }) {
-      await db.query(
-        "UPDATE integrations SET cron_job_id = $1 WHERE id = $2 AND agent_id = $3",
-        [cronJobId, id, agentId],
-      );
+      await db.query("UPDATE integrations SET cron_job_id = $1 WHERE id = $2 AND agent_id = $3", [
+        cronJobId,
+        id,
+        agentId,
+      ]);
     },
 
     async findActiveEmailIntegrations(agentId) {

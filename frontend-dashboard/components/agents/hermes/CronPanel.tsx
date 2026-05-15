@@ -103,10 +103,13 @@ export default function HermesCronPanel({ agentId }) {
 
       const nextJobs = Array.isArray(data?.jobs) ? data.jobs : [];
       const nextLinks = Array.isArray(integrationsData)
-        ? integrationsData.reduce((acc, integration) => {
-            if (integration?.cron_job_id) acc[String(integration.cron_job_id)] = integration;
-            return acc;
-          }, {} as Record<string, any>)
+        ? integrationsData.reduce(
+            (acc, integration) => {
+              if (integration?.cron_job_id) acc[String(integration.cron_job_id)] = integration;
+              return acc;
+            },
+            {} as Record<string, any>,
+          )
         : {};
       setJobs(nextJobs);
       setIntegrationLinks(nextLinks);
@@ -248,11 +251,19 @@ export default function HermesCronPanel({ agentId }) {
   }
 
   const lastRun =
-    selectedJob?.last_run || selectedJob?.lastRun || selectedJob?.last_run_at || selectedJob?.lastRunAt;
+    selectedJob?.last_run ||
+    selectedJob?.lastRun ||
+    selectedJob?.last_run_at ||
+    selectedJob?.lastRunAt;
   const nextRun =
-    selectedJob?.next_run || selectedJob?.nextRun || selectedJob?.next_run_at || selectedJob?.nextRunAt;
+    selectedJob?.next_run ||
+    selectedJob?.nextRun ||
+    selectedJob?.next_run_at ||
+    selectedJob?.nextRunAt;
   const enabled = selectedJob?.enabled !== false;
-  const selectedLinkedIntegration = selectedJob ? integrationLinks[getJobId(selectedJob)] || null : null;
+  const selectedLinkedIntegration = selectedJob
+    ? integrationLinks[getJobId(selectedJob)] || null
+    : null;
   const hasUnsavedChanges =
     !!selectedJob &&
     (detailForm.name !== (selectedJob?.name || "") ||
@@ -465,7 +476,9 @@ export default function HermesCronPanel({ agentId }) {
                         </h3>
                         <span
                           className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
-                            enabled ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"
+                            enabled
+                              ? "bg-emerald-50 text-emerald-700"
+                              : "bg-slate-100 text-slate-500"
                           }`}
                         >
                           {enabled ? "Enabled" : "Paused"}
@@ -523,7 +536,9 @@ export default function HermesCronPanel({ agentId }) {
                     </div>
                     {selectedLinkedIntegration ? (
                       <p className="text-xs text-slate-500">
-                        Linked to the active {selectedLinkedIntegration.provider} integration. Deleting this job here will clear the reminder-cron link in that integration.
+                        Linked to the active {selectedLinkedIntegration.provider} integration.
+                        Deleting this job here will clear the reminder-cron link in that
+                        integration.
                       </p>
                     ) : null}
                   </div>
@@ -562,7 +577,11 @@ export default function HermesCronPanel({ agentId }) {
                           disabled={saving || !hasUnsavedChanges}
                           className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                          {saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+                          {saving ? (
+                            <Loader2 size={12} className="animate-spin" />
+                          ) : (
+                            <Save size={12} />
+                          )}
                           Save Changes
                         </button>
                         <button

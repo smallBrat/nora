@@ -139,10 +139,7 @@ const { instagramProvider } = require("../providers/instagram");
 const { zapierProvider } = require("../providers/zapier");
 const { makeProvider } = require("../providers/make");
 const { n8nProvider } = require("../providers/n8n");
-const {
-  normalizeEmailConfigInput,
-  extractEmailPrimarySecret,
-} = require("../providers/email");
+const { normalizeEmailConfigInput, extractEmailPrimarySecret } = require("../providers/email");
 
 const repo = createIntegrationsRepository(db);
 const secretCrypto = createSecretEncryption({
@@ -456,7 +453,10 @@ async function listIntegrations(agentId) {
     const hydrated = hydrateRow(row);
     const displayConfig =
       row.provider === "email"
-        ? normalizeEmailDisplayConfig(decryptSensitiveConfig(row.provider, row.config), row.cron_job_id)
+        ? normalizeEmailDisplayConfig(
+            decryptSensitiveConfig(row.provider, row.config),
+            row.cron_job_id,
+          )
         : row.config;
     return {
       ...hydrated,
@@ -498,7 +498,10 @@ async function updateIntegration(integrationId, agentId, token, config = {}) {
     }
   }
 
-  const { secured: securedConfig, hasSensitiveMaterial } = encryptSensitiveConfig(provider, mergedConfig);
+  const { secured: securedConfig, hasSensitiveMaterial } = encryptSensitiveConfig(
+    provider,
+    mergedConfig,
+  );
   if (resolvedToken || hasSensitiveMaterial || current.access_token) {
     ensureEncryptionConfigured("Integration credential storage");
   }
@@ -519,7 +522,9 @@ async function updateIntegration(integrationId, agentId, token, config = {}) {
     ...hydrateRow(updated),
     config: redactSensitiveConfig(
       provider,
-      provider === "email" ? normalizeEmailDisplayConfig(mergedConfig, updated.cron_job_id) : mergedConfig,
+      provider === "email"
+        ? normalizeEmailDisplayConfig(mergedConfig, updated.cron_job_id)
+        : mergedConfig,
     ),
   };
 }
@@ -596,9 +601,7 @@ async function getIntegrationEnvVars(agentId) {
     const row = await refreshTwitterOAuthRowIfNeeded(rawRow);
     const decryptedConfigRaw = decryptSensitiveConfig(row.provider, row.config);
     const decryptedConfig =
-      row.provider === "email"
-        ? normalizeEmailConfigInput(decryptedConfigRaw)
-        : decryptedConfigRaw;
+      row.provider === "email" ? normalizeEmailConfigInput(decryptedConfigRaw) : decryptedConfigRaw;
     const envMapping = providerRegistry
       .resolve(row.provider)
       .mapToEnv({ row, token: null, config: decryptedConfig });

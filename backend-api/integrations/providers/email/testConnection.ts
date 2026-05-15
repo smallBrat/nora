@@ -19,7 +19,11 @@ function boolValue(value: unknown, fallback = false): boolean {
 
 function classifyMailError(error: unknown, protocol: "imap" | "smtp"): string {
   const message = String((error as any)?.message || error || "").toLowerCase();
-  if (message.includes("invalid credentials") || message.includes("auth") || message.includes("login failed")) {
+  if (
+    message.includes("invalid credentials") ||
+    message.includes("auth") ||
+    message.includes("login failed")
+  ) {
     return "invalid_mail_credentials";
   }
   if (message.includes("tls") || message.includes("ssl")) {
@@ -72,7 +76,9 @@ async function connectImap(config: EmailConfig): Promise<{ ok: true; message: st
     };
 
     socket.setTimeout(10000, () => finish(new Error("IMAP connection timed out")));
-    socket.on("error", (error) => finish(error instanceof Error ? error : new Error(String(error))));
+    socket.on("error", (error) =>
+      finish(error instanceof Error ? error : new Error(String(error))),
+    );
     socket.on("data", (chunk) => {
       buffer += chunk.toString("utf8");
       if (!commandSent && /\* OK/i.test(buffer)) {

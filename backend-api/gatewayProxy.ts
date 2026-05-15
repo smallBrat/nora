@@ -920,7 +920,8 @@ function createGatewayRouter() {
         normalizeCronScheduleInput(existingJob?.cadence);
       if (!scheduleObj) {
         return res.status(400).json({
-          error: "This cron job is missing a readable schedule. Enter a cron expression before saving.",
+          error:
+            "This cron job is missing a readable schedule. Enter a cron expression before saving.",
         });
       }
 
@@ -929,7 +930,9 @@ function createGatewayRouter() {
         schedule: scheduleObj,
         sessionTarget: existingJob?.sessionTarget || "new",
         payload: {
-          ...(existingJob?.payload && typeof existingJob.payload === "object" ? existingJob.payload : {}),
+          ...(existingJob?.payload && typeof existingJob.payload === "object"
+            ? existingJob.payload
+            : {}),
           message: message || "",
         },
         agentId: targetAgent || existingJob?.agentId || "main",

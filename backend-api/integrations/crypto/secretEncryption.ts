@@ -107,20 +107,16 @@ export function createSecretEncryption(deps: SecretEncryptionDeps): SecretEncryp
     decryptSensitiveConfig(provider, config = {}) {
       const parsed = parseConfig(config);
       const sensitiveKeys = getSensitiveConfigKeys(provider);
-      return transformObject(
-        parsed,
-        sensitiveKeys,
-        (rawValue) => decrypt(String(rawValue)),
+      return transformObject(parsed, sensitiveKeys, (rawValue) =>
+        decrypt(String(rawValue)),
       ) as Record<string, unknown>;
     },
 
     redactSensitiveConfig(provider, config = {}) {
       const parsed = parseConfig(config);
       const sensitiveKeys = getSensitiveConfigKeys(provider);
-      return transformObject(
-        parsed,
-        sensitiveKeys,
-        (rawValue) => (rawValue ? REDACTED_SECRET : rawValue),
+      return transformObject(parsed, sensitiveKeys, (rawValue) =>
+        rawValue ? REDACTED_SECRET : rawValue,
       ) as Record<string, unknown>;
     },
 

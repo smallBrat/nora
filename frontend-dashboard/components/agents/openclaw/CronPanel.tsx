@@ -108,10 +108,13 @@ export default function CronPanel({ agentId }) {
       }
       const nextJobs = Array.isArray(data) ? data : data.jobs || [];
       const nextLinks = Array.isArray(integrationsData)
-        ? integrationsData.reduce((acc, integration) => {
-            if (integration?.cron_job_id) acc[String(integration.cron_job_id)] = integration;
-            return acc;
-          }, {} as Record<string, any>)
+        ? integrationsData.reduce(
+            (acc, integration) => {
+              if (integration?.cron_job_id) acc[String(integration.cron_job_id)] = integration;
+              return acc;
+            },
+            {} as Record<string, any>,
+          )
         : {};
       setJobs(nextJobs);
       setIntegrationLinks(nextLinks);
@@ -263,7 +266,9 @@ export default function CronPanel({ agentId }) {
 
   const selectedJobEnabled = selectedJob?.enabled !== false && selectedJob?.active !== false;
   const selectedJobLastRun = selectedJob?.last_run || selectedJob?.lastRun || null;
-  const selectedLinkedIntegration = selectedJob ? integrationLinks[getJobId(selectedJob)] || null : null;
+  const selectedLinkedIntegration = selectedJob
+    ? integrationLinks[getJobId(selectedJob)] || null
+    : null;
   const hasUnsavedChanges =
     !!selectedJob &&
     (detailForm.name !== (selectedJob?.name || "") ||
@@ -529,7 +534,9 @@ export default function CronPanel({ agentId }) {
                     </div>
                     {selectedLinkedIntegration ? (
                       <p className="text-xs text-slate-500">
-                        Linked to the active {selectedLinkedIntegration.provider} integration. Deleting this job here will clear the reminder-cron link in that integration.
+                        Linked to the active {selectedLinkedIntegration.provider} integration.
+                        Deleting this job here will clear the reminder-cron link in that
+                        integration.
                       </p>
                     ) : null}
                   </div>
@@ -564,7 +571,11 @@ export default function CronPanel({ agentId }) {
                           disabled={saving || !hasUnsavedChanges}
                           className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                          {saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+                          {saving ? (
+                            <Loader2 size={12} className="animate-spin" />
+                          ) : (
+                            <Save size={12} />
+                          )}
                           Save Changes
                         </button>
                         <button

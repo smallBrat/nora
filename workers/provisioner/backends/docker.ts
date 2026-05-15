@@ -1,5 +1,4 @@
 // @ts-nocheck
-const Docker = require("dockerode");
 const ProvisionerBackend = require("./interface");
 const crypto = require("crypto");
 const path = require("path");
@@ -28,6 +27,22 @@ const {
 
 const pendingImageBuilds = new Map();
 
+function loadDockerCtor() {
+  return require(
+    require.resolve("dockerode", {
+      paths: [__dirname, process.cwd(), path.resolve(__dirname, "../../../backend-api")],
+    }),
+  );
+}
+
+function loadTarStream() {
+  return require(
+    require.resolve("tar-stream", {
+      paths: [__dirname, process.cwd(), path.resolve(__dirname, "../../../backend-api")],
+    }),
+  );
+}
+
 function throwIfAborted(abortSignal, stage = "docker create") {
   if (!abortSignal?.aborted) return;
   const reason =
@@ -44,6 +59,7 @@ function throwIfAborted(abortSignal, stage = "docker create") {
 class DockerBackend extends ProvisionerBackend {
   constructor() {
     super();
+    const Docker = loadDockerCtor();
     this.docker = new Docker({ socketPath: "/var/run/docker.sock" });
     this._composeNetwork = null; // cached
   }
@@ -243,7 +259,7 @@ class DockerBackend extends ProvisionerBackend {
   }
 
   async _putBootstrapFiles(container, files) {
-    const tar = require("tar-stream");
+    const tar = loadTarStream();
     const pack = tar.pack();
     const directories = new Set(["opt", "opt/openclaw-runtime", "opt/openclaw-runtime/lib"]);
 
@@ -485,7 +501,7 @@ class DockerBackend extends ProvisionerBackend {
     const providerModelDefaults = {
       anthropic: "anthropic/claude-sonnet-4-5",
       openai: "openai/gpt-5.4",
-      google: "google/gemini-3.1-pro-preview",
+      google: "google/gemini-3-flash-preview",
       groq: "groq/llama-3.3-70b-versatile",
       mistral: "mistral/mistral-large-latest",
       deepseek: "deepseek/deepseek-chat",
@@ -595,6 +611,13 @@ class DockerBackend extends ProvisionerBackend {
         .replace(/^-|-$/g, "")
         .slice(0, 63) || `agent-${id}`;
 
+    const volumeName = `nora_agent_state_${id}`;
+    try {
+      await this.docker.createVolume({ Name: volumeName });
+    } catch (e) {
+      if (!String(e.message).includes("already exists")) throw e;
+    }
+
     try {
       throwIfAborted(abortSignal, `docker create for ${containerName}`);
       container = await this.docker.createContainer({
@@ -617,6 +640,7 @@ class DockerBackend extends ProvisionerBackend {
           PortBindings: { "18789/tcp": [{ HostPort: String(hostPort) }] },
           // DNS servers for internet access from within the container
           Dns: ["8.8.8.8", "8.8.4.4", "1.1.1.1"],
+          Binds: [`${volumeName}:/mnt/nora-agent-state`],
         },
         NetworkingConfig: composeNetwork
           ? {
@@ -670,6 +694,11 @@ class DockerBackend extends ProvisionerBackend {
           // Best effort cleanup only.
         }
       }
+      try {
+        await this.docker.getVolume(volumeName).remove({ force: true });
+      } catch {
+        // Best effort cleanup only.
+      }
       throw error;
     }
   }
@@ -677,6 +706,15 @@ class DockerBackend extends ProvisionerBackend {
   async destroy(containerId) {
     console.log(`[docker] Destroying container ${containerId}`);
     const container = this.docker.getContainer(containerId);
+
+    let agentId = null;
+    try {
+      const info = await container.inspect();
+      agentId = info.Config?.Labels?.["openclaw.agent.id"];
+    } catch {
+      // Container may already be gone; proceed to volume cleanup using what we have.
+    }
+
     try {
       await container.stop({ t: 10 });
     } catch (e) {
@@ -684,6 +722,15 @@ class DockerBackend extends ProvisionerBackend {
     }
     await container.remove({ force: true });
     console.log(`[docker] Container ${containerId} removed`);
+
+    if (agentId) {
+      try {
+        await this.docker.getVolume(`nora_agent_state_${agentId}`).remove({ force: true });
+        console.log(`[docker] Volume nora_agent_state_${agentId} removed`);
+      } catch (e) {
+        console.warn(`[docker] Could not remove volume for agent ${agentId}: ${e.message}`);
+      }
+    }
   }
 
   async status(containerId) {

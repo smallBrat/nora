@@ -525,8 +525,12 @@ describe("runtime integration tool execution", () => {
     expect(msg.uid).toBe(101);
     expect(msg.messageId).toBe("<abc@example.com>");
     expect(msg.subject).toBe("Hello");
-    expect(msg.from).toEqual([{ name: "Alice", address: "alice@example.com", raw: "Alice <alice@example.com>" }]);
-    expect(msg.to).toEqual([{ name: "Bob", address: "bob@example.com", raw: "Bob <bob@example.com>" }]);
+    expect(msg.from).toEqual([
+      { name: "Alice", address: "alice@example.com", raw: "Alice <alice@example.com>" },
+    ]);
+    expect(msg.to).toEqual([
+      { name: "Bob", address: "bob@example.com", raw: "Bob <bob@example.com>" },
+    ]);
     expect(msg.inReplyTo).toBe("<prev@example.com>");
     expect(msg.references).toBe("<prev@example.com>");
     expect(msg.textBody).toBe("Hi Bob, this is the body.");
@@ -573,7 +577,7 @@ describe("runtime integration tool execution", () => {
 
     expect(msg.htmlBody).not.toContain("<script>");
     expect(msg.htmlBody).not.toContain("<style>");
-    expect(msg.htmlBody).not.toContain('onclick=');
+    expect(msg.htmlBody).not.toContain("onclick=");
     expect(msg.htmlBody).toContain("<p");
   });
 

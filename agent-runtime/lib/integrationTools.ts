@@ -6,7 +6,6 @@ const tls = require("tls");
 const crypto = require("crypto");
 const { execFileSync } = require("child_process");
 const { DatabaseSync } = require("node:sqlite");
-const sanitizeHtml = require("sanitize-html");
 
 const NORA_SYNC_INTEGRATIONS_DIR = "/root/.openclaw/workspace/integrations";
 const NORA_SYNC_INTEGRATIONS_CATALOG_FILE = `${NORA_SYNC_INTEGRATIONS_DIR}/integrations.json`;
@@ -48,19 +47,26 @@ const SENSITIVE_CONFIG_KEY_RE =
   /(token|secret|password|api[_-]?key|private[_-]?key|service[_-]?account|credentials?)/i;
 const ED25519_SPKI_PREFIX = Buffer.from("302a300506032b6570032100", "hex");
 const PKCS8_ED25519_PREFIX = Buffer.from("302e020100300506032b657004220420", "hex");
+let sanitizeHtmlLib = null;
+
+function loadModuleFromKnownRoots(moduleName, extraPaths = []) {
+  const searchPaths = [__dirname, process.cwd(), path.resolve(__dirname, ".."), ...extraPaths];
+  return require(require.resolve(moduleName, { paths: searchPaths }));
+}
+
+function getSanitizeHtml() {
+  if (!sanitizeHtmlLib) {
+    sanitizeHtmlLib = loadModuleFromKnownRoots("sanitize-html", [
+      path.resolve(__dirname, "../../backend-api"),
+      path.resolve(__dirname, "../.."),
+    ]);
+  }
+  return sanitizeHtmlLib;
+}
 
 const SUPPORTED_INTEGRATION_TOOL_OPERATIONS = Object.freeze({
-  github: new Set([
-    "repos.list",
-    "repos.contents.get",
-    "pulls.list",
-    "issues.create",
-  ]),
-  twitter: new Set([
-    "users.me",
-    "users.tweets.list",
-    "tweets.create",
-  ]),
+  github: new Set(["repos.list", "repos.contents.get", "pulls.list", "issues.create"]),
+  twitter: new Set(["users.me", "users.tweets.list", "tweets.create"]),
   email: new Set([]),
 });
 
@@ -77,10 +83,7 @@ function base64UrlEncode(buf) {
 }
 
 function deriveGatewayDeviceIdentity(gatewayToken = "") {
-  const seed = crypto
-    .createHash("sha256")
-    .update(`openclaw-device:${gatewayToken}`)
-    .digest();
+  const seed = crypto.createHash("sha256").update(`openclaw-device:${gatewayToken}`).digest();
   const privateDer = Buffer.concat([PKCS8_ED25519_PREFIX, seed]);
   const privateKey = crypto.createPrivateKey({ key: privateDer, format: "der", type: "pkcs8" });
   const publicKey = crypto.createPublicKey(privateKey);
@@ -175,9 +178,8 @@ function pickIntegrationTimestamp(integration = {}, keys = []) {
     const value = integration[key];
     if (value) return value;
   }
-  const config = integration.config && typeof integration.config === "object"
-    ? integration.config
-    : {};
+  const config =
+    integration.config && typeof integration.config === "object" ? integration.config : {};
   for (const key of keys) {
     const value = config[key];
     if (value) return value;
@@ -262,9 +264,9 @@ function readIntegrationDetailsFromCatalog(raw, catalogPath) {
       : path.join(baseDir, entry.detailsFile);
     const detail = readJsonFile(detailPath);
     if (detail && typeof detail === "object" && !Array.isArray(detail)) {
-      loaded.push(detail.integration && typeof detail.integration === "object"
-        ? detail.integration
-        : detail);
+      loaded.push(
+        detail.integration && typeof detail.integration === "object" ? detail.integration : detail,
+      );
     }
   }
 
@@ -348,9 +350,7 @@ function buildInvocationExample(spec = {}) {
         ? spec.parameters
         : {};
   const properties =
-    schema.properties && typeof schema.properties === "object"
-      ? schema.properties
-      : {};
+    schema.properties && typeof schema.properties === "object" ? schema.properties : {};
   const required = Array.isArray(schema.required) ? new Set(schema.required) : new Set();
   const input = {};
 
@@ -381,7 +381,7 @@ function normalizeToolName(rawName, fallback) {
 
 function integrationProviderId(integration = {}) {
   return normalizeString(
-    integration.provider || integration.catalog_id || integration.id
+    integration.provider || integration.catalog_id || integration.id,
   ).toLowerCase();
 }
 
@@ -408,7 +408,7 @@ function getIntegrationToolSpecs(integration = {}) {
     : [];
   const manifestTool = buildIntegrationManifestToolSpec(integration);
   const hasManifestTool = declaredToolSpecs.some(
-    (spec) => normalizeString(spec?.name) === manifestTool.name
+    (spec) => normalizeString(spec?.name) === manifestTool.name,
   );
   return hasManifestTool ? declaredToolSpecs : [manifestTool, ...declaredToolSpecs];
 }
@@ -507,7 +507,9 @@ function buildIntegrationSkillMarkdown(integrations = [], options = {}) {
   lines.push("");
 
   for (const integration of syncedIntegrations) {
-    const provider = normalizeString(integration.provider || integration.catalog_id || integration.id);
+    const provider = normalizeString(
+      integration.provider || integration.catalog_id || integration.id,
+    );
     const providerName = normalizeString(integration.name) || provider || "Integration";
     const capabilities = Array.isArray(integration.capabilities) ? integration.capabilities : [];
     const credentialEnv =
@@ -515,9 +517,7 @@ function buildIntegrationSkillMarkdown(integrations = [], options = {}) {
         ? integration.credentialEnv
         : {};
     const configEnv =
-      credentialEnv.config && typeof credentialEnv.config === "object"
-        ? credentialEnv.config
-        : {};
+      credentialEnv.config && typeof credentialEnv.config === "object" ? credentialEnv.config : {};
     const config =
       integration.config && typeof integration.config === "object" ? integration.config : {};
     const redactedConfig =
@@ -543,10 +543,14 @@ function buildIntegrationSkillMarkdown(integrations = [], options = {}) {
     } else if (api?.authEnv) {
       lines.push(`- Primary credential env: \`${api.authEnv}\``);
     } else {
-      lines.push("- Primary credential env: not declared; inspect `integrations/NORA_INTEGRATIONS.md` for synced config fields.");
+      lines.push(
+        "- Primary credential env: not declared; inspect `integrations/NORA_INTEGRATIONS.md` for synced config fields.",
+      );
     }
 
-    const configEnvEntries = Object.entries(configEnv).filter(([, envName]) => normalizeString(envName));
+    const configEnvEntries = Object.entries(configEnv).filter(([, envName]) =>
+      normalizeString(envName),
+    );
     if (configEnvEntries.length > 0) {
       lines.push("- Config env vars:");
       for (const [key, envName] of configEnvEntries) {
@@ -554,20 +558,21 @@ function buildIntegrationSkillMarkdown(integrations = [], options = {}) {
       }
     }
 
-    const nonSecretConfigEntries = Object.entries(config).filter(([, value]) => {
-      if (value == null || value === "") return false;
-      if (typeof value === "string" && value.length > 120) return false;
-      return true;
-    }).filter(([key]) => {
-      if (isSensitiveIntegrationConfigKey(key)) return false;
-      if (redactedConfig[key] === "[REDACTED]") return false;
-      return true;
-    });
+    const nonSecretConfigEntries = Object.entries(config)
+      .filter(([, value]) => {
+        if (value == null || value === "") return false;
+        if (typeof value === "string" && value.length > 120) return false;
+        return true;
+      })
+      .filter(([key]) => {
+        if (isSensitiveIntegrationConfigKey(key)) return false;
+        if (redactedConfig[key] === "[REDACTED]") return false;
+        return true;
+      });
     if (nonSecretConfigEntries.length > 0) {
       lines.push("- Synced config defaults:");
       for (const [key, value] of nonSecretConfigEntries) {
-        const rendered =
-          typeof value === "string" ? value : JSON.stringify(value);
+        const rendered = typeof value === "string" ? value : JSON.stringify(value);
         lines.push(`  - ${key}: ${rendered}`);
       }
     }
@@ -582,7 +587,7 @@ function buildIntegrationSkillMarkdown(integrations = [], options = {}) {
       lines.push("- Executable tools:");
       for (const { spec, execution } of executableForIntegration) {
         lines.push(
-          `  - \`${execution.runtimeToolName}\`: ${normalizeString(spec.description) || "No description provided."}`
+          `  - \`${execution.runtimeToolName}\`: ${normalizeString(spec.description) || "No description provided."}`,
         );
         lines.push(`    Example: \`${execution.invokeCommand}\``);
       }
@@ -636,9 +641,7 @@ function clampInteger(value, { fallback, min = 1, max = 100 }) {
 }
 
 function normalizeIntegrationConfig(integration = {}) {
-  return integration.config && typeof integration.config === "object"
-    ? integration.config
-    : {};
+  return integration.config && typeof integration.config === "object" ? integration.config : {};
 }
 
 function normalizeObject(value) {
@@ -804,12 +807,16 @@ function getEmailConfig(integration = {}) {
 }
 
 function getEmailStateDbPath(integration = {}) {
-  const id = sanitizeIntegrationFilePart(integration.id || integrationProviderId(integration) || "email");
+  const id = sanitizeIntegrationFilePart(
+    integration.id || integrationProviderId(integration) || "email",
+  );
   return path.join(NORA_AGENT_STATE_ROOT, `email_${id}.sqlite`);
 }
 
 function getEmailPollLogPath(integration = {}) {
-  const id = sanitizeIntegrationFilePart(integration.id || integrationProviderId(integration) || "email");
+  const id = sanitizeIntegrationFilePart(
+    integration.id || integrationProviderId(integration) || "email",
+  );
   return path.join(NORA_AGENT_STATE_ROOT, `email_${id}.poll.jsonl`);
 }
 
@@ -915,7 +922,9 @@ function emailStateMarkProcessed(db, { uid, messageId = "", status = "processed"
 }
 
 function escapeImapString(value) {
-  return `"${String(value || "").replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+  return `"${String(value || "")
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')}"`;
 }
 
 function smtpBase64(value) {
@@ -928,7 +937,9 @@ function buildSmtpMessageId(fromAddress) {
 }
 
 function parseHeaderBlock(rawHeaders = "") {
-  const lines = String(rawHeaders || "").replace(/\r\n/g, "\n").split("\n");
+  const lines = String(rawHeaders || "")
+    .replace(/\r\n/g, "\n")
+    .split("\n");
   const headers = {};
   let currentKey = "";
 
@@ -980,9 +991,9 @@ function decodeHeaderValue(value = "") {
       if (String(encoding).toUpperCase() === "B") {
         return Buffer.from(content, "base64").toString("utf8");
       }
-      return content.replace(/_/g, " ").replace(/=([A-Fa-f0-9]{2})/g, (_m, hex) =>
-        String.fromCharCode(Number.parseInt(hex, 16)),
-      );
+      return content
+        .replace(/_/g, " ")
+        .replace(/=([A-Fa-f0-9]{2})/g, (_m, hex) => String.fromCharCode(Number.parseInt(hex, 16)));
     } catch {
       return raw;
     }
@@ -1070,7 +1081,9 @@ async function openImapSession(integration = {}) {
   }
 
   await command(`LOGIN ${escapeImapString(username)} ${escapeImapString(password)}`);
-  const selectResponse = await command(`SELECT ${escapeImapString(email.mailboxScope.mode || "INBOX")}`);
+  const selectResponse = await command(
+    `SELECT ${escapeImapString(email.mailboxScope.mode || "INBOX")}`,
+  );
   const uidValidityMatch = selectResponse.match(/\[UIDVALIDITY\s+([^\]\s]+)\]/i);
   const existsMatch = selectResponse.match(/\*\s+(\d+)\s+EXISTS/i);
   const mailboxStatus = {
@@ -1234,8 +1247,12 @@ async function runSmtpSession(integration = {}, message = {}) {
     `Subject: ${subject}`,
     `Date: ${new Date().toUTCString()}`,
     `Message-ID: ${messageId}`,
-    ...(normalizeString(message.inReplyTo) ? [`In-Reply-To: ${normalizeString(message.inReplyTo)}`] : []),
-    ...(normalizeString(message.references) ? [`References: ${normalizeString(message.references)}`] : []),
+    ...(normalizeString(message.inReplyTo)
+      ? [`In-Reply-To: ${normalizeString(message.inReplyTo)}`]
+      : []),
+    ...(normalizeString(message.references)
+      ? [`References: ${normalizeString(message.references)}`]
+      : []),
     "MIME-Version: 1.0",
     "Content-Type: text/plain; charset=utf-8",
     "Content-Transfer-Encoding: 8bit",
@@ -1263,7 +1280,8 @@ function parseMimeParts(rawMessage = "") {
   }
 
   const boundary = boundaryMatch[1].trim();
-  const parts = topBody.split(new RegExp(`--${boundary.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:--)?`, "g"))
+  const parts = topBody
+    .split(new RegExp(`--${boundary.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:--)?`, "g"))
     .slice(1)
     .filter((part) => part && !part.match(/^--\s*$/));
 
@@ -1276,19 +1294,26 @@ function parseMimeParts(rawMessage = "") {
     const parsed = parseHeaderBlock(partHeaders);
     const partContentType = String(parsed["content-type"] || "").toLowerCase();
     const disposition = String(parsed["content-disposition"] || "").toLowerCase();
-    const encoding = String(parsed["content-transfer-encoding"] || "").trim().toLowerCase();
+    const encoding = String(parsed["content-transfer-encoding"] || "")
+      .trim()
+      .toLowerCase();
 
     const decode = (raw) => {
-      if (encoding === "base64") return Buffer.from(raw.replace(/\s/g, ""), "base64").toString("utf8");
+      if (encoding === "base64")
+        return Buffer.from(raw.replace(/\s/g, ""), "base64").toString("utf8");
       if (encoding === "quoted-printable") {
-        return raw.replace(/=\r?\n/g, "").replace(/=([A-Fa-f0-9]{2})/g, (_m, hex) =>
-          String.fromCharCode(Number.parseInt(hex, 16)),
-        );
+        return raw
+          .replace(/=\r?\n/g, "")
+          .replace(/=([A-Fa-f0-9]{2})/g, (_m, hex) =>
+            String.fromCharCode(Number.parseInt(hex, 16)),
+          );
       }
       return raw;
     };
 
-    const filenameMatch = (parsed["content-disposition"] || parsed["content-type"] || "").match(/(?:filename|name)="?([^";\r\n]+)"?/i);
+    const filenameMatch = (parsed["content-disposition"] || parsed["content-type"] || "").match(
+      /(?:filename|name)="?([^";\r\n]+)"?/i,
+    );
     const filename = filenameMatch ? filenameMatch[1].trim() : "";
 
     if (disposition.includes("attachment") || (filename && !partContentType.startsWith("text/"))) {
@@ -1308,13 +1333,14 @@ function parseMimeParts(rawMessage = "") {
 }
 
 function sanitizeHtmlBody(html = "") {
+  const sanitizeHtml = getSanitizeHtml();
   return sanitizeHtml(String(html || ""), {
     disallowedTagsMode: "discard",
     allowedTags: (sanitizeHtml.defaults.allowedTags || []).filter((tag) => tag !== "style"),
     allowedAttributes: {
       ...sanitizeHtml.defaults.allowedAttributes,
       "*": (sanitizeHtml.defaults.allowedAttributes?.["*"] || []).filter(
-        (attr) => !/^on/i.test(String(attr || ""))
+        (attr) => !/^on/i.test(String(attr || "")),
       ),
     },
     allowedSchemes: ["http", "https", "mailto"],
@@ -1385,9 +1411,7 @@ function buildGitHubRequestUrl(integration, requestPath, query = {}) {
   const baseUrl = getGitHubBaseUrl(integration);
   const normalizedPath = requestPath.startsWith("/") ? requestPath : `/${requestPath}`;
   const basePath =
-    baseUrl.pathname && baseUrl.pathname !== "/"
-      ? baseUrl.pathname.replace(/\/+$/, "")
-      : "";
+    baseUrl.pathname && baseUrl.pathname !== "/" ? baseUrl.pathname.replace(/\/+$/, "") : "";
   baseUrl.pathname = `${basePath}${normalizedPath}`;
 
   for (const [key, value] of Object.entries(query)) {
@@ -1441,15 +1465,16 @@ function buildTwitterRequestUrl(integration, requestPath, query = {}) {
   const baseUrl = getTwitterBaseUrl(integration);
   const normalizedPath = requestPath.startsWith("/") ? requestPath : `/${requestPath}`;
   const basePath =
-    baseUrl.pathname && baseUrl.pathname !== "/"
-      ? baseUrl.pathname.replace(/\/+$/, "")
-      : "";
+    baseUrl.pathname && baseUrl.pathname !== "/" ? baseUrl.pathname.replace(/\/+$/, "") : "";
   baseUrl.pathname = `${basePath}${normalizedPath}`;
 
   for (const [key, value] of Object.entries(query)) {
     if (value == null || value === "") continue;
     if (Array.isArray(value)) {
-      const joined = value.map((entry) => normalizeString(entry)).filter(Boolean).join(",");
+      const joined = value
+        .map((entry) => normalizeString(entry))
+        .filter(Boolean)
+        .join(",");
       if (joined) baseUrl.searchParams.set(key, joined);
       continue;
     }
@@ -1611,7 +1636,10 @@ function normalizeStringList(value) {
   }
   const normalized = normalizeString(value);
   if (!normalized) return [];
-  return normalized.split(",").map((entry) => normalizeString(entry)).filter(Boolean);
+  return normalized
+    .split(",")
+    .map((entry) => normalizeString(entry))
+    .filter(Boolean);
 }
 
 function normalizeTwitterUsername(value) {
@@ -1702,12 +1730,7 @@ function decodeGitHubFileContent(file = {}) {
   };
 }
 
-async function executeGitHubOperation({
-  integration,
-  spec,
-  input,
-  fetchImpl,
-}) {
+async function executeGitHubOperation({ integration, spec, input, fetchImpl }) {
   const normalizedInput = normalizeIntegrationToolInput(input);
   const operation = normalizeString(spec.operation);
 
@@ -1742,7 +1765,7 @@ async function executeGitHubOperation({
           ownerType,
           repositories: filterRepositoriesByVisibility(
             Array.isArray(repositories) ? repositories : [],
-            visibility
+            visibility,
           ).map(mapGitHubRepository),
         };
       }
@@ -1762,9 +1785,7 @@ async function executeGitHubOperation({
       return {
         owner: null,
         ownerType: "AuthenticatedUser",
-        repositories: (Array.isArray(repositories) ? repositories : []).map(
-          mapGitHubRepository
-        ),
+        repositories: (Array.isArray(repositories) ? repositories : []).map(mapGitHubRepository),
       };
     }
 
@@ -1872,12 +1893,7 @@ async function executeGitHubOperation({
   }
 }
 
-async function executeTwitterOperation({
-  integration,
-  spec,
-  input,
-  fetchImpl,
-}) {
+async function executeTwitterOperation({ integration, spec, input, fetchImpl }) {
   const normalizedInput = normalizeIntegrationToolInput(input);
   const operation = normalizeString(spec.operation);
 
@@ -2016,9 +2032,7 @@ function formatInboundEmailMainNotification(message = {}) {
   const subject = normalizeString(message.subject);
   const date = normalizeString(message.date);
   return [
-    from
-      ? `New email received from ${from}.`
-      : "New email received in your connected inbox.",
+    from ? `New email received from ${from}.` : "New email received in your connected inbox.",
     subject ? `Subject: ${subject}` : "Subject: (No subject)",
     date ? `Date: ${date}` : "",
   ]
@@ -2043,7 +2057,8 @@ function buildAssistantSessionEntry(text, parentId = null) {
 
 function findCurrentMainSessionFile() {
   if (!fs.existsSync(OPENCLAW_SESSIONS_ROOT)) return null;
-  const files = fs.readdirSync(OPENCLAW_SESSIONS_ROOT)
+  const files = fs
+    .readdirSync(OPENCLAW_SESSIONS_ROOT)
     .filter((name) => name.endsWith(".trajectory.jsonl"))
     .map((name) => {
       const absPath = path.join(OPENCLAW_SESSIONS_ROOT, name);
@@ -2132,7 +2147,8 @@ function parseNotificationRecipient(value) {
 
 function resolveConfiguredNotificationTargets() {
   const config = loadOpenClawConfig();
-  const channelsConfig = config?.channels && typeof config.channels === "object" ? config.channels : {};
+  const channelsConfig =
+    config?.channels && typeof config.channels === "object" ? config.channels : {};
   const ownerAllowFrom = Array.isArray(config?.commands?.ownerAllowFrom)
     ? config.commands.ownerAllowFrom
     : [];
@@ -2310,7 +2326,10 @@ async function sendGatewayChatMessage({ sessionKey, message } = {}) {
       }
 
       if (msg.type === "event" && msg.event === "connect.challenge") {
-        const { role, scopes, device } = buildGatewayConnectDevice(identity, msg.payload?.nonce || "");
+        const { role, scopes, device } = buildGatewayConnectDevice(
+          identity,
+          msg.payload?.nonce || "",
+        );
         ws.send(
           JSON.stringify({
             type: "req",
@@ -2432,10 +2451,7 @@ function resolveEmailIntegrationForPoll(integrations = [], input = {}) {
   throw new Error("Multiple Email integrations are synced; integrationId is required");
 }
 
-async function executeEmailPoll({
-  integration,
-  input,
-}) {
+async function executeEmailPoll({ integration, input }) {
   const normalizedInput = normalizeIntegrationToolInput(input);
   const startedAt = Date.now();
   const db = openEmailStateDb(integration);
@@ -2651,11 +2667,7 @@ function emailSummaryFromHeaders(uid, headerResult = {}) {
   };
 }
 
-async function executeEmailOperation({
-  integration,
-  spec,
-  input,
-}) {
+async function executeEmailOperation({ integration, spec, input }) {
   const normalizedInput = normalizeIntegrationToolInput(input);
   const operation = normalizeString(spec.operation);
 
@@ -2743,8 +2755,7 @@ async function executeEmailOperation({
           throw new Error("Reply text is required");
         }
 
-        const preferredRecipients =
-          original.replyTo.length > 0 ? original.replyTo : original.from;
+        const preferredRecipients = original.replyTo.length > 0 ? original.replyTo : original.from;
         const to = preferredRecipients
           .map((entry) => normalizeString(entry.address))
           .filter(Boolean);
@@ -2790,8 +2801,7 @@ async function executeEmailOperation({
     case "messages.mark_processed": {
       const uid = resolveEmailUid(normalizedInput);
       const normalizedMessageId =
-        normalizeString(normalizedInput.messageId) ||
-        normalizeString(normalizedInput.message_id);
+        normalizeString(normalizedInput.messageId) || normalizeString(normalizedInput.message_id);
       const db = openEmailStateDb(integration);
       try {
         emailStateMarkProcessed(db, {
@@ -2821,9 +2831,7 @@ async function executeIntegrationToolInvocation({
   integrations = null,
   fetchImpl,
 }) {
-  const syncedIntegrations = Array.isArray(integrations)
-    ? integrations
-    : loadSyncedIntegrations();
+  const syncedIntegrations = Array.isArray(integrations) ? integrations : loadSyncedIntegrations();
   const normalizedToolName = normalizeString(toolName);
 
   const match = findIntegrationTool(syncedIntegrations, toolName);
@@ -2834,7 +2842,7 @@ async function executeIntegrationToolInvocation({
 
   if (!match.execution.executable) {
     throw new Error(
-      `Nora integration tool "${toolName}" is connected but not executable in this runtime`
+      `Nora integration tool "${toolName}" is connected but not executable in this runtime`,
     );
   }
 
@@ -2871,7 +2879,7 @@ async function executeIntegrationToolInvocation({
         break;
       default:
         throw new Error(
-          `Nora integration provider "${match.integration.provider}" is not executable in this runtime`
+          `Nora integration provider "${match.integration.provider}" is not executable in this runtime`,
         );
     }
   }
