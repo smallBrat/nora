@@ -1208,7 +1208,7 @@ async function runSmtpSession(integration = {}, message = {}) {
     socket = tls.connect({
       socket,
       servername: host,
-      rejectUnauthorized: false,
+      rejectUnauthorized: true,
     });
     buffer = "";
     await waitFor([/^220\b/, /^250\b/]).catch(() => null);
