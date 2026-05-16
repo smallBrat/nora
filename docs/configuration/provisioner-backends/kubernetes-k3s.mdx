@@ -89,3 +89,14 @@ docker compose -f docker-compose.yml -f docker-compose.k3s.yml logs worker-provi
 ```
 
 If an agent reaches `running` but the gateway is unreachable, confirm that `K3S_K8S_RUNTIME_HOST` points to an address the Compose containers can reach and that your firewall allows the allocated NodePort range.
+
+## Automated smoke
+
+Once your K3s cluster and kubeconfig are in place, run the shared lifecycle smoke:
+
+```bash theme={null}
+cd e2e
+KUBECONFIG_PATH=$PWD/../.secrets/k3s-kubeconfig npm run smoke:k8s-k3s
+```
+
+The script brings up the Compose stack with `docker-compose.k3s.yml`, deploys an agent, verifies Kubernetes objects, and exercises stop/start/restart. It exits non-zero on any failure. Set `KEEP_ENV=true` to leave the stack running for inspection.

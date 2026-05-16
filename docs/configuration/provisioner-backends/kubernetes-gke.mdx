@@ -2,7 +2,7 @@
 
 > Provision Nora agents into Google Kubernetes Engine using Nora's generic Kubernetes adapter and the GKE Compose overlay.
 
-GKE uses the same `k8s` backend id as every Kubernetes provider. The GKE-specific overlay mounts a GKE kubeconfig and defaults agent Services to cloud `LoadBalancer` exposure.
+GKE uses the same `k8s` backend id as every Kubernetes provider. Nora ships a single Kubernetes adapter (`workers/provisioner/backends/k8s.ts`) that serves Kind, K3s, AKS, GKE, and EKS — provider-specific overlays differ only in the kubeconfig they mount and the exposure mode they default to. The GKE overlay mounts a GKE kubeconfig and defaults agent Services to cloud `LoadBalancer` exposure.
 
 ## Create the kubeconfig
 
@@ -73,3 +73,14 @@ cd e2e
 REAL_ENABLE_OPENCLAW_DOCKER=0 REAL_ENABLE_OPENCLAW_K8S=1 \
   BASE_URL=http://localhost:8080 npm run test:real:matrix
 ```
+
+## Automated smoke
+
+Once your GKE kubeconfig is in place, run the shared lifecycle smoke:
+
+```bash theme={null}
+cd e2e
+KUBECONFIG_PATH=$PWD/../.secrets/gke-kubeconfig npm run smoke:k8s-gke
+```
+
+This script is operator-run only — it provisions real workloads against a live GKE cluster and is not part of CI. Set `KEEP_ENV=true` to leave the stack running after the script finishes.

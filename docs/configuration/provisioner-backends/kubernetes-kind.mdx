@@ -1,0 +1,60 @@
+# Kind provisioner backend
+
+> Local-only Kubernetes provisioner for development and CI. Not for production.
+
+<Warning>
+Kind ("Kubernetes in Docker") is for **local testing only**. Do not run production agents on a Kind cluster — it has no persistence guarantees, no load-balancer integration, and no high availability. For a self-hosted production cluster use [K3s](/configuration/provisioner-backends/kubernetes-k3s); for managed control planes use [AKS](/configuration/provisioner-backends/kubernetes-aks), [GKE](/configuration/provisioner-backends/kubernetes-gke), or [EKS](/configuration/provisioner-backends/kubernetes-eks).
+</Warning>
+
+Kind uses the same generic `k8s` backend id as every Kubernetes provider. It is the local smoke-test path for the adapter and is not intended to model cloud load-balancer behavior. Nora ships a single Kubernetes adapter (`workers/provisioner/backends/k8s.ts`) that serves Kind, K3s, AKS, GKE, and EKS — only the kubeconfig and exposure mode change.
+
+## When to use Kind
+
+- Local development of Nora itself, or local exercise of the Kubernetes adapter on a laptop.
+- CI smoke runs that need a real Kubernetes API without a cloud account.
+- Quick regression checks before promoting changes to a K3s or cloud cluster.
+
+Do **not** use Kind for:
+
+- Hosting agents you depend on — Kind clusters live and die with the local Docker daemon.
+- Modeling cloud `LoadBalancer` behavior — Kind only supports NodePort routing in this overlay.
+- Multi-node or multi-host scheduling — the bundled Kind config is single control-plane.
+
+## Automated smoke
+
+The recommended path is the bundled smoke script. It creates or reuses a Kind cluster, exports kubeconfigs for both the host and the in-container view, starts the Nora API and provisioner with `docker-compose.kind.yml`, deploys an agent, verifies Kubernetes objects, and exercises stop/start/restart lifecycle.
+
+```bash theme={null}
+cd e2e
+npm run smoke:k8s-kind
+```
+
+Set `KEEP_ENV=true` to leave the cluster and Compose stack running after the script finishes.
+
+## Manual stack
+
+```bash theme={null}
+docker compose -f docker-compose.yml -f docker-compose.kind.yml up -d --build
+```
+
+The Kind overlay defaults to NodePort exposure:
+
+```bash theme={null}
+ENABLED_BACKENDS=k8s
+KUBECONFIG=/kubeconfig/config
+K8S_EXPOSURE_MODE=node-port
+K8S_RUNTIME_NODE_PORT=30909
+K8S_GATEWAY_NODE_PORT=31879
+K8S_RUNTIME_HOST=host.docker.internal
+```
+
+`K8S_RUNTIME_HOST` must be reachable from the Compose containers. On Linux without `host.docker.internal` support, set it to the Kind control-plane container name (`nora-kind-control-plane` by default) and join the `kind` Docker network.
+
+## Verification
+
+```bash theme={null}
+kubectl -n openclaw-agents get deploy,svc,pods
+docker compose -f docker-compose.yml -f docker-compose.kind.yml logs worker-provisioner
+```
+
+If the agent reaches `running` but the gateway is unreachable, confirm the NodePort values match the port mappings in `infra/kind/nora-kind.yaml`.
