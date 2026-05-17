@@ -1,5 +1,14 @@
 import { useState, useEffect } from "react";
-import { Key, Plus, Trash2, Loader2, Check, ChevronRight, AlertTriangle, RefreshCw } from "lucide-react";
+import {
+  Key,
+  Plus,
+  Trash2,
+  Loader2,
+  Check,
+  ChevronRight,
+  AlertTriangle,
+  RefreshCw,
+} from "lucide-react";
 import { fetchWithAuth } from "../../lib/api";
 import { useToast } from "../Toast";
 import { ProviderLogo, formatModelLabel, getProviderMeta } from "./providerLogos";
@@ -9,10 +18,7 @@ type LLMSetupWizardProps = {
   compact?: boolean;
 };
 
-export default function LLMSetupWizard({
-  onComplete,
-  compact = false,
-}: LLMSetupWizardProps) {
+export default function LLMSetupWizard({ onComplete, compact = false }: LLMSetupWizardProps) {
   const [step, setStep] = useState(0); // 0 = select provider, 1 = enter key, 2 = done
   const [available, setAvailable] = useState<any[]>([]);
   const [existing, setExisting] = useState<any[]>([]);
@@ -139,7 +145,8 @@ export default function LLMSetupWizard({
           </div>
           <h3 className="text-lg font-bold text-slate-900">Provider Added!</h3>
           <p className="text-sm text-slate-500">
-            Your API key has been securely saved. Sync to push keys to running agents, or they'll apply on next deploy.
+            Your API key has been securely saved. Sync to push keys to running agents, or they'll
+            apply on next deploy.
           </p>
         </div>
         <div className="flex items-center justify-center gap-3 flex-wrap">
@@ -152,7 +159,10 @@ export default function LLMSetupWizard({
             Sync to Running Agents
           </button>
           <button
-            onClick={() => { setStep(0); setSelectedProvider(null); }}
+            onClick={() => {
+              setStep(0);
+              setSelectedProvider(null);
+            }}
             className="px-4 py-2 text-xs font-bold text-blue-600 bg-blue-50 rounded-xl hover:bg-blue-100 transition-colors flex items-center gap-1.5"
           >
             <Plus size={14} /> Add Another
@@ -176,15 +186,29 @@ export default function LLMSetupWizard({
     return (
       <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 space-y-6">
         <div className="flex items-center gap-3">
-          <button onClick={() => { setStep(0); setSelectedProvider(null); setBaseUrl(""); setApiVersion(""); }} className="text-slate-400 hover:text-slate-600 transition-colors text-sm">← Back</button>
-          <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-bold border ${meta.color}`}>
+          <button
+            onClick={() => {
+              setStep(0);
+              setSelectedProvider(null);
+              setBaseUrl("");
+              setApiVersion("");
+            }}
+            className="text-slate-400 hover:text-slate-600 transition-colors text-sm"
+          >
+            ← Back
+          </button>
+          <div
+            className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-bold border ${meta.color}`}
+          >
             <ProviderLogo providerId={selectedProvider.id} className="h-4 w-4 shrink-0" />
             <span>{meta.name}</span>
           </div>
         </div>
         <div className="space-y-4">
           <div>
-            <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest block mb-1.5">API Key</label>
+            <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest block mb-1.5">
+              API Key
+            </label>
             <input
               type="password"
               value={apiKey}
@@ -197,24 +221,34 @@ export default function LLMSetupWizard({
           {selectedProvider.requiresBaseUrl && (
             <div>
               <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest block mb-1.5">
-                Base URL <span className="text-red-500 normal-case font-normal tracking-normal">required</span>
+                Base URL{" "}
+                <span className="text-red-500 normal-case font-normal tracking-normal">
+                  required
+                </span>
               </label>
               <input
                 type="url"
                 value={baseUrl}
                 onChange={(e) => setBaseUrl(e.target.value)}
-                placeholder={selectedProvider.baseUrlPlaceholder || "https://<resource>.services.ai.azure.com/openai/v1/"}
+                placeholder={
+                  selectedProvider.baseUrlPlaceholder ||
+                  "https://<resource>.services.ai.azure.com/openai/v1/"
+                }
                 className="w-full text-sm border border-slate-200 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
               />
               <p className="text-[10px] text-slate-400 mt-1">
-                Your Foundry resource endpoint. Models are deployed per-resource and the URL must match your deployment.
+                Your Foundry resource endpoint. Models are deployed per-resource and the URL must
+                match your deployment.
               </p>
             </div>
           )}
           {selectedProvider.supportsApiVersion && (
             <div>
               <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest block mb-1.5">
-                API Version <span className="normal-case font-normal tracking-normal text-slate-400">optional</span>
+                API Version{" "}
+                <span className="normal-case font-normal tracking-normal text-slate-400">
+                  optional
+                </span>
               </label>
               <input
                 type="text"
@@ -224,7 +258,9 @@ export default function LLMSetupWizard({
                 className="w-full text-sm border border-slate-200 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
               />
               <p className="text-[10px] text-slate-400 mt-1">
-                Leave empty when using the OpenAI v1 GA path (<code className="font-mono">/openai/v1/</code>). Required for classic <code className="font-mono">/openai/deployments/...</code> URLs.
+                Leave empty when using the OpenAI v1 GA path (
+                <code className="font-mono">/openai/v1/</code>). Required for classic{" "}
+                <code className="font-mono">/openai/deployments/...</code> URLs.
               </p>
             </div>
           )}
@@ -236,7 +272,10 @@ export default function LLMSetupWizard({
             // for autocomplete from common suggestions.
             <div>
               <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest block mb-1.5">
-                Deployment Name <span className="text-red-500 normal-case font-normal tracking-normal">required</span>
+                Deployment Name{" "}
+                <span className="text-red-500 normal-case font-normal tracking-normal">
+                  required
+                </span>
               </label>
               <input
                 type="text"
@@ -254,14 +293,18 @@ export default function LLMSetupWizard({
                 </datalist>
               )}
               <p className="text-[10px] text-slate-400 mt-1">
-                Enter the exact <strong>deployment name</strong> from your Foundry portal (not the underlying model id).
-                Find it under your resource → Deployments. Azure rejects requests where this doesn't match an active deployment.
+                Enter the exact <strong>deployment name</strong> from your Foundry portal (not the
+                underlying model id). Find it under your resource → Deployments. Azure rejects
+                requests where this doesn't match an active deployment.
               </p>
             </div>
           ) : (
-            selectedProvider.models && selectedProvider.models.length > 0 && (
+            selectedProvider.models &&
+            selectedProvider.models.length > 0 && (
               <div>
-                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest block mb-1.5">Default Model (optional)</label>
+                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest block mb-1.5">
+                  Default Model (optional)
+                </label>
                 <select
                   value={selectedModel}
                   onChange={(e) => setSelectedModel(e.target.value)}
@@ -269,7 +312,9 @@ export default function LLMSetupWizard({
                 >
                   <option value="">Auto (latest)</option>
                   {selectedProvider.models.map((m) => (
-                    <option key={m} value={m}>{formatModelLabel(m)}</option>
+                    <option key={m} value={m}>
+                      {formatModelLabel(m)}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -317,21 +362,34 @@ export default function LLMSetupWizard({
             {existing.map((p) => {
               const meta = getProviderMeta(p.provider, p.provider);
               return (
-                <div key={p.id} className="flex items-center justify-between py-2 px-3 rounded-lg bg-slate-50 border border-slate-100">
+                <div
+                  key={p.id}
+                  className="flex items-center justify-between py-2 px-3 rounded-lg bg-slate-50 border border-slate-100"
+                >
                   <div className="flex items-center gap-3">
                     <span className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center shrink-0">
                       <ProviderLogo providerId={p.provider} className="h-[18px] w-[18px]" />
                     </span>
                     <div>
                       <span className="text-sm font-bold text-slate-700">{meta.name}</span>
-                      {p.model && <span className="text-[10px] text-slate-400 ml-2">{formatModelLabel(p.model)}</span>}
+                      {p.model && (
+                        <span className="text-[10px] text-slate-400 ml-2">
+                          {formatModelLabel(p.model)}
+                        </span>
+                      )}
                     </div>
                     <span className="text-[10px] font-mono text-slate-400">{p.api_key_masked}</span>
                     {p.is_default && (
-                      <span className="text-[9px] font-bold uppercase bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded">Default</span>
+                      <span className="text-[9px] font-bold uppercase bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded">
+                        Default
+                      </span>
                     )}
                   </div>
-                  <button onClick={() => handleDelete(p.id)} className="text-red-400 hover:text-red-600 transition-colors" title="Remove">
+                  <button
+                    onClick={() => handleDelete(p.id)}
+                    className="text-red-400 hover:text-red-600 transition-colors"
+                    title="Remove"
+                  >
                     <Trash2 size={14} />
                   </button>
                 </div>
@@ -350,7 +408,8 @@ export default function LLMSetupWizard({
             </div>
             <h3 className="text-lg font-bold text-slate-900">Set Up LLM Provider</h3>
             <p className="text-sm text-slate-500 max-w-md mx-auto">
-              Your agent needs an API key to use AI models. Select a provider below and enter your API key to get started.
+              Your agent needs an API key to use AI models. Select a provider below and enter your
+              API key to get started.
             </p>
           </div>
         )}
@@ -364,17 +423,26 @@ export default function LLMSetupWizard({
             return (
               <button
                 key={p.id}
-                onClick={() => { setSelectedProvider(p); setStep(1); }}
+                onClick={() => {
+                  setSelectedProvider(p);
+                  setStep(1);
+                }}
                 className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-left transition-all hover:shadow-sm ${
-                  isConfigured ? "opacity-50 border-green-200 bg-green-50" : "border-slate-200 bg-white hover:border-blue-300"
+                  isConfigured
+                    ? "opacity-50 border-green-200 bg-green-50"
+                    : "border-slate-200 bg-white hover:border-blue-300"
                 }`}
               >
                 <span className="w-8 h-8 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-center shrink-0">
                   <ProviderLogo providerId={p.id} className="h-[18px] w-[18px]" />
                 </span>
                 <div className="min-w-0">
-                  <span className="text-xs font-bold text-slate-700 block truncate">{meta.name}</span>
-                  {isConfigured && <span className="text-[9px] text-green-600 font-bold">Connected</span>}
+                  <span className="text-xs font-bold text-slate-700 block truncate">
+                    {meta.name}
+                  </span>
+                  {isConfigured && (
+                    <span className="text-[9px] text-green-600 font-bold">Connected</span>
+                  )}
                 </div>
                 <ChevronRight size={12} className="text-slate-300 ml-auto shrink-0" />
               </button>

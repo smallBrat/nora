@@ -234,9 +234,7 @@ function buildAuthProfiles(providerKeys = {}) {
     const baseUrlEnv = envVar.replace(/_API_KEY$|_TOKEN$/, "_BASE_URL");
     const apiVersionEnv = envVar.replace(/_API_KEY$|_TOKEN$/, "_API_VERSION");
     const endpoint =
-      (baseUrlEnv !== envVar && normalized[baseUrlEnv]) ||
-      PROVIDER_ENV_ENDPOINT_MAP[envVar] ||
-      "";
+      (baseUrlEnv !== envVar && normalized[baseUrlEnv]) || PROVIDER_ENV_ENDPOINT_MAP[envVar] || "";
     const apiVersion = apiVersionEnv !== envVar ? normalized[apiVersionEnv] || "" : "";
     profiles[profileId] = {
       type: "api_key",

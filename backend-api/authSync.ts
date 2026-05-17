@@ -205,9 +205,12 @@ async function buildHermesManagedEnvForAgent(userId, agentId) {
     const { getIntegrationEnvVars } = require("./integrations");
     const integrationEnvVars = await getIntegrationEnvVars(agentId);
     return Object.fromEntries(
-      Object.entries({ ...integrationEnvVars, ...llmKeys, ...baseUrlEnvVars, ...apiVersionEnvVars }).filter(
-        ([key, value]) => key && value != null && String(value) !== "",
-      ),
+      Object.entries({
+        ...integrationEnvVars,
+        ...llmKeys,
+        ...baseUrlEnvVars,
+        ...apiVersionEnvVars,
+      }).filter(([key, value]) => key && value != null && String(value) !== ""),
     );
   } catch {
     return Object.fromEntries(
@@ -527,9 +530,13 @@ async function syncAuthToUserAgents(userId, agentId = null, options = {}) {
         try {
           await runRuntimeCommand(agent, providerMergeCommand);
         } catch (error) {
-          if (!CONTAINER_EXEC_AUTH_FALLBACK_BACKENDS.has(
-            String(agent?.backend_type || "").trim().toLowerCase(),
-          )) {
+          if (
+            !CONTAINER_EXEC_AUTH_FALLBACK_BACKENDS.has(
+              String(agent?.backend_type || "")
+                .trim()
+                .toLowerCase(),
+            )
+          ) {
             throw error;
           }
           await runContainerCommand(agent, providerMergeCommand);

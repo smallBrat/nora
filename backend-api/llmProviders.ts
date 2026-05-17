@@ -7,16 +7,47 @@ const { encrypt, decrypt, ensureEncryptionConfigured } = require("./crypto");
 // Approved LLM providers and their env var names
 // Models updated per https://docs.openclaw.ai/providers (April 2026)
 const PROVIDERS = [
-  { id: "anthropic", name: "Anthropic", envVar: "ANTHROPIC_API_KEY", models: ["claude-opus-4-6", "claude-sonnet-4-5"] },
+  {
+    id: "anthropic",
+    name: "Anthropic",
+    envVar: "ANTHROPIC_API_KEY",
+    models: ["claude-opus-4-6", "claude-sonnet-4-5"],
+  },
   { id: "openai", name: "OpenAI", envVar: "OPENAI_API_KEY", models: ["gpt-5.4", "gpt-5.4-pro"] },
-  { id: "google", name: "Google (Gemini)", envVar: "GEMINI_API_KEY", endpoint: "https://generativelanguage.googleapis.com/v1beta", models: ["gemini-3.1-pro-preview", "gemini-3-flash-preview"] },
-  { id: "groq", name: "Groq", envVar: "GROQ_API_KEY", models: ["llama-3.3-70b-versatile", "mixtral-8x7b-32768"] },
+  {
+    id: "google",
+    name: "Google (Gemini)",
+    envVar: "GEMINI_API_KEY",
+    endpoint: "https://generativelanguage.googleapis.com/v1beta",
+    models: ["gemini-3.1-pro-preview", "gemini-3-flash-preview"],
+  },
+  {
+    id: "groq",
+    name: "Groq",
+    envVar: "GROQ_API_KEY",
+    models: ["llama-3.3-70b-versatile", "mixtral-8x7b-32768"],
+  },
   { id: "mistral", name: "Mistral", envVar: "MISTRAL_API_KEY", models: ["mistral-large-latest"] },
-  { id: "deepseek", name: "DeepSeek", envVar: "DEEPSEEK_API_KEY", models: ["deepseek-chat", "deepseek-reasoner"] },
+  {
+    id: "deepseek",
+    name: "DeepSeek",
+    envVar: "DEEPSEEK_API_KEY",
+    models: ["deepseek-chat", "deepseek-reasoner"],
+  },
   { id: "openrouter", name: "OpenRouter", envVar: "OPENROUTER_API_KEY", models: [] },
   { id: "together", name: "Together AI", envVar: "TOGETHER_API_KEY", models: [] },
-  { id: "cohere", name: "Cohere", envVar: "COHERE_API_KEY", models: ["command-r-plus", "command-r"] },
-  { id: "xai", name: "xAI", envVar: "XAI_API_KEY", models: ["grok-4", "grok-4-0709", "grok-3", "grok-3-fast"] },
+  {
+    id: "cohere",
+    name: "Cohere",
+    envVar: "COHERE_API_KEY",
+    models: ["command-r-plus", "command-r"],
+  },
+  {
+    id: "xai",
+    name: "xAI",
+    envVar: "XAI_API_KEY",
+    models: ["grok-4", "grok-4-0709", "grok-3", "grok-3-fast"],
+  },
   { id: "moonshot", name: "Moonshot AI", envVar: "MOONSHOT_API_KEY", models: ["kimi-k2.5"] },
   { id: "zai", name: "Z.AI", envVar: "ZAI_API_KEY", models: ["glm-5"] },
   { id: "ollama", name: "Ollama", envVar: "OLLAMA_API_KEY", models: [] },
@@ -24,7 +55,18 @@ const PROVIDERS = [
   { id: "github-copilot", name: "GitHub Copilot", envVar: "COPILOT_GITHUB_TOKEN", models: [] },
   { id: "huggingface", name: "Hugging Face (Inference)", envVar: "HF_TOKEN", models: [] },
   { id: "cerebras", name: "Cerebras", envVar: "CEREBRAS_API_KEY", models: [] },
-  { id: "nvidia", name: "NVIDIA", envVar: "NVIDIA_API_KEY", endpoint: "https://integrate.api.nvidia.com/v1", models: ["nvidia/nvidia/nemotron-3-super-120b-a12b", "nvidia/moonshotai/kimi-k2.5", "nvidia/minimaxai/minimax-m2.5", "nvidia/z-ai/glm5"] },
+  {
+    id: "nvidia",
+    name: "NVIDIA",
+    envVar: "NVIDIA_API_KEY",
+    endpoint: "https://integrate.api.nvidia.com/v1",
+    models: [
+      "nvidia/nvidia/nemotron-3-super-120b-a12b",
+      "nvidia/moonshotai/kimi-k2.5",
+      "nvidia/minimaxai/minimax-m2.5",
+      "nvidia/z-ai/glm5",
+    ],
+  },
   // Microsoft Foundry hosts models from OpenAI, Microsoft (Phi), Meta (Llama), Mistral, DeepSeek, Cohere, and AI21
   // behind an OpenAI-compatible inference endpoint. The `model` value at request time is the user's *deployment
   // name* in their Foundry resource — the list below is a curated set of common deployment ids users can pick
@@ -33,33 +75,52 @@ const PROVIDERS = [
   // https://models.inference.ai.azure.com URL is GitHub Models (GitHub PAT auth, free tier) — not a generic
   // Foundry URL — so the catalog ships no default `endpoint` here. See:
   //   https://learn.microsoft.com/en-us/azure/ai-foundry/foundry-models/concepts/endpoints
-  { id: "microsoft-foundry", name: "Microsoft Foundry", envVar: "MICROSOFT_FOUNDRY_API_KEY", requiresBaseUrl: true, baseUrlPlaceholder: "https://<resource>.services.ai.azure.com/openai/v1/", supportsApiVersion: true, apiVersionPlaceholder: "2024-10-21", models: [
-    "gpt-5.5",
-    "gpt-5.5-mini",
-    "o3",
-    "Phi-4",
-    "Phi-4-mini",
-    "Meta-Llama-3.1-405B-Instruct",
-    "Meta-Llama-3.1-70B-Instruct",
-    "Mistral-Large-2411",
-    "Codestral-2501",
-    "DeepSeek-V3",
-    "DeepSeek-R1",
-    "Cohere-command-r-plus-08-2024",
-    "AI21-Jamba-1.5-Large",
-  ] },
+  {
+    id: "microsoft-foundry",
+    name: "Microsoft Foundry",
+    envVar: "MICROSOFT_FOUNDRY_API_KEY",
+    requiresBaseUrl: true,
+    baseUrlPlaceholder: "https://<resource>.services.ai.azure.com/openai/v1/",
+    supportsApiVersion: true,
+    apiVersionPlaceholder: "2024-10-21",
+    models: [
+      "gpt-5.5",
+      "gpt-5.5-mini",
+      "o3",
+      "Phi-4",
+      "Phi-4-mini",
+      "Meta-Llama-3.1-405B-Instruct",
+      "Meta-Llama-3.1-70B-Instruct",
+      "Mistral-Large-2411",
+      "Codestral-2501",
+      "DeepSeek-V3",
+      "DeepSeek-R1",
+      "Cohere-command-r-plus-08-2024",
+      "AI21-Jamba-1.5-Large",
+    ],
+  },
 ];
 
 function getAvailableProviders() {
-  return PROVIDERS.map(({ id, name, models, requiresBaseUrl, baseUrlPlaceholder, supportsApiVersion, apiVersionPlaceholder }) => ({
-    id,
-    name,
-    models,
-    ...(requiresBaseUrl ? { requiresBaseUrl: true } : {}),
-    ...(baseUrlPlaceholder ? { baseUrlPlaceholder } : {}),
-    ...(supportsApiVersion ? { supportsApiVersion: true } : {}),
-    ...(apiVersionPlaceholder ? { apiVersionPlaceholder } : {}),
-  }));
+  return PROVIDERS.map(
+    ({
+      id,
+      name,
+      models,
+      requiresBaseUrl,
+      baseUrlPlaceholder,
+      supportsApiVersion,
+      apiVersionPlaceholder,
+    }) => ({
+      id,
+      name,
+      models,
+      ...(requiresBaseUrl ? { requiresBaseUrl: true } : {}),
+      ...(baseUrlPlaceholder ? { baseUrlPlaceholder } : {}),
+      ...(supportsApiVersion ? { supportsApiVersion: true } : {}),
+      ...(apiVersionPlaceholder ? { apiVersionPlaceholder } : {}),
+    }),
+  );
 }
 
 function getProviderEnvVar(providerId) {
@@ -78,14 +139,16 @@ function maskKey(key) {
 async function listProviders(userId) {
   const result = await db.query(
     "SELECT id, user_id, provider, api_key, model, config, is_default, created_at FROM llm_providers WHERE user_id = $1 ORDER BY created_at",
-    [userId]
+    [userId],
   );
   return result.rows.map((row) => {
     let masked;
     try {
       masked = maskKey(decrypt(row.api_key));
     } catch (err) {
-      console.warn(`[llmProviders] Cannot decrypt key for provider ${row.provider} (user ${row.user_id}): ${err.message}`);
+      console.warn(
+        `[llmProviders] Cannot decrypt key for provider ${row.provider} (user ${row.user_id}): ${err.message}`,
+      );
       masked = "⚠ unreadable";
     }
     return {
@@ -106,13 +169,15 @@ async function addProvider(userId, provider, apiKey, model, config = {}) {
   const encryptedKey = encrypt(apiKey);
 
   // If no other providers exist for this user, make it default
-  const existing = await db.query("SELECT COUNT(*) FROM llm_providers WHERE user_id = $1", [userId]);
+  const existing = await db.query("SELECT COUNT(*) FROM llm_providers WHERE user_id = $1", [
+    userId,
+  ]);
   const isDefault = parseInt(existing.rows[0].count) === 0;
 
   const result = await db.query(
     `INSERT INTO llm_providers(user_id, provider, api_key, model, config, is_default)
      VALUES($1, $2, $3, $4, $5, $6) RETURNING id, provider, model, is_default, created_at`,
-    [userId, provider, encryptedKey, model || null, JSON.stringify(config), isDefault]
+    [userId, provider, encryptedKey, model || null, JSON.stringify(config), isDefault],
   );
   return result.rows[0];
 }
@@ -149,7 +214,7 @@ async function updateProvider(id, userId, updates) {
   params.push(id, userId);
   const result = await db.query(
     `UPDATE llm_providers SET ${sets.join(", ")} WHERE id = $${idx++} AND user_id = $${idx} RETURNING id, provider, model, is_default`,
-    params
+    params,
   );
   if (result.rows.length === 0) throw new Error("Provider not found");
   return result.rows[0];
@@ -158,7 +223,7 @@ async function updateProvider(id, userId, updates) {
 async function deleteProvider(id, userId) {
   const result = await db.query(
     "DELETE FROM llm_providers WHERE id = $1 AND user_id = $2 RETURNING id",
-    [id, userId]
+    [id, userId],
   );
   if (result.rows.length === 0) throw new Error("Provider not found");
   return { success: true };
@@ -169,10 +234,9 @@ async function deleteProvider(id, userId) {
  * Returns a map of { envVarName: decryptedKey } for container injection.
  */
 async function getProviderKeys(userId) {
-  const result = await db.query(
-    "SELECT provider, api_key FROM llm_providers WHERE user_id = $1",
-    [userId]
-  );
+  const result = await db.query("SELECT provider, api_key FROM llm_providers WHERE user_id = $1", [
+    userId,
+  ]);
   const keys = {};
   for (const row of result.rows) {
     const envVar = getProviderEnvVar(row.provider);
@@ -220,10 +284,9 @@ function pickConfigApiVersion(config) {
  * and to write `endpoint` / `api_version` fields into OpenClaw's auth-profiles.json.
  */
 async function getProviderEndpoints(userId) {
-  const result = await db.query(
-    "SELECT provider, config FROM llm_providers WHERE user_id = $1",
-    [userId]
-  );
+  const result = await db.query("SELECT provider, config FROM llm_providers WHERE user_id = $1", [
+    userId,
+  ]);
   const byEnvVar = {};
   const byProvider = {};
   const apiVersionByEnvVar = {};
@@ -281,7 +344,11 @@ function buildApiVersionEnvVars(apiVersionsByEnvVar = {}) {
  * Build the auth-profiles.json content that openclaw expects.
  * Maps provider keys to the persisted OpenClaw auth profile store format.
  */
-function buildAuthProfiles(providerKeys, endpointOverridesByProvider = {}, apiVersionOverridesByProvider = {}) {
+function buildAuthProfiles(
+  providerKeys,
+  endpointOverridesByProvider = {},
+  apiVersionOverridesByProvider = {},
+) {
   const profiles = {};
   const order = {};
   const lastGood = {};

@@ -178,9 +178,7 @@ describe("OpenClaw bootstrap helpers", () => {
       // No catalog default for Foundry — without baseUrl, skip registration so
       // failures surface as "Unknown model" (clearer than a silent 401 against
       // the wrong endpoint).
-      expect(
-        buildOpenClawCustomProviders({ MICROSOFT_FOUNDRY_API_KEY: "ms-key" }),
-      ).toEqual({});
+      expect(buildOpenClawCustomProviders({ MICROSOFT_FOUNDRY_API_KEY: "ms-key" })).toEqual({});
     });
 
     it("registers Foundry to route through pi-ai's azure-openai-responses API", () => {
@@ -200,8 +198,7 @@ describe("OpenClaw bootstrap helpers", () => {
       //   `store: true` from the Responses payload (Azure rejects it).
       const result = buildOpenClawCustomProviders({
         MICROSOFT_FOUNDRY_API_KEY: "ms-key",
-        MICROSOFT_FOUNDRY_BASE_URL:
-          "https://st-eastus2.cognitiveservices.azure.com/openai/v1/",
+        MICROSOFT_FOUNDRY_BASE_URL: "https://st-eastus2.cognitiveservices.azure.com/openai/v1/",
       });
       expect(Object.keys(result)).toEqual(["azure-openai-responses"]);
       const foundry = result["azure-openai-responses"];
@@ -219,18 +216,14 @@ describe("OpenClaw bootstrap helpers", () => {
       expect(foundry.models.length).toBeGreaterThan(0);
       for (const model of foundry.models) {
         expect(model.api).toBe("azure-openai-responses");
-        expect(model.compat).toEqual(
-          expect.objectContaining({ supportsStore: false }),
-        );
+        expect(model.compat).toEqual(expect.objectContaining({ supportsStore: false }));
       }
     });
   });
 
   describe("mapNoraProviderIdToOpenClaw", () => {
     it("translates microsoft-foundry to azure-openai-responses", () => {
-      expect(mapNoraProviderIdToOpenClaw("microsoft-foundry")).toBe(
-        "azure-openai-responses",
-      );
+      expect(mapNoraProviderIdToOpenClaw("microsoft-foundry")).toBe("azure-openai-responses");
       expect(FOUNDRY_OPENCLAW_PROVIDER_ID).toBe("azure-openai-responses");
     });
 

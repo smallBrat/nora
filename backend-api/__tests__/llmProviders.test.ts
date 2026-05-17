@@ -14,7 +14,7 @@ describe("llmProviders.buildAuthProfiles", () => {
       buildAuthProfiles({
         OPENAI_API_KEY: "sk-live-test",
         GEMINI_API_KEY: "gm-live-test",
-      })
+      }),
     ).toEqual({
       version: 1,
       profiles: {
@@ -47,7 +47,7 @@ describe("llmProviders.buildAuthProfiles", () => {
     expect(
       buildAuthProfiles({
         MICROSOFT_FOUNDRY_API_KEY: "msft-live-test",
-      })
+      }),
     ).toEqual({
       version: 1,
       profiles: {
@@ -101,9 +101,7 @@ describe("llmProviders.buildAuthProfiles", () => {
       { GEMINI_API_KEY: "gm-live-test" },
       { google: "https://custom-gemini.example.com/v1" },
     );
-    expect(result.profiles["google:default"].endpoint).toBe(
-      "https://custom-gemini.example.com/v1",
-    );
+    expect(result.profiles["google:default"].endpoint).toBe("https://custom-gemini.example.com/v1");
   });
 });
 
@@ -129,9 +127,9 @@ describe("llmProviders.buildApiVersionEnvVars", () => {
   const { buildApiVersionEnvVars } = require("../llmProviders");
 
   it("derives <PROVIDER>_API_VERSION env vars", () => {
-    expect(
-      buildApiVersionEnvVars({ MICROSOFT_FOUNDRY_API_KEY: "2024-10-21" }),
-    ).toEqual({ MICROSOFT_FOUNDRY_API_VERSION: "2024-10-21" });
+    expect(buildApiVersionEnvVars({ MICROSOFT_FOUNDRY_API_KEY: "2024-10-21" })).toEqual({
+      MICROSOFT_FOUNDRY_API_VERSION: "2024-10-21",
+    });
   });
 
   it("skips entries without an api-version", () => {
