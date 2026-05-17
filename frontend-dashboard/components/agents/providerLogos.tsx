@@ -203,6 +203,17 @@ function NvidiaLogo({ className }) {
   );
 }
 
+function MicrosoftFoundryLogo({ className }) {
+  return (
+    <BaseLogo className={className}>
+      <rect x="3" y="3" width="8.5" height="8.5" fill="#F25022" />
+      <rect x="12.5" y="3" width="8.5" height="8.5" fill="#7FBA00" />
+      <rect x="3" y="12.5" width="8.5" height="8.5" fill="#00A4EF" />
+      <rect x="12.5" y="12.5" width="8.5" height="8.5" fill="#FFB900" />
+    </BaseLogo>
+  );
+}
+
 function GenericProviderLogo({ className }) {
   return (
     <BaseLogo className={className}>
@@ -231,6 +242,7 @@ export const PROVIDER_META = {
   huggingface: { name: "Hugging Face (Inference)", color: "bg-yellow-100 text-yellow-700 border-yellow-200", Icon: HuggingFaceLogo },
   cerebras: { name: "Cerebras", color: "bg-red-100 text-red-700 border-red-200", Icon: CerebrasLogo },
   nvidia: { name: "NVIDIA", color: "bg-lime-100 text-lime-700 border-lime-200", Icon: NvidiaLogo },
+  "microsoft-foundry": { name: "Microsoft Foundry", color: "bg-sky-100 text-sky-700 border-sky-200", Icon: MicrosoftFoundryLogo },
 };
 
 const FALLBACK_META = {

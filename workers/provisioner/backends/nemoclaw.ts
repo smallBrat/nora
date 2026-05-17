@@ -375,14 +375,17 @@ class NemoClawBackend extends ProvisionerBackend {
       HF_TOKEN: "huggingface",
       CEREBRAS_API_KEY: "cerebras",
       NVIDIA_API_KEY: "nvidia",
+      MICROSOFT_FOUNDRY_API_KEY: "microsoft-foundry",
     };
     const buildAuthScript =
-      `var m=${JSON.stringify(llmKeyMap)},e={NVIDIA_API_KEY:"https://integrate.api.nvidia.com/v1"},s={version:1,profiles:{},order:{},lastGood:{}};` +
+      `var m=${JSON.stringify(llmKeyMap)},e={NVIDIA_API_KEY:"https://integrate.api.nvidia.com/v1"},f={MICROSOFT_FOUNDRY_API_KEY:"MICROSOFT_FOUNDRY_BASE_URL"},av={MICROSOFT_FOUNDRY_API_KEY:"MICROSOFT_FOUNDRY_API_VERSION"},s={version:1,profiles:{},order:{},lastGood:{}};` +
       `Object.entries(m).forEach(function(x){` +
       `var envKey=x[0],provider=x[1],key=process.env[envKey];` +
       `if(!key)return;` +
       `var profileId=provider+":default";` +
       `s.profiles[profileId]=Object.assign({type:"api_key",provider:provider,key:key},e[envKey]?{endpoint:e[envKey]}:{});` +
+      `if(f[envKey]&&process.env[f[envKey]])s.profiles[profileId].endpoint=process.env[f[envKey]];` +
+      `if(av[envKey]&&process.env[av[envKey]])s.profiles[profileId].api_version=process.env[av[envKey]];` +
       `s.order[provider]=[profileId];` +
       `s.lastGood[provider]=profileId;` +
       `});` +

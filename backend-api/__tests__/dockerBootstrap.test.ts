@@ -3,9 +3,13 @@ const fs = require("fs");
 const path = require("path");
 const {
   buildOpenClawConfigMergeScript,
+  buildOpenClawConfigMergeCommand,
+  buildOpenClawCustomProviders,
   buildOpenClawInstallCommand,
   buildRuntimeBootstrapCommand,
   buildTemplatePayloadBootstrapFiles,
+  mapNoraProviderIdToOpenClaw,
+  FOUNDRY_OPENCLAW_PROVIDER_ID,
 } = require("../../workers/provisioner/runtimeBootstrap");
 const DockerBackend = require("../../workers/provisioner/backends/docker");
 const tar = require(
@@ -160,6 +164,102 @@ describe("OpenClaw bootstrap helpers", () => {
     expect(skill.content.toString("utf8")).toContain("name: nora-integrations");
   });
 
+  describe("buildOpenClawCustomProviders", () => {
+    it("returns no providers when MICROSOFT_FOUNDRY_API_KEY is missing", () => {
+      expect(buildOpenClawCustomProviders({})).toEqual({});
+      expect(
+        buildOpenClawCustomProviders({
+          MICROSOFT_FOUNDRY_BASE_URL: "https://r.openai.azure.com/openai/v1/",
+        }),
+      ).toEqual({});
+    });
+
+    it("returns no providers when MICROSOFT_FOUNDRY_BASE_URL is missing", () => {
+      // No catalog default for Foundry — without baseUrl, skip registration so
+      // failures surface as "Unknown model" (clearer than a silent 401 against
+      // the wrong endpoint).
+      expect(
+        buildOpenClawCustomProviders({ MICROSOFT_FOUNDRY_API_KEY: "ms-key" }),
+      ).toEqual({});
+    });
+
+    it("registers Foundry to route through pi-ai's azure-openai-responses API", () => {
+      // pi-ai (the inference SDK OpenClaw uses) ships a dedicated
+      // `azure-openai-responses` API that wraps the AzureOpenAI npm client.
+      // That client natively sends the `api-key` header Azure requires, so
+      // we don't need the authHeader:false + manual headers["api-key"]
+      // workaround the Microsoft community blog showed.
+      //
+      // Critical checks:
+      // - Provider id key is `azure-openai-responses`
+      // - api is `azure-openai-responses` (routes to streamAzureOpenAIResponses)
+      // - baseUrl is preserved (works for both `.openai.azure.com` and
+      //   `.cognitiveservices.azure.com` Foundry endpoints)
+      // - apiKey is the decrypted value (AzureOpenAI consumes it directly)
+      // - Each model has `compat.supportsStore: false` so OpenClaw strips
+      //   `store: true` from the Responses payload (Azure rejects it).
+      const result = buildOpenClawCustomProviders({
+        MICROSOFT_FOUNDRY_API_KEY: "ms-key",
+        MICROSOFT_FOUNDRY_BASE_URL:
+          "https://st-eastus2.cognitiveservices.azure.com/openai/v1/",
+      });
+      expect(Object.keys(result)).toEqual(["azure-openai-responses"]);
+      const foundry = result["azure-openai-responses"];
+      expect(foundry).toEqual(
+        expect.objectContaining({
+          api: "azure-openai-responses",
+          baseUrl: "https://st-eastus2.cognitiveservices.azure.com/openai/v1",
+          apiKey: "ms-key",
+        }),
+      );
+      // Should NOT include the obsolete workaround fields.
+      expect(foundry).not.toHaveProperty("authHeader");
+      expect(foundry).not.toHaveProperty("headers");
+      expect(Array.isArray(foundry.models)).toBe(true);
+      expect(foundry.models.length).toBeGreaterThan(0);
+      for (const model of foundry.models) {
+        expect(model.api).toBe("azure-openai-responses");
+        expect(model.compat).toEqual(
+          expect.objectContaining({ supportsStore: false }),
+        );
+      }
+    });
+  });
+
+  describe("mapNoraProviderIdToOpenClaw", () => {
+    it("translates microsoft-foundry to azure-openai-responses", () => {
+      expect(mapNoraProviderIdToOpenClaw("microsoft-foundry")).toBe(
+        "azure-openai-responses",
+      );
+      expect(FOUNDRY_OPENCLAW_PROVIDER_ID).toBe("azure-openai-responses");
+    });
+
+    it("passes other provider ids through unchanged", () => {
+      expect(mapNoraProviderIdToOpenClaw("anthropic")).toBe("anthropic");
+      expect(mapNoraProviderIdToOpenClaw("openai")).toBe("openai");
+      expect(mapNoraProviderIdToOpenClaw("nvidia")).toBe("nvidia");
+    });
+
+    it("handles missing input safely", () => {
+      expect(mapNoraProviderIdToOpenClaw(undefined)).toBe(undefined);
+      expect(mapNoraProviderIdToOpenClaw(null)).toBe(null);
+      expect(mapNoraProviderIdToOpenClaw("")).toBe("");
+    });
+  });
+
+  describe("buildOpenClawConfigMergeCommand", () => {
+    it("returns a single-string shell command equivalent to the merge script", () => {
+      const command = buildOpenClawConfigMergeCommand({
+        models: { providers: { "azure-openai-responses": { api: "openai-responses" } } },
+      });
+      expect(typeof command).toBe("string");
+      expect(command).toContain("/tmp/nora-managed-openclaw.json");
+      expect(command).toContain("const configPath = '/root/.openclaw/openclaw.json';");
+      expect(command).toContain("azure-openai-responses");
+      expect(command).toContain("openai-responses");
+    });
+  });
+
   it("merges managed OpenClaw config without replacing runtime-owned sections", () => {
     const script = buildOpenClawConfigMergeScript({
       gateway: { bind: "lan", mode: "local" },
@@ -260,6 +360,32 @@ describe("Provisioner backends", () => {
     expect(startupScript).toBeTruthy();
     expect(startupScript.mode).toBe(0o755);
     expect(startupScript.content).toContain('exec "$OPENCLAW_BIN" gateway --port 18789');
+  });
+
+  it("embeds the Foundry provider registration into the startup merge script", () => {
+    // End-to-end check: when _buildBootstrapFiles receives a gatewayConfig
+    // with models.providers["azure-openai-responses"], the generated start.sh
+    // ships those fields verbatim into the openclaw.json deep-merge.
+    const dockerBackend = new DockerBackend();
+    const files = dockerBackend._buildBootstrapFiles({
+      gatewayConfig: {
+        gateway: { bind: "lan", mode: "local" },
+        models: {
+          providers: {
+            "azure-openai-responses": {
+              api: "azure-openai-responses",
+              baseUrl: "https://r.openai.azure.com/openai/v1",
+              apiKey: "ms-key",
+            },
+          },
+        },
+      },
+      pairedJson: '{"device":"paired"}',
+      buildAuthScript: 'console.log("build auth");',
+    });
+    const startupScript = files.find((file) => file.name === "opt/openclaw-runtime/start.sh");
+    expect(startupScript.content).toContain("azure-openai-responses");
+    expect(startupScript.content).toContain('"apiKey": "ms-key"');
   });
 
   it("wires the executable guard into OpenClaw startup paths", () => {

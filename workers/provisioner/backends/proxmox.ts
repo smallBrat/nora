@@ -9,6 +9,7 @@ const ProvisionerBackend = require("./interface");
 const {
   buildOpenClawInstallCommand,
   buildOpenClawConfigMergeScript,
+  buildOpenClawCustomProviders,
   buildIntegrationToolWrapperScript,
   buildRuntimeBootstrapFiles,
   buildRuntimeEnv,
@@ -473,7 +474,7 @@ class ProxmoxBackend extends ProvisionerBackend {
       "0755",
     );
     const buildAuthScript =
-      "var m={ANTHROPIC_API_KEY:'anthropic',OPENAI_API_KEY:'openai',GEMINI_API_KEY:'google',GROQ_API_KEY:'groq',MISTRAL_API_KEY:'mistral',DEEPSEEK_API_KEY:'deepseek',OPENROUTER_API_KEY:'openrouter',TOGETHER_API_KEY:'together',COHERE_API_KEY:'cohere',XAI_API_KEY:'xai',MOONSHOT_API_KEY:'moonshot',ZAI_API_KEY:'zai',OLLAMA_API_KEY:'ollama',MINIMAX_API_KEY:'minimax',COPILOT_GITHUB_TOKEN:'github-copilot',HF_TOKEN:'huggingface',CEREBRAS_API_KEY:'cerebras',NVIDIA_API_KEY:'nvidia'},s={version:1,profiles:{},order:{},lastGood:{}};Object.entries(m).forEach(function(e){var k=e[0],p=e[1],v=process.env[k];if(!v)return;var id=p+':default';s.profiles[id]={type:'api_key',provider:p,key:v};if(k==='NVIDIA_API_KEY')s.profiles[id].endpoint='https://integrate.api.nvidia.com/v1';s.order[p]=[id];s.lastGood[p]=id;});require('fs').mkdirSync('/root/.openclaw/agents/main/agent',{recursive:true});require('fs').writeFileSync('/root/.openclaw/agents/main/agent/auth-profiles.json',JSON.stringify(s));require('fs').chmodSync('/root/.openclaw/agents/main/agent/auth-profiles.json',0o600);";
+      "var m={ANTHROPIC_API_KEY:'anthropic',OPENAI_API_KEY:'openai',GEMINI_API_KEY:'google',GROQ_API_KEY:'groq',MISTRAL_API_KEY:'mistral',DEEPSEEK_API_KEY:'deepseek',OPENROUTER_API_KEY:'openrouter',TOGETHER_API_KEY:'together',COHERE_API_KEY:'cohere',XAI_API_KEY:'xai',MOONSHOT_API_KEY:'moonshot',ZAI_API_KEY:'zai',OLLAMA_API_KEY:'ollama',MINIMAX_API_KEY:'minimax',COPILOT_GITHUB_TOKEN:'github-copilot',HF_TOKEN:'huggingface',CEREBRAS_API_KEY:'cerebras',NVIDIA_API_KEY:'nvidia',MICROSOFT_FOUNDRY_API_KEY:'microsoft-foundry'},e={NVIDIA_API_KEY:'https://integrate.api.nvidia.com/v1'},f={MICROSOFT_FOUNDRY_API_KEY:'MICROSOFT_FOUNDRY_BASE_URL'},av={MICROSOFT_FOUNDRY_API_KEY:'MICROSOFT_FOUNDRY_API_VERSION'},s={version:1,profiles:{},order:{},lastGood:{}};Object.entries(m).forEach(function(x){var k=x[0],p=x[1],v=process.env[k];if(!v)return;var id=p+':default';s.profiles[id]={type:'api_key',provider:p,key:v};if(e[k])s.profiles[id].endpoint=e[k];if(f[k]&&process.env[f[k]])s.profiles[id].endpoint=process.env[f[k]];if(av[k]&&process.env[av[k]])s.profiles[id].api_version=process.env[av[k]];s.order[p]=[id];s.lastGood[p]=id;});require('fs').mkdirSync('/root/.openclaw/agents/main/agent',{recursive:true});require('fs').writeFileSync('/root/.openclaw/agents/main/agent/auth-profiles.json',JSON.stringify(s));require('fs').chmodSync('/root/.openclaw/agents/main/agent/auth-profiles.json',0o600);";
     await this._writeFile(vmid, "/opt/openclaw-runtime/lib/build-auth.js", buildAuthScript, "0644");
     const nemoPolicy = isNemoClaw
       ? [
@@ -513,6 +514,12 @@ class ProxmoxBackend extends ProvisionerBackend {
           reload: { mode: "hot" },
           auth: { password: gatewayToken },
         },
+        // Register custom OpenAI-compatible providers (Microsoft Foundry) so
+        // openclaw resolves model strings like `microsoft-foundry/<deployment>`
+        // instead of throwing "Unknown model".
+        ...(Object.keys(buildOpenClawCustomProviders(env || {})).length > 0
+          ? { models: { providers: buildOpenClawCustomProviders(env || {}) } }
+          : {}),
       }),
       "cat <<'__NORA_PAIRED_DEVICES__' > ~/.openclaw/devices/paired.json",
       pairedJson,

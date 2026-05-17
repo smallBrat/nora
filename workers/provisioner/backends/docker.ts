@@ -5,6 +5,7 @@ const path = require("path");
 const {
   buildOpenClawInstallCommand,
   buildOpenClawConfigMergeScript,
+  buildOpenClawCustomProviders,
   buildIntegrationToolWrapperScript,
   buildRuntimeBootstrapFiles,
   buildTemplatePayloadBootstrapFiles,
@@ -453,6 +454,7 @@ class DockerBackend extends ProvisionerBackend {
       HF_TOKEN: "huggingface",
       CEREBRAS_API_KEY: "cerebras",
       NVIDIA_API_KEY: "nvidia",
+      MICROSOFT_FOUNDRY_API_KEY: "microsoft-foundry",
     };
     // Build auth-profiles at CREATION TIME to determine the default model for setModelCmd.
     // This is only used for model selection — the actual auth-profiles.json on disk is
@@ -484,12 +486,14 @@ class DockerBackend extends ProvisionerBackend {
     // before first boot. Because it reads env vars at runtime (not creation time),
     // it stays correct on every restart — even after keys were injected post-creation.
     const buildAuthScript =
-      `var m=${JSON.stringify(llmKeyMap)},s={version:1,profiles:{},order:{},lastGood:{}};` +
+      `var m=${JSON.stringify(llmKeyMap)},f={MICROSOFT_FOUNDRY_API_KEY:"MICROSOFT_FOUNDRY_BASE_URL"},av={MICROSOFT_FOUNDRY_API_KEY:"MICROSOFT_FOUNDRY_API_VERSION"},s={version:1,profiles:{},order:{},lastGood:{}};` +
       `Object.entries(m).forEach(function(e){` +
       `var envKey=e[0],provider=e[1],key=process.env[envKey];` +
       `if(!key)return;` +
       `var profileId=provider+":default";` +
       `s.profiles[profileId]={type:"api_key",provider:provider,key:key};` +
+      `if(f[envKey]&&process.env[f[envKey]])s.profiles[profileId].endpoint=process.env[f[envKey]];` +
+      `if(av[envKey]&&process.env[av[envKey]])s.profiles[profileId].api_version=process.env[av[envKey]];` +
       `s.order[provider]=[profileId];` +
       `s.lastGood[provider]=profileId;` +
       `});` +
@@ -513,6 +517,10 @@ class DockerBackend extends ProvisionerBackend {
       moonshot: "moonshot/kimi-k2.5",
       zai: "zai/glm-5",
       minimax: "minimax/MiniMax-M2.7",
+      // Foundry model strings must use OpenClaw's `azure-openai-responses`
+      // provider id (see buildOpenClawCustomProviders) — `microsoft-foundry/...`
+      // throws "Unknown model" upstream.
+      "microsoft-foundry": "azure-openai-responses/gpt-5.5",
     };
     const firstProvider = configuredProviders[0];
     const defaultModel = firstProvider ? providerModelDefaults[firstProvider] : undefined;
@@ -573,6 +581,13 @@ class DockerBackend extends ProvisionerBackend {
     };
     if (safeDefaultModel) {
       gatewayConfig.agents = { defaults: { model: safeDefaultModel } };
+    }
+    // Register OpenAI-compatible providers OpenClaw doesn't ship natively
+    // (Microsoft Foundry, today). Without this, model strings like
+    // `microsoft-foundry/<deployment>` resolve to "Unknown model" upstream.
+    const customProviders = buildOpenClawCustomProviders(env || {});
+    if (Object.keys(customProviders).length > 0) {
+      gatewayConfig.models = { providers: customProviders };
     }
 
     const bootstrapFiles = this._buildBootstrapFiles({

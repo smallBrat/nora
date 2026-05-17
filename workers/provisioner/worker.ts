@@ -33,6 +33,11 @@ const {
   NORA_SYNC_INTEGRATIONS_CATALOG_FILE,
   NORA_SYNC_INTEGRATIONS_DIR,
 } = require("../../agent-runtime/lib/integrationTools");
+const {
+  buildOpenClawConfigMergeCommand,
+  buildOpenClawCustomProviders,
+  mapNoraProviderIdToOpenClaw,
+} = require("../../agent-runtime/lib/runtimeBootstrap");
 const { waitForAgentReadiness } = require("./healthChecks");
 const { buildReadinessWarningDetail, persistReadinessWarning } = require("./readinessWarning");
 const { shellSingleQuote } = require("../../agent-runtime/lib/containerCommand");
@@ -145,11 +150,13 @@ const PROVIDER_ENV_MAP = Object.freeze({
   huggingface: "HF_TOKEN",
   cerebras: "CEREBRAS_API_KEY",
   nvidia: "NVIDIA_API_KEY",
+  "microsoft-foundry": "MICROSOFT_FOUNDRY_API_KEY",
 });
 
 const PROVIDER_ENV_ENDPOINT_MAP = Object.freeze({
   GEMINI_API_KEY: "https://generativelanguage.googleapis.com/v1beta",
   NVIDIA_API_KEY: "https://integrate.api.nvidia.com/v1",
+  // MICROSOFT_FOUNDRY_API_KEY: per-resource; supplied from user config at sync time, not a static default.
 });
 
 const PROVIDER_MODEL_DEFAULTS = Object.freeze({
@@ -167,6 +174,9 @@ const PROVIDER_MODEL_DEFAULTS = Object.freeze({
   moonshot: "kimi-k2.5",
   zai: "glm-5",
   minimax: "MiniMax-M2.7",
+  // Bare deployment name — buildDefaultModelCommand prefixes it with the
+  // OpenClaw provider id (azure-openai-responses) via mapNoraProviderIdToOpenClaw.
+  "microsoft-foundry": "gpt-5.5",
 });
 
 const HERMES_NATIVE_PROVIDER_MAP = Object.freeze({
@@ -192,6 +202,9 @@ const HERMES_CUSTOM_PROVIDER_BASE_URLS = Object.freeze({
   nvidia: "https://integrate.api.nvidia.com/v1",
   openai: "https://api.openai.com/v1",
   together: "https://api.together.xyz/v1",
+  // microsoft-foundry intentionally omitted: Foundry endpoints are per-resource
+  // (https://<resource>.services.ai.azure.com/openai/v1/), so users must supply
+  // base_url via their saved provider config. There is no useful shared default.
 });
 
 const DOCKER_EXEC_FALLBACK_BACKENDS = new Set(["docker", "proxmox"]);
@@ -208,18 +221,29 @@ function buildAuthProfiles(providerKeys = {}) {
   const envToProvider = Object.fromEntries(
     Object.entries(PROVIDER_ENV_MAP).map(([provider, envVar]) => [envVar, provider]),
   );
+  const normalized = normalizeEnvValueMap(providerKeys);
   const profiles = {};
   const order = {};
   const lastGood = {};
-  for (const [envVar, key] of Object.entries(normalizeEnvValueMap(providerKeys))) {
+  for (const [envVar, key] of Object.entries(normalized)) {
     const provider = envToProvider[envVar];
     if (!provider) continue;
     const profileId = `${provider}:default`;
+    // Endpoint precedence: per-user {PROVIDER}_BASE_URL (passed alongside the key)
+    // wins over the static PROVIDER_ENV_ENDPOINT_MAP catalog default.
+    const baseUrlEnv = envVar.replace(/_API_KEY$|_TOKEN$/, "_BASE_URL");
+    const apiVersionEnv = envVar.replace(/_API_KEY$|_TOKEN$/, "_API_VERSION");
+    const endpoint =
+      (baseUrlEnv !== envVar && normalized[baseUrlEnv]) ||
+      PROVIDER_ENV_ENDPOINT_MAP[envVar] ||
+      "";
+    const apiVersion = apiVersionEnv !== envVar ? normalized[apiVersionEnv] || "" : "";
     profiles[profileId] = {
       type: "api_key",
       provider,
       key,
-      ...(PROVIDER_ENV_ENDPOINT_MAP[envVar] ? { endpoint: PROVIDER_ENV_ENDPOINT_MAP[envVar] } : {}),
+      ...(endpoint ? { endpoint } : {}),
+      ...(apiVersion ? { api_version: apiVersion } : {}),
     };
     order[provider] = [profileId];
     lastGood[provider] = profileId;
@@ -247,7 +271,9 @@ function buildDefaultModelCommand(defaultProvider = null) {
   const modelId = defaultProvider.model || PROVIDER_MODEL_DEFAULTS[defaultProvider.provider];
   if (!modelId) return null;
 
-  const fullModel = modelId.includes("/") ? modelId : `${defaultProvider.provider}/${modelId}`;
+  // Translate Nora provider id → OpenClaw provider id (Foundry → azure-openai-responses).
+  const openclawProvider = mapNoraProviderIdToOpenClaw(defaultProvider.provider);
+  const fullModel = modelId.includes("/") ? modelId : `${openclawProvider}/${modelId}`;
 
   return (
     'OPENCLAW_BIN="${OPENCLAW_CLI_PATH:-/usr/local/bin/openclaw}"; ' +
@@ -426,6 +452,14 @@ print(json.dumps({"ok": True}))
 PY`.trim();
 }
 
+function pickProviderConfigApiVersion(config = {}) {
+  for (const key of ["api_version", "apiVersion"]) {
+    const value = config[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
+}
+
 async function fetchUserLlmEnvVars(userId) {
   if (!userId || (process.env.KEY_STORAGE || "database") !== "database") {
     return {};
@@ -433,7 +467,7 @@ async function fetchUserLlmEnvVars(userId) {
 
   try {
     const keysResult = await db.query(
-      "SELECT provider, api_key FROM llm_providers WHERE user_id = $1",
+      "SELECT provider, api_key, config FROM llm_providers WHERE user_id = $1",
       [userId],
     );
     const { decrypt } = require("./crypto");
@@ -447,7 +481,17 @@ async function fetchUserLlmEnvVars(userId) {
         console.warn(
           `[provisioner] Skipping LLM key for user ${userId} provider ${row.provider}: ${err.message}`,
         );
+        continue;
       }
+      // Carry per-user base URL + api-version as sister env vars so containers
+      // pick them up on restart via the dynamic auth script.
+      const cfg = normalizeProviderConfig(row.config);
+      const baseUrl = pickProviderBaseUrl(cfg);
+      const apiVersion = pickProviderConfigApiVersion(cfg);
+      const baseUrlEnv = envName.replace(/_API_KEY$|_TOKEN$/, "_BASE_URL");
+      const apiVersionEnv = envName.replace(/_API_KEY$|_TOKEN$/, "_API_VERSION");
+      if (baseUrl && baseUrlEnv !== envName) llmEnvVars[baseUrlEnv] = baseUrl;
+      if (apiVersion && apiVersionEnv !== envName) llmEnvVars[apiVersionEnv] = apiVersion;
     }
     return normalizeEnvValueMap(llmEnvVars);
   } catch (error) {
@@ -752,6 +796,24 @@ async function reconcileRuntimeLlmAuth({
       throw error;
     }
     await runProvisionerExecCommand(provisioner, containerId, authWriteCommand);
+  }
+
+  // Merge custom-provider registrations (Microsoft Foundry) into openclaw.json
+  // before the restart so model strings like `microsoft-foundry/<deployment>`
+  // resolve instead of throwing "Unknown model" on first request.
+  const customProviders = buildOpenClawCustomProviders(llmEnvVars);
+  if (Object.keys(customProviders).length > 0) {
+    const providerMergeCommand = buildOpenClawConfigMergeCommand({
+      models: { providers: customProviders },
+    });
+    try {
+      await runRuntimeCommand(agentRef, providerMergeCommand);
+    } catch (error) {
+      if (!DOCKER_EXEC_FALLBACK_BACKENDS.has(resolvedBackend)) {
+        throw error;
+      }
+      await runProvisionerExecCommand(provisioner, containerId, providerMergeCommand);
+    }
   }
 
   await provisioner.restart(containerId);

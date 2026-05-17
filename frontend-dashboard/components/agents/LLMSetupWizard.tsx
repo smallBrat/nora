@@ -21,6 +21,8 @@ export default function LLMSetupWizard({
   const [selectedProvider, setSelectedProvider] = useState<any>(null);
   const [apiKey, setApiKey] = useState("");
   const [selectedModel, setSelectedModel] = useState("");
+  const [baseUrl, setBaseUrl] = useState("");
+  const [apiVersion, setApiVersion] = useState("");
   const toast = useToast();
 
   useEffect(() => {
@@ -44,8 +46,21 @@ export default function LLMSetupWizard({
 
   async function handleSave() {
     if (!selectedProvider || !apiKey.trim()) return;
+    if (selectedProvider.requiresBaseUrl && !baseUrl.trim()) {
+      toast.error(`${selectedProvider.name} requires a base URL`);
+      return;
+    }
+    // Per-resource providers (Foundry) need an explicit deployment name —
+    // Azure rejects requests for any other value as DeploymentNotFound.
+    if (selectedProvider.requiresBaseUrl && !selectedModel.trim()) {
+      toast.error(`${selectedProvider.name} requires a deployment name`);
+      return;
+    }
     setSaving(true);
     try {
+      const config: Record<string, string> = {};
+      if (baseUrl.trim()) config.base_url = baseUrl.trim();
+      if (apiVersion.trim()) config.api_version = apiVersion.trim();
       const res = await fetchWithAuth("/api/llm-providers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -53,6 +68,7 @@ export default function LLMSetupWizard({
           provider: selectedProvider.id,
           apiKey: apiKey.trim(),
           model: selectedModel || undefined,
+          ...(Object.keys(config).length > 0 ? { config } : {}),
         }),
       });
       if (res.ok) {
@@ -60,6 +76,8 @@ export default function LLMSetupWizard({
         setStep(2);
         setApiKey("");
         setSelectedModel("");
+        setBaseUrl("");
+        setApiVersion("");
         await loadData();
       } else {
         const data = await res.json();
@@ -158,7 +176,7 @@ export default function LLMSetupWizard({
     return (
       <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 space-y-6">
         <div className="flex items-center gap-3">
-          <button onClick={() => { setStep(0); setSelectedProvider(null); }} className="text-slate-400 hover:text-slate-600 transition-colors text-sm">← Back</button>
+          <button onClick={() => { setStep(0); setSelectedProvider(null); setBaseUrl(""); setApiVersion(""); }} className="text-slate-400 hover:text-slate-600 transition-colors text-sm">← Back</button>
           <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-bold border ${meta.color}`}>
             <ProviderLogo providerId={selectedProvider.id} className="h-4 w-4 shrink-0" />
             <span>{meta.name}</span>
@@ -176,29 +194,100 @@ export default function LLMSetupWizard({
               autoFocus
             />
           </div>
-          {selectedProvider.models && selectedProvider.models.length > 0 && (
+          {selectedProvider.requiresBaseUrl && (
             <div>
-              <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest block mb-1.5">Default Model (optional)</label>
-              <select
+              <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest block mb-1.5">
+                Base URL <span className="text-red-500 normal-case font-normal tracking-normal">required</span>
+              </label>
+              <input
+                type="url"
+                value={baseUrl}
+                onChange={(e) => setBaseUrl(e.target.value)}
+                placeholder={selectedProvider.baseUrlPlaceholder || "https://<resource>.services.ai.azure.com/openai/v1/"}
+                className="w-full text-sm border border-slate-200 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+              />
+              <p className="text-[10px] text-slate-400 mt-1">
+                Your Foundry resource endpoint. Models are deployed per-resource and the URL must match your deployment.
+              </p>
+            </div>
+          )}
+          {selectedProvider.supportsApiVersion && (
+            <div>
+              <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest block mb-1.5">
+                API Version <span className="normal-case font-normal tracking-normal text-slate-400">optional</span>
+              </label>
+              <input
+                type="text"
+                value={apiVersion}
+                onChange={(e) => setApiVersion(e.target.value)}
+                placeholder={selectedProvider.apiVersionPlaceholder || "2024-10-21"}
+                className="w-full text-sm border border-slate-200 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+              />
+              <p className="text-[10px] text-slate-400 mt-1">
+                Leave empty when using the OpenAI v1 GA path (<code className="font-mono">/openai/v1/</code>). Required for classic <code className="font-mono">/openai/deployments/...</code> URLs.
+              </p>
+            </div>
+          )}
+          {selectedProvider.requiresBaseUrl ? (
+            // Per-resource providers (Microsoft Foundry / Azure OpenAI) use
+            // user-defined deployment NAMES, not vendor model ids — typing
+            // "gpt-5.5" when the deployment is named "gpt-5.5-1" yields a
+            // DeploymentNotFound error from Azure. Free-text input + datalist
+            // for autocomplete from common suggestions.
+            <div>
+              <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest block mb-1.5">
+                Deployment Name <span className="text-red-500 normal-case font-normal tracking-normal">required</span>
+              </label>
+              <input
+                type="text"
                 value={selectedModel}
                 onChange={(e) => setSelectedModel(e.target.value)}
-                className="w-full text-sm border border-slate-200 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">Auto (latest)</option>
-                {selectedProvider.models.map((m) => (
-                  <option key={m} value={m}>{formatModelLabel(m)}</option>
-                ))}
-              </select>
+                placeholder="e.g. gpt-5.5-1, MAI-DS-R1, my-deepseek-deployment"
+                list={`${selectedProvider.id}-model-suggestions`}
+                className="w-full text-sm border border-slate-200 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+              />
+              {selectedProvider.models && selectedProvider.models.length > 0 && (
+                <datalist id={`${selectedProvider.id}-model-suggestions`}>
+                  {selectedProvider.models.map((m) => (
+                    <option key={m} value={m} />
+                  ))}
+                </datalist>
+              )}
+              <p className="text-[10px] text-slate-400 mt-1">
+                Enter the exact <strong>deployment name</strong> from your Foundry portal (not the underlying model id).
+                Find it under your resource → Deployments. Azure rejects requests where this doesn't match an active deployment.
+              </p>
             </div>
+          ) : (
+            selectedProvider.models && selectedProvider.models.length > 0 && (
+              <div>
+                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest block mb-1.5">Default Model (optional)</label>
+                <select
+                  value={selectedModel}
+                  onChange={(e) => setSelectedModel(e.target.value)}
+                  className="w-full text-sm border border-slate-200 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Auto (latest)</option>
+                  {selectedProvider.models.map((m) => (
+                    <option key={m} value={m}>{formatModelLabel(m)}</option>
+                  ))}
+                </select>
+              </div>
+            )
           )}
         </div>
         <button
           onClick={handleSave}
-          disabled={!apiKey.trim() || saving}
+          disabled={
+            !apiKey.trim() ||
+            (selectedProvider.requiresBaseUrl && !baseUrl.trim()) ||
+            (selectedProvider.requiresBaseUrl && !selectedModel.trim()) ||
+            saving
+          }
           className="w-full py-2.5 text-xs font-bold text-white bg-blue-600 rounded-xl hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
         >
           {saving ? <Loader2 size={14} className="animate-spin" /> : <Key size={14} />}
-          Save API Key
+          Save {selectedProvider.requiresBaseUrl ? "Connection" : "API Key"}
         </button>
       </div>
     );

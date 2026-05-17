@@ -281,6 +281,101 @@ function buildTemplatePayloadBootstrapCommand(templatePayload = {}) {
     .join("");
 }
 
+// OpenClaw provider id used when registering Microsoft Foundry / Azure
+// OpenAI in openclaw.json. Nora's internal provider id ("microsoft-foundry")
+// is the UI/DB label; OpenClaw needs the id the integration guide uses
+// (https://techcommunity.microsoft.com/blog/educatordeveloperblog/integrating-microsoft-foundry-with-openclaw-step-by-step-model-configuration/4495586),
+// which is `azure-openai-responses`. Model strings handed to OpenClaw must
+// be prefixed with this id, not "microsoft-foundry/".
+const FOUNDRY_OPENCLAW_PROVIDER_ID = "azure-openai-responses";
+
+// Common Foundry deployment ids surfaced in the Nora wizard. OpenClaw's
+// custom-provider resolver will accept any deployment name via its catch-all
+// path, but listing models here adds metadata (cost, context window, compat)
+// that OpenClaw uses for cost tracking and correct request shape. The key
+// compat flag is `supportsStore: false` — Azure rejects `store: true`, which
+// is OpenClaw's default for Responses API.
+const FOUNDRY_DEFAULT_MODELS = [
+  { id: "gpt-5.5", name: "GPT-5.5 (Azure)", reasoning: true, contextWindow: 400000, maxTokens: 16384 },
+  { id: "gpt-5.5-mini", name: "GPT-5.5 Mini (Azure)", reasoning: true, contextWindow: 400000, maxTokens: 16384 },
+  { id: "gpt-5.4-pro", name: "GPT-5.4 Pro (Azure)", reasoning: true, contextWindow: 200000, maxTokens: 128000 },
+  { id: "gpt-5.4", name: "GPT-5.4 (Azure)", reasoning: true, contextWindow: 200000, maxTokens: 128000 },
+  { id: "gpt-5.2-codex", name: "GPT-5.2 Codex (Azure)", reasoning: true, contextWindow: 400000, maxTokens: 16384 },
+  { id: "o3", name: "o3 (Azure)", reasoning: true, contextWindow: 200000, maxTokens: 100000 },
+];
+
+function buildFoundryModelEntries() {
+  return FOUNDRY_DEFAULT_MODELS.map((entry) => ({
+    id: entry.id,
+    name: entry.name,
+    api: "azure-openai-responses",
+    reasoning: entry.reasoning,
+    input: ["text", "image"],
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: entry.contextWindow,
+    maxTokens: entry.maxTokens,
+    compat: { supportsStore: false, supportsReasoningEffort: true },
+  }));
+}
+
+// Builds the `models.providers.*` map injected into openclaw.json for
+// providers OpenClaw doesn't ship in its native registry. Registering a
+// provider here unlocks OpenClaw's custom-provider resolution path so
+// `<provider>/<deployment>` model strings resolve instead of throwing
+// "Unknown model" (the upstream check at openclaw's resolveModelWithRegistry).
+//
+// Microsoft Foundry: the underlying inference SDK (`@mariozechner/pi-ai`)
+// ships a dedicated `azure-openai-responses` API
+// (node_modules/@mariozechner/pi-ai/dist/providers/azure-openai-responses.js)
+// that uses `new AzureOpenAI({apiKey, baseURL, apiVersion: "v1"})`. This is
+// the right route — the SDK natively sends the `api-key` header that Azure
+// requires, so we do NOT need the `authHeader: false` + manual
+// `headers["api-key"]` workaround from the Microsoft community blog (which
+// routes through the wrong API and forces a workaround).
+//
+// Required fields:
+//   - provider id (key): `azure-openai-responses` — matches pi-ai's API name
+//     AND OpenClaw's hardcoded OPENAI_RESPONSES_PROVIDERS allowlist
+//   - `api: "azure-openai-responses"` — routes to streamAzureOpenAIResponses
+//   - `baseUrl: <per-resource v1 URL, no trailing slash>` — pi-ai's
+//     resolveAzureConfig consumes this via `model.baseUrl`
+//   - `apiKey: <decrypted key>` — passed to the AzureOpenAI constructor
+//   - `models[].compat.supportsStore: false` — Azure rejects `store: true`
+//
+// The baseUrl + key are required — without them the registration is omitted
+// (caller hits the original "Unknown model" error, which correctly signals
+// the user to configure the provider before retrying).
+function buildOpenClawCustomProviders(env = {}) {
+  const providers = {};
+  const foundryKey = env.MICROSOFT_FOUNDRY_API_KEY;
+  const foundryBaseUrlRaw = env.MICROSOFT_FOUNDRY_BASE_URL;
+  if (foundryKey && foundryBaseUrlRaw) {
+    // Strip trailing slash to match Azure's documented v1 URL shape
+    // (https://<resource>.openai.azure.com/openai/v1 or
+    // https://<resource>.cognitiveservices.azure.com/openai/v1).
+    const foundryBaseUrl = String(foundryBaseUrlRaw).replace(/\/+$/, "");
+    providers[FOUNDRY_OPENCLAW_PROVIDER_ID] = {
+      api: "azure-openai-responses",
+      baseUrl: foundryBaseUrl,
+      apiKey: foundryKey,
+      models: buildFoundryModelEntries(),
+    };
+  }
+  return providers;
+}
+
+// Maps Nora's internal LLM provider id to the OpenClaw provider id that
+// must appear in model strings (e.g. `<provider>/<deployment>`). Only Foundry
+// needs translation today; everything else passes through unchanged.
+const NORA_TO_OPENCLAW_PROVIDER_ID = Object.freeze({
+  "microsoft-foundry": FOUNDRY_OPENCLAW_PROVIDER_ID,
+});
+
+function mapNoraProviderIdToOpenClaw(noraProviderId) {
+  if (!noraProviderId) return noraProviderId;
+  return NORA_TO_OPENCLAW_PROVIDER_ID[noraProviderId] || noraProviderId;
+}
+
 function buildOpenClawConfigMergeScript(gatewayConfig) {
   return [
     "cat <<'__NORA_MANAGED_OPENCLAW_CONFIG__' > /tmp/nora-managed-openclaw.json",
@@ -318,6 +413,14 @@ function buildOpenClawConfigMergeScript(gatewayConfig) {
     "__NORA_MERGE_OPENCLAW_CONFIG__",
     "rm -f /tmp/nora-managed-openclaw.json",
   ];
+}
+
+// Sync-time variant: returns a single shell command string suitable for
+// runRuntimeCommand / docker exec that merges the given openclaw.json
+// delta on a running container without restarting. Reuses the same
+// merge semantics as the boot-time script so both paths agree.
+function buildOpenClawConfigMergeCommand(configDelta) {
+  return buildOpenClawConfigMergeScript(configDelta).join("\n");
 }
 
 function buildRuntimeBootstrapCommand() {
@@ -433,6 +536,10 @@ module.exports = {
   buildRuntimeBootstrapFiles,
   buildIntegrationToolWrapperScript,
   buildOpenClawConfigMergeScript,
+  buildOpenClawConfigMergeCommand,
+  buildOpenClawCustomProviders,
+  mapNoraProviderIdToOpenClaw,
+  FOUNDRY_OPENCLAW_PROVIDER_ID,
   buildTemplatePayloadBootstrapCommand,
   buildTemplatePayloadBootstrapFiles,
   buildRuntimeEnv,

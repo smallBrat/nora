@@ -25,10 +25,41 @@ const PROVIDERS = [
   { id: "huggingface", name: "Hugging Face (Inference)", envVar: "HF_TOKEN", models: [] },
   { id: "cerebras", name: "Cerebras", envVar: "CEREBRAS_API_KEY", models: [] },
   { id: "nvidia", name: "NVIDIA", envVar: "NVIDIA_API_KEY", endpoint: "https://integrate.api.nvidia.com/v1", models: ["nvidia/nvidia/nemotron-3-super-120b-a12b", "nvidia/moonshotai/kimi-k2.5", "nvidia/minimaxai/minimax-m2.5", "nvidia/z-ai/glm5"] },
+  // Microsoft Foundry hosts models from OpenAI, Microsoft (Phi), Meta (Llama), Mistral, DeepSeek, Cohere, and AI21
+  // behind an OpenAI-compatible inference endpoint. The `model` value at request time is the user's *deployment
+  // name* in their Foundry resource — the list below is a curated set of common deployment ids users can pick
+  // as a starting point. Foundry endpoints are per-resource (e.g., https://<resource>.services.ai.azure.com/openai/v1/),
+  // so users MUST provide their base URL via the saved provider config (`config.base_url`). The shared
+  // https://models.inference.ai.azure.com URL is GitHub Models (GitHub PAT auth, free tier) — not a generic
+  // Foundry URL — so the catalog ships no default `endpoint` here. See:
+  //   https://learn.microsoft.com/en-us/azure/ai-foundry/foundry-models/concepts/endpoints
+  { id: "microsoft-foundry", name: "Microsoft Foundry", envVar: "MICROSOFT_FOUNDRY_API_KEY", requiresBaseUrl: true, baseUrlPlaceholder: "https://<resource>.services.ai.azure.com/openai/v1/", supportsApiVersion: true, apiVersionPlaceholder: "2024-10-21", models: [
+    "gpt-5.5",
+    "gpt-5.5-mini",
+    "o3",
+    "Phi-4",
+    "Phi-4-mini",
+    "Meta-Llama-3.1-405B-Instruct",
+    "Meta-Llama-3.1-70B-Instruct",
+    "Mistral-Large-2411",
+    "Codestral-2501",
+    "DeepSeek-V3",
+    "DeepSeek-R1",
+    "Cohere-command-r-plus-08-2024",
+    "AI21-Jamba-1.5-Large",
+  ] },
 ];
 
 function getAvailableProviders() {
-  return PROVIDERS.map(({ id, name, models }) => ({ id, name, models }));
+  return PROVIDERS.map(({ id, name, models, requiresBaseUrl, baseUrlPlaceholder, supportsApiVersion, apiVersionPlaceholder }) => ({
+    id,
+    name,
+    models,
+    ...(requiresBaseUrl ? { requiresBaseUrl: true } : {}),
+    ...(baseUrlPlaceholder ? { baseUrlPlaceholder } : {}),
+    ...(supportsApiVersion ? { supportsApiVersion: true } : {}),
+    ...(apiVersionPlaceholder ? { apiVersionPlaceholder } : {}),
+  }));
 }
 
 function getProviderEnvVar(providerId) {
@@ -152,26 +183,130 @@ async function getProviderKeys(userId) {
   return keys;
 }
 
+function parseProviderConfig(raw) {
+  if (!raw) return {};
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+  return typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+}
+
+function pickConfigBaseUrl(config) {
+  if (!config) return "";
+  for (const key of ["base_url", "baseUrl", "endpoint", "url"]) {
+    const value = config[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
+}
+
+function pickConfigApiVersion(config) {
+  if (!config) return "";
+  for (const key of ["api_version", "apiVersion"]) {
+    const value = config[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
+}
+
+/**
+ * Return per-user provider config overrides keyed by env var and provider id.
+ * Used to inject {PROVIDER}_BASE_URL / {PROVIDER}_API_VERSION into containers
+ * and to write `endpoint` / `api_version` fields into OpenClaw's auth-profiles.json.
+ */
+async function getProviderEndpoints(userId) {
+  const result = await db.query(
+    "SELECT provider, config FROM llm_providers WHERE user_id = $1",
+    [userId]
+  );
+  const byEnvVar = {};
+  const byProvider = {};
+  const apiVersionByEnvVar = {};
+  const apiVersionByProvider = {};
+  for (const row of result.rows) {
+    const envVar = getProviderEnvVar(row.provider);
+    if (!envVar) continue;
+    const config = parseProviderConfig(row.config);
+    const baseUrl = pickConfigBaseUrl(config);
+    const apiVersion = pickConfigApiVersion(config);
+    if (baseUrl) {
+      byEnvVar[envVar] = baseUrl;
+      byProvider[row.provider] = baseUrl;
+    }
+    if (apiVersion) {
+      apiVersionByEnvVar[envVar] = apiVersion;
+      apiVersionByProvider[row.provider] = apiVersion;
+    }
+  }
+  return { byEnvVar, byProvider, apiVersionByEnvVar, apiVersionByProvider };
+}
+
+/**
+ * Derive {PROVIDER}_BASE_URL env vars from per-user endpoint overrides.
+ * Mirrors how the API key flows in as {PROVIDER}_API_KEY.
+ */
+function buildBaseUrlEnvVars(endpointsByEnvVar = {}) {
+  const out = {};
+  for (const [keyEnvVar, baseUrl] of Object.entries(endpointsByEnvVar)) {
+    if (!baseUrl) continue;
+    const baseUrlEnvVar = keyEnvVar.replace(/_API_KEY$|_TOKEN$/, "_BASE_URL");
+    if (baseUrlEnvVar && baseUrlEnvVar !== keyEnvVar) {
+      out[baseUrlEnvVar] = baseUrl;
+    }
+  }
+  return out;
+}
+
+/**
+ * Derive {PROVIDER}_API_VERSION env vars from per-user api-version overrides.
+ */
+function buildApiVersionEnvVars(apiVersionsByEnvVar = {}) {
+  const out = {};
+  for (const [keyEnvVar, apiVersion] of Object.entries(apiVersionsByEnvVar)) {
+    if (!apiVersion) continue;
+    const apiVersionEnvVar = keyEnvVar.replace(/_API_KEY$|_TOKEN$/, "_API_VERSION");
+    if (apiVersionEnvVar && apiVersionEnvVar !== keyEnvVar) {
+      out[apiVersionEnvVar] = apiVersion;
+    }
+  }
+  return out;
+}
+
 /**
  * Build the auth-profiles.json content that openclaw expects.
  * Maps provider keys to the persisted OpenClaw auth profile store format.
  */
-function buildAuthProfiles(providerKeys) {
+function buildAuthProfiles(providerKeys, endpointOverridesByProvider = {}, apiVersionOverridesByProvider = {}) {
   const profiles = {};
   const order = {};
   const lastGood = {};
   const envToProvider = {};
+  const catalogEndpoint = {};
   for (const p of PROVIDERS) {
     envToProvider[p.envVar] = p.id;
+    if (typeof p.endpoint === "string" && p.endpoint.trim()) {
+      catalogEndpoint[p.id] = p.endpoint.trim();
+    }
   }
   for (const [envVar, key] of Object.entries(providerKeys)) {
     const provider = envToProvider[envVar];
     if (provider && key) {
       const profileId = `${provider}:default`;
+      // Per-user saved base URL wins over the catalog default. For providers like
+      // Microsoft Foundry there is no catalog default — the override is the only source.
+      const endpoint = endpointOverridesByProvider[provider] || catalogEndpoint[provider] || "";
+      const apiVersion = apiVersionOverridesByProvider[provider] || "";
       profiles[profileId] = {
         type: "api_key",
         provider,
         key,
+        ...(endpoint ? { endpoint } : {}),
+        ...(apiVersion ? { api_version: apiVersion } : {}),
       };
       order[provider] = [profileId];
       lastGood[provider] = profileId;
@@ -193,6 +328,9 @@ module.exports = {
   updateProvider,
   deleteProvider,
   getProviderKeys,
+  getProviderEndpoints,
+  buildBaseUrlEnvVars,
+  buildApiVersionEnvVars,
   buildAuthProfiles,
   PROVIDERS,
 };

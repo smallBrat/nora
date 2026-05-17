@@ -28,6 +28,21 @@ Nora supports the following LLM providers. You can save a key for any of them fr
 | Hugging Face   | `huggingface`    |
 | Cerebras       | `cerebras`       |
 | NVIDIA         | `nvidia`         |
+| Microsoft Foundry | `microsoft-foundry` |
+
+<Note>
+  **Microsoft Foundry** is a model gateway, not a single-vendor provider. One Foundry deployment gives you access to a multi-vendor catalog — OpenAI (`gpt-5.5`, `o3`), Microsoft (`Phi-4`), Meta (`Meta-Llama-3.1-405B-Instruct`), Mistral (`Mistral-Large-2411`, `Codestral-2501`), DeepSeek (`DeepSeek-V3`, `DeepSeek-R1`), Cohere, AI21, and more. The model id you save in Nora is your **Foundry deployment name** — operator-defined when you create the deployment, not a fixed vendor model id.
+
+  Foundry endpoints are **per-resource**, so Nora requires you to provide a Base URL alongside the API key. The wizard's URL field accepts both shapes:
+  - `https://<resource>.openai.azure.com/openai/v1/` — OpenAI v1 GA path (recommended; no `api-version` needed)
+  - `https://<resource>.services.ai.azure.com/openai/v1/` — also accepted
+
+  Auth supports two modes — **API key** (sent via `api-key:` header on classic paths or `Authorization: Bearer` on v1 GA) and **Microsoft Entra ID** (keyless bearer token with scope `https://ai.azure.com/.default`). Nora currently supports the API-key path; Entra ID keyless auth is on the roadmap. See [Microsoft Foundry endpoints](https://learn.microsoft.com/en-us/azure/ai-foundry/foundry-models/concepts/endpoints) for the full reference.
+
+  <Warning>
+    `https://models.inference.ai.azure.com` is the **GitHub Models** dev endpoint (free tier, GitHub PAT auth) — not a generic shared Foundry URL. For production, use your per-resource endpoint.
+  </Warning>
+</Note>
 
 ## How key storage works
 

@@ -11,6 +11,11 @@ const { runtimeUrlForAgent } = require("../agent-runtime/lib/agentEndpoints");
 const { waitForAgentReadiness } = require("./healthChecks");
 const { resolveAgentRuntimeFamily } = require("./agentRuntimeFields");
 const { shellSingleQuote } = require("../agent-runtime/lib/containerCommand");
+const {
+  buildOpenClawConfigMergeCommand,
+  buildOpenClawCustomProviders,
+  mapNoraProviderIdToOpenClaw,
+} = require("../agent-runtime/lib/runtimeBootstrap");
 
 const providerCatalog = Array.isArray(llmProviders.PROVIDERS)
   ? llmProviders.PROVIDERS
@@ -35,6 +40,9 @@ const PROVIDER_MODEL_DEFAULTS = {
   moonshot: "kimi-k2.5",
   zai: "glm-5",
   minimax: "MiniMax-M2.7",
+  // Bare deployment name — buildDefaultModelCommand prefixes it with the
+  // OpenClaw provider id (azure-openai-responses) via mapNoraProviderIdToOpenClaw.
+  "microsoft-foundry": "gpt-5.5",
 };
 
 const HERMES_NATIVE_PROVIDER_MAP = Object.freeze({
@@ -149,6 +157,10 @@ function hasMeaningfulHermesModelConfig(modelConfig = {}) {
  */
 async function buildAuthProfilesForAgent(userId, agentId) {
   const llmKeys = await llmProviders.getProviderKeys(userId);
+  const overrides =
+    typeof llmProviders.getProviderEndpoints === "function"
+      ? await llmProviders.getProviderEndpoints(userId)
+      : { byEnvVar: {}, byProvider: {}, apiVersionByEnvVar: {}, apiVersionByProvider: {} };
 
   try {
     const { getIntegrationEnvVars } = require("./integrations");
@@ -160,26 +172,46 @@ async function buildAuthProfilesForAgent(userId, agentId) {
       }
     }
     // LLM provider keys win over integration-sourced tokens for the same env var
-    return llmProviders.buildAuthProfiles({ ...integrationLlmKeys, ...llmKeys });
+    return llmProviders.buildAuthProfiles(
+      { ...integrationLlmKeys, ...llmKeys },
+      overrides.byProvider || {},
+      overrides.apiVersionByProvider || {},
+    );
   } catch {
-    return llmProviders.buildAuthProfiles(llmKeys);
+    return llmProviders.buildAuthProfiles(
+      llmKeys,
+      overrides.byProvider || {},
+      overrides.apiVersionByProvider || {},
+    );
   }
 }
 
 async function buildHermesManagedEnvForAgent(userId, agentId) {
   const llmKeys = await llmProviders.getProviderKeys(userId);
+  const overrides =
+    typeof llmProviders.getProviderEndpoints === "function"
+      ? await llmProviders.getProviderEndpoints(userId)
+      : { byEnvVar: {}, byProvider: {}, apiVersionByEnvVar: {}, apiVersionByProvider: {} };
+  const baseUrlEnvVars =
+    typeof llmProviders.buildBaseUrlEnvVars === "function"
+      ? llmProviders.buildBaseUrlEnvVars(overrides.byEnvVar || {})
+      : {};
+  const apiVersionEnvVars =
+    typeof llmProviders.buildApiVersionEnvVars === "function"
+      ? llmProviders.buildApiVersionEnvVars(overrides.apiVersionByEnvVar || {})
+      : {};
 
   try {
     const { getIntegrationEnvVars } = require("./integrations");
     const integrationEnvVars = await getIntegrationEnvVars(agentId);
     return Object.fromEntries(
-      Object.entries({ ...integrationEnvVars, ...llmKeys }).filter(
+      Object.entries({ ...integrationEnvVars, ...llmKeys, ...baseUrlEnvVars, ...apiVersionEnvVars }).filter(
         ([key, value]) => key && value != null && String(value) !== "",
       ),
     );
   } catch {
     return Object.fromEntries(
-      Object.entries(llmKeys).filter(
+      Object.entries({ ...llmKeys, ...baseUrlEnvVars, ...apiVersionEnvVars }).filter(
         ([key, value]) => key && value != null && String(value) !== "",
       ),
     );
@@ -201,7 +233,9 @@ function buildDefaultModelCommand(defaultProvider = null) {
   const modelId = defaultProvider.model || PROVIDER_MODEL_DEFAULTS[defaultProvider.provider];
   if (!modelId) return null;
 
-  const fullModel = modelId.includes("/") ? modelId : `${defaultProvider.provider}/${modelId}`;
+  // Translate Nora provider id → OpenClaw provider id (Foundry → azure-openai-responses).
+  const openclawProvider = mapNoraProviderIdToOpenClaw(defaultProvider.provider);
+  const fullModel = modelId.includes("/") ? modelId : `${openclawProvider}/${modelId}`;
 
   return (
     'OPENCLAW_BIN="${OPENCLAW_CLI_PATH:-/usr/local/bin/openclaw}"; ' +
@@ -470,6 +504,38 @@ async function syncAuthToUserAgents(userId, agentId = null, options = {}) {
         continue;
       }
       await writeAuthToContainer(agent, authProfiles);
+
+      // Merge custom-provider registrations (Foundry → azure-openai-responses)
+      // into openclaw.json before restart so `<provider>/<deployment>` model
+      // strings resolve instead of throwing "Unknown model".
+      const llmKeysForCustom = await llmProviders.getProviderKeys(userId);
+      const endpointOverrides =
+        typeof llmProviders.getProviderEndpoints === "function"
+          ? await llmProviders.getProviderEndpoints(userId)
+          : { byEnvVar: {} };
+      // byEnvVar is keyed by API_KEY env var; transform to {PROVIDER}_BASE_URL.
+      const baseUrlEnvVars =
+        typeof llmProviders.buildBaseUrlEnvVars === "function"
+          ? llmProviders.buildBaseUrlEnvVars(endpointOverrides.byEnvVar || {})
+          : {};
+      const customProviderEnv = { ...llmKeysForCustom, ...baseUrlEnvVars };
+      const customProviders = buildOpenClawCustomProviders(customProviderEnv);
+      if (Object.keys(customProviders).length > 0) {
+        const providerMergeCommand = buildOpenClawConfigMergeCommand({
+          models: { providers: customProviders },
+        });
+        try {
+          await runRuntimeCommand(agent, providerMergeCommand);
+        } catch (error) {
+          if (!CONTAINER_EXEC_AUTH_FALLBACK_BACKENDS.has(
+            String(agent?.backend_type || "").trim().toLowerCase(),
+          )) {
+            throw error;
+          }
+          await runContainerCommand(agent, providerMergeCommand);
+        }
+      }
+
       await containerManager.restart(agent);
 
       const readiness = await waitForAgentReadiness({
