@@ -18,16 +18,16 @@ Use AKS, GKE, EKS, or another cloud `k8s` target when you want managed control-p
 | **Best for**           | Self-hosted, edge, lab, and private infra | Production cloud clusters and managed networking |
 | **Adapter behavior**   | Same generic Kubernetes adapter          | Same generic Kubernetes adapter                  |
 
-## Install K3s
+## Step-by-step setup
 
-On the host that will run K3s:
+### 1. Install K3s on the cluster host
 
 ```bash theme={null}
 curl -sfL https://get.k3s.io | sh -
 sudo k3s kubectl get nodes
 ```
 
-Create a kubeconfig Nora can mount:
+### 2. Mint a kubeconfig Nora can mount
 
 ```bash theme={null}
 mkdir -p .secrets
@@ -41,10 +41,15 @@ If Nora runs in Docker Compose, the kubeconfig server URL must be reachable from
 ```bash theme={null}
 K3S_NODE_IP=<k3s-node-ip>
 sed -i "s/127.0.0.1/${K3S_NODE_IP}/g" ./.secrets/k3s-kubeconfig
+```
+
+### 3. Verify access from the host
+
+```bash theme={null}
 kubectl --kubeconfig ./.secrets/k3s-kubeconfig get nodes
 ```
 
-## Configure Nora
+### 4. Configure Nora
 
 Set the K3s helper variables in `.env`:
 
@@ -60,11 +65,27 @@ Use `host.docker.internal` when K3s and Nora's Docker Compose stack run on the s
 
 Leave `K3S_K8S_RUNTIME_NODE_PORT` and `K3S_K8S_GATEWAY_NODE_PORT` empty unless you need fixed ports for a single-agent test. Empty values let Kubernetes allocate NodePorts per agent and avoid port conflicts.
 
-Start Nora with the K3s overlay:
+### 5. Start the stack
 
 ```bash theme={null}
 docker compose -f docker-compose.yml -f docker-compose.k3s.yml up -d --build
 ```
+
+### 6. Deploy a test agent
+
+Open the dashboard at `http://127.0.0.1:8080`, sign in, and create an agent with **Backend = Kubernetes**.
+
+<Frame caption="Nora deploy wizard — Backend dropdown showing Kubernetes">
+  ![Deploy wizard backend picker](/images/provisioner-backends/k8s/_nora/nora-deploy-backend-picker.png)
+</Frame>
+
+<Frame caption="Nora deploy wizard — Kubernetes selected, namespace + exposure fields visible">
+  ![Deploy wizard Kubernetes selected](/images/provisioner-backends/k8s/_nora/nora-deploy-k8s-selected.png)
+</Frame>
+
+<Frame caption="Agent detail page — status running, K3s NodePort address shown">
+  ![Agent detail K8s](/images/provisioner-backends/k8s/_nora/nora-agent-running-k8s.png)
+</Frame>
 
 ## Exposure modes
 
@@ -90,6 +111,10 @@ docker compose -f docker-compose.yml -f docker-compose.k3s.yml logs worker-provi
 
 If an agent reaches `running` but the gateway is unreachable, confirm that `K3S_K8S_RUNTIME_HOST` points to an address the Compose containers can reach and that your firewall allows the allocated NodePort range.
 
+<Frame caption="Logs tab — worker-provisioner output during a successful K3s deploy">
+  ![Agent logs K8s](/images/provisioner-backends/k8s/_nora/nora-agent-logs-k8s.png)
+</Frame>
+
 ## Automated smoke
 
 Once your K3s cluster and kubeconfig are in place, run the shared lifecycle smoke:
@@ -100,3 +125,57 @@ KUBECONFIG_PATH=$PWD/../.secrets/k3s-kubeconfig npm run smoke:k8s-k3s
 ```
 
 The script brings up the Compose stack with `docker-compose.k3s.yml`, deploys an agent, verifies Kubernetes objects, and exercises stop/start/restart. It exits non-zero on any failure. Set `KEEP_ENV=true` to leave the stack running for inspection.
+
+## Promote to production
+
+Once the smoke is green and you trust the cluster, switch from the dev-mode stack to the prod-mode stack. The only changes vs the testing setup are nginx (public config + TLS) and Compose mode (auto-loaded `docker-compose.override.yml` for prod Dockerfiles + restart policies).
+
+### 1. Switch nginx to public + TLS
+
+In `.env`:
+
+```bash theme={null}
+NGINX_CONFIG_FILE=nginx.public.conf
+NGINX_HTTP_PORT=80
+```
+
+Provision Let's Encrypt certs once (the script wires `/etc/letsencrypt` into the nginx container):
+
+```bash theme={null}
+sudo ./infra/setup-tls.sh <your-domain>
+```
+
+### 2. Stop the smoke-mode stack
+
+```bash theme={null}
+docker compose -f docker-compose.yml -f docker-compose.k3s.yml down
+```
+
+### 3. Start the prod-mode stack
+
+The default Compose invocation auto-loads `docker-compose.override.yml` (`Dockerfile.prod`, `npm start`, `restart: unless-stopped`). Layer the K3s overlay on top via explicit `-f` flags:
+
+```bash theme={null}
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.override.yml \
+  -f docker-compose.k3s.yml \
+  up -d --build
+```
+
+### 4. Confirm
+
+```bash theme={null}
+docker compose ps
+curl -fsS https://<your-domain>/api/health
+docker compose logs worker-provisioner | tail -50
+```
+
+Deploy a real agent from the UI and confirm it reaches `running` and the NodePort gateway is reachable from your network.
+
+## See also
+
+- [Kind](/configuration/provisioner-backends/kubernetes-kind) — local Kubernetes for development
+- [AKS](/configuration/provisioner-backends/kubernetes-aks) — Azure Kubernetes Service
+- [GKE](/configuration/provisioner-backends/kubernetes-gke) — Google Kubernetes Engine
+- [EKS](/configuration/provisioner-backends/kubernetes-eks) — Amazon EKS

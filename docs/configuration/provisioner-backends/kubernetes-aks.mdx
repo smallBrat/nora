@@ -4,7 +4,20 @@
 
 AKS uses the same `k8s` backend id as every Kubernetes provider. Nora ships a single Kubernetes adapter (`workers/provisioner/backends/k8s.ts`) that serves Kind, K3s, AKS, GKE, and EKS — provider-specific overlays differ only in the kubeconfig they mount and the exposure mode they default to. The AKS overlay mounts an AKS kubeconfig and defaults agent Services to cloud `LoadBalancer` exposure.
 
-## Create the kubeconfig
+## Step-by-step setup
+
+### 1. Prerequisites
+
+- Azure subscription with permission to create AKS clusters.
+- `az` CLI installed and `az login` completed.
+- An existing AKS cluster (or create one — Azure Portal → **Kubernetes services** → **Create**).
+- `kubectl` installed on the host that runs Nora.
+
+<Frame caption="Azure Portal — AKS cluster overview (cluster name + resource group)">
+  ![AKS cluster overview](/images/provisioner-backends/k8s/aks/cluster-overview.png)
+</Frame>
+
+### 2. Create the kubeconfig
 
 ```bash theme={null}
 mkdir -p .secrets
@@ -17,13 +30,19 @@ az aks get-credentials \
   --overwrite-existing
 ```
 
-Verify access from the host:
+You can copy this command directly from the cluster's **Connect** blade in the Azure Portal.
+
+<Frame caption="Azure Portal — Cluster → Connect: copy the get-credentials command">
+  ![AKS connect blade](/images/provisioner-backends/k8s/aks/connect-cluster.png)
+</Frame>
+
+### 3. Verify access from the host
 
 ```bash theme={null}
 kubectl --kubeconfig ./.secrets/aks-kubeconfig get nodes
 ```
 
-## Configure Nora
+### 4. Configure Nora
 
 Set the AKS helper variables in `.env`:
 
@@ -38,11 +57,27 @@ AKS_DEPLOYMENT_JOB_TIMEOUT_MS=1800000
 AKS_PROVISION_TIMEOUT_MS=1740000
 ```
 
-Start the stack:
+### 5. Start the stack
 
 ```bash theme={null}
 docker compose -f docker-compose.yml -f docker-compose.aks.yml up -d --build
 ```
+
+### 6. Deploy a test agent
+
+Open the dashboard at `http://127.0.0.1:8080`, sign in, and create an agent with **Backend = Kubernetes**.
+
+<Frame caption="Nora deploy wizard — Backend dropdown showing Kubernetes">
+  ![Deploy wizard backend picker](/images/provisioner-backends/k8s/_nora/nora-deploy-backend-picker.png)
+</Frame>
+
+<Frame caption="Nora deploy wizard — Kubernetes selected, namespace + exposure fields visible">
+  ![Deploy wizard Kubernetes selected](/images/provisioner-backends/k8s/_nora/nora-deploy-k8s-selected.png)
+</Frame>
+
+<Frame caption="Agent detail — status running with the AKS LoadBalancer address">
+  ![Agent detail K8s](/images/provisioner-backends/k8s/_nora/nora-agent-running-k8s.png)
+</Frame>
 
 ## AKS Service options
 
@@ -53,6 +88,12 @@ For an internal AKS load balancer:
 ```bash theme={null}
 AKS_K8S_SERVICE_ANNOTATIONS_JSON='{"service.beta.kubernetes.io/azure-load-balancer-internal":"true"}'
 ```
+
+Confirm the LoadBalancer SKU in the Azure Portal under **Settings → Networking** matches what your subnet policies allow.
+
+<Frame caption="Azure Portal — Cluster → Settings → Networking (LoadBalancer SKU)">
+  ![AKS networking](/images/provisioner-backends/k8s/aks/networking.png)
+</Frame>
 
 Do not set `K8S_RUNTIME_HOST` to the AKS API server address. Nora uses the Kubernetes API through kubeconfig, and agent gateway/runtime traffic uses the per-agent Service address.
 
@@ -71,6 +112,10 @@ REAL_ENABLE_OPENCLAW_DOCKER=0 REAL_ENABLE_OPENCLAW_K8S=1 \
   BASE_URL=http://localhost:8080 npm run test:real:matrix
 ```
 
+<Frame caption="Logs tab — worker-provisioner output during a successful AKS deploy">
+  ![Agent logs K8s](/images/provisioner-backends/k8s/_nora/nora-agent-logs-k8s.png)
+</Frame>
+
 ## Automated smoke
 
 Once your AKS kubeconfig is in place, run the shared lifecycle smoke:
@@ -81,3 +126,59 @@ KUBECONFIG_PATH=$PWD/../.secrets/aks-kubeconfig npm run smoke:k8s-aks
 ```
 
 This script is operator-run only — it provisions real workloads against a live AKS cluster and is not part of CI. Set `KEEP_ENV=true` to leave the stack running after the script finishes.
+
+## Promote to production
+
+Once the smoke is green, switch from the dev-mode stack to the prod-mode stack. The only changes vs the testing setup are nginx (public config + TLS) and Compose mode (auto-loaded `docker-compose.override.yml` for prod Dockerfiles + restart policies).
+
+### 1. Tighten the LoadBalancer source ranges
+
+Replace the smoke-time `<nora-control-plane-egress-cidr>` placeholder with your production control plane's actual egress CIDR (e.g. the public IP of the host running Nora). Combine with internal-LB annotations if you're keeping agents on a private subnet.
+
+### 2. Switch nginx to public + TLS
+
+In `.env`:
+
+```bash theme={null}
+NGINX_CONFIG_FILE=nginx.public.conf
+NGINX_HTTP_PORT=80
+```
+
+Provision Let's Encrypt certs once:
+
+```bash theme={null}
+sudo ./infra/setup-tls.sh <your-domain>
+```
+
+### 3. Stop the smoke-mode stack
+
+```bash theme={null}
+docker compose -f docker-compose.yml -f docker-compose.aks.yml down
+```
+
+### 4. Start the prod-mode stack
+
+```bash theme={null}
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.override.yml \
+  -f docker-compose.aks.yml \
+  up -d --build
+```
+
+### 5. Confirm
+
+```bash theme={null}
+docker compose ps
+curl -fsS https://<your-domain>/api/health
+docker compose logs worker-provisioner | tail -50
+```
+
+Deploy a real agent from the UI and confirm it reaches `running` and the AKS LoadBalancer assigns an external IP.
+
+## See also
+
+- [Kind](/configuration/provisioner-backends/kubernetes-kind) — local Kubernetes for development
+- [K3s](/configuration/provisioner-backends/kubernetes-k3s) — self-hosted production K8s
+- [GKE](/configuration/provisioner-backends/kubernetes-gke) — Google Kubernetes Engine
+- [EKS](/configuration/provisioner-backends/kubernetes-eks) — Amazon EKS

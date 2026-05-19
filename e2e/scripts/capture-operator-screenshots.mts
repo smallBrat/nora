@@ -12,6 +12,9 @@ const __dirname = path.dirname(__filename);
 const SCREENSHOT_DIR =
   process.env.NORA_SCREENSHOT_DIR ||
   path.resolve(__dirname, "../../.github/readme-assets");
+const K8S_DOCS_SCREENSHOT_DIR =
+  process.env.NORA_K8S_SCREENSHOT_DIR ||
+  path.resolve(__dirname, "../../docs/images/provisioner-backends/k8s/_nora");
 const DB_CONTAINER =
   process.env.NORA_SCREENSHOT_DB_CONTAINER || "nora-postgres-1";
 const DB_USER = process.env.NORA_SCREENSHOT_DB_USER || process.env.DB_USER || "nora";
@@ -2235,6 +2238,90 @@ async function captureHermesReadmeScreenshot(browser, token) {
   }
 }
 
+// Captures the four Nora-UI shots used by the per-platform K8s docs
+// (kubernetes-kind, -k3s, -aks, -gke, -eks). The UI is identical across
+// every K8s backend so we capture once and the docs reuse the same files.
+//
+// The shots are best-effort: if the running stack has no K8s backend
+// enabled, the wizard still renders — the Backend dropdown just won't
+// include "Kubernetes" — and the running-agent shot is skipped with a
+// warning. Operators wanting cluster-flavored shots should run this
+// against a stack started with `docker-compose.kind.yml`.
+async function captureK8sDocsScreens(page) {
+  fs.mkdirSync(K8S_DOCS_SCREENSHOT_DIR, { recursive: true });
+
+  // 1. Deploy wizard with Backend dropdown open.
+  await gotoHeading(page, "/app/deploy", "Deploy New Agent");
+  try {
+    const backendTrigger = page
+      .getByRole("combobox", { name: /backend/i })
+      .or(page.locator('select[name="backend"]'))
+      .first();
+    if (await backendTrigger.count()) {
+      await backendTrigger.click({ timeout: 2000 }).catch(() => {});
+    }
+  } catch {
+    // Best-effort — capture the page as-is if the picker isn't interactable.
+  }
+  await page.waitForTimeout(400);
+  await page.screenshot({
+    path: path.join(K8S_DOCS_SCREENSHOT_DIR, "nora-deploy-backend-picker.png"),
+    fullPage: true,
+  });
+
+  // 2. Deploy wizard with Kubernetes selected.
+  try {
+    const k8sOption = page
+      .getByRole("option", { name: /kubernetes|k8s/i })
+      .or(page.getByText(/^(Kubernetes|k8s)$/i))
+      .first();
+    if (await k8sOption.count()) {
+      await k8sOption.click({ timeout: 2000 }).catch(() => {});
+    }
+  } catch {
+    // Tolerate when k8s isn't an option in this stack.
+  }
+  await page.waitForTimeout(400);
+  await page.screenshot({
+    path: path.join(K8S_DOCS_SCREENSHOT_DIR, "nora-deploy-k8s-selected.png"),
+    fullPage: true,
+  });
+
+  // 3 + 4. Running-agent detail + logs.
+  // Reuse the seed primary agent. The docs note that these shots show the
+  // generic agent surface; the Kubernetes-flavored fields (namespace,
+  // service name, NodePort / LB address) only render when the agent is
+  // actually backed by a K8s deployment.
+  try {
+    await gotoHeading(
+      page,
+      `/app/agents/${IDS.agents.primary}`,
+      "OpenClaw Research Operator",
+    );
+    await page.waitForTimeout(500);
+    await page.screenshot({
+      path: path.join(K8S_DOCS_SCREENSHOT_DIR, "nora-agent-running-k8s.png"),
+      fullPage: true,
+    });
+
+    const logsTab = page.getByRole("tab", { name: /logs/i }).first();
+    if (await logsTab.count()) {
+      await logsTab.click({ timeout: 2000 }).catch(() => {});
+      await page.waitForTimeout(800);
+    }
+    await page.screenshot({
+      path: path.join(K8S_DOCS_SCREENSHOT_DIR, "nora-agent-logs-k8s.png"),
+      fullPage: true,
+    });
+  } catch (err) {
+    console.warn(
+      `[capture] k8s running-agent shots skipped: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
+  console.log(`Saved K8s docs screenshots to ${K8S_DOCS_SCREENSHOT_DIR}`);
+}
+
 async function captureScreens() {
   fs.mkdirSync(SCREENSHOT_DIR, { recursive: true });
 
@@ -2331,6 +2418,13 @@ async function captureScreens() {
         SCREENSHOT_DIR,
         "proof-operator-agent-hub-detail.png"
       ),
+    });
+
+    // K8s docs shots — reuses operator page, best-effort.
+    await captureK8sDocsScreens(operator.page).catch((err) => {
+      console.warn(
+        `[capture] k8s docs section failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
     });
 
     await gotoHeading(operator.page, "/app/logs", "Account event log");

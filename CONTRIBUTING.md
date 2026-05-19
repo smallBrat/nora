@@ -9,7 +9,7 @@ By participating in this project, you agree to follow the [Code of Conduct](./CO
 - Read the root [AGENTS.md](./AGENTS.md) and the nearest subtree `AGENTS.md` for the part of the repo you plan to change.
 - For install help, setup questions, or product discussion, use [SUPPORT.md](./SUPPORT.md) to choose the right path.
 - For substantial feature work or architectural changes, open an issue or discussion before investing in a large PR.
-- Keep the public/private repo boundary intact. Public OSS-safe code belongs in this repository; private-only notes and internal material should remain in the paired private repository.
+- Do not commit secrets, customer data, local notes, or environment-specific operational material.
 
 ## Good First Contribution Types
 
@@ -85,9 +85,7 @@ Public contributor-facing docs currently live at the repo root. Keep them aligne
 - [README.md](./README.md) for setup, features, and development entry points
 - [SUPPORT.md](./SUPPORT.md) for help and issue-routing
 - [SECURITY.md](./SECURITY.md) for private vulnerability reporting
-- [architecture.md](./architecture.md) for the public architecture narrative
-
-Treat `/home/projects/nora-private/docs/` as the private docs surface by default. Do not assume `docs/` in this repo is a public shared folder unless the user explicitly asks to promote material into the OSS tree.
+- [docs/concepts/architecture.mdx](./docs/concepts/architecture.mdx) for the public architecture narrative
 
 ## Review Standards
 
@@ -96,7 +94,7 @@ Maintainers may ask you to:
 - narrow the scope of a PR
 - add or update tests
 - move a discussion into the correct issue or docs surface
-- split public OSS changes from private-only material
+- split unrelated code, docs, or product changes into focused PRs
 - update stale docs introduced by the change
 
 Contributions that are technically correct but ignore repo boundaries or documentation requirements may be sent back for revision.

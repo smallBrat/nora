@@ -6,7 +6,7 @@
 Kind ("Kubernetes in Docker") is for **local testing only**. Do not run production agents on a Kind cluster — it has no persistence guarantees, no load-balancer integration, and no high availability. For a self-hosted production cluster use [K3s](/configuration/provisioner-backends/kubernetes-k3s); for managed control planes use [AKS](/configuration/provisioner-backends/kubernetes-aks), [GKE](/configuration/provisioner-backends/kubernetes-gke), or [EKS](/configuration/provisioner-backends/kubernetes-eks).
 </Warning>
 
-Kind uses the same generic `k8s` backend id as every Kubernetes provider. It is the local smoke-test path for the adapter and is not intended to model cloud load-balancer behavior. Nora ships a single Kubernetes adapter (`workers/provisioner/backends/k8s.ts`) that serves Kind, K3s, AKS, GKE, and EKS — only the kubeconfig and exposure mode change.
+Kind uses the same generic `k8s` backend id as every Kubernetes provider. Nora ships a single Kubernetes adapter (`workers/provisioner/backends/k8s.ts`) that serves Kind, K3s, AKS, GKE, and EKS — only the kubeconfig and exposure mode change.
 
 ## When to use Kind
 
@@ -20,9 +20,20 @@ Do **not** use Kind for:
 - Modeling cloud `LoadBalancer` behavior — Kind only supports NodePort routing in this overlay.
 - Multi-node or multi-host scheduling — the bundled Kind config is single control-plane.
 
-## Automated smoke
+## Step-by-step setup
 
-The recommended path is the bundled smoke script. It creates or reuses a Kind cluster, exports kubeconfigs for both the host and the in-container view, starts the Nora API and provisioner with `docker-compose.kind.yml`, deploys an agent, verifies Kubernetes objects, and exercises stop/start/restart lifecycle.
+### 1. Prerequisites
+
+```bash theme={null}
+docker --version && docker compose version
+kubectl version --client
+```
+
+`kind` itself is auto-installed by `e2e/scripts/ensure-kind-tools.sh` when the smoke script runs.
+
+### 2. Run the smoke script
+
+The recommended path is the bundled smoke. It creates or reuses a Kind cluster, exports kubeconfigs for both the host and the in-container view, starts the Nora API and provisioner with `docker-compose.kind.yml`, deploys an agent, verifies Kubernetes objects, and exercises stop/start/restart lifecycle.
 
 ```bash theme={null}
 cd e2e
@@ -31,7 +42,23 @@ npm run smoke:k8s-kind
 
 Set `KEEP_ENV=true` to leave the cluster and Compose stack running after the script finishes.
 
-## Manual stack
+### 3. Inspect the deployed agent in the Nora UI
+
+With `KEEP_ENV=true`, open the dashboard at the API base URL the smoke script prints (defaults to `http://127.0.0.1:4110`) and pick a deployed agent from the fleet view to see its Kubernetes-flavored detail page.
+
+<Frame caption="Nora deploy wizard — Backend dropdown with Kubernetes available">
+  ![Deploy wizard backend picker](/images/provisioner-backends/k8s/_nora/nora-deploy-backend-picker.png)
+</Frame>
+
+<Frame caption="Nora deploy wizard — Kubernetes selected, namespace + exposure fields visible">
+  ![Deploy wizard Kubernetes selected](/images/provisioner-backends/k8s/_nora/nora-deploy-k8s-selected.png)
+</Frame>
+
+<Frame caption="Agent detail page — status running, K8s namespace + service shown">
+  ![Agent detail K8s](/images/provisioner-backends/k8s/_nora/nora-agent-running-k8s.png)
+</Frame>
+
+## Manual stack (without the smoke script)
 
 ```bash theme={null}
 docker compose -f docker-compose.yml -f docker-compose.kind.yml up -d --build
@@ -57,4 +84,17 @@ kubectl -n openclaw-agents get deploy,svc,pods
 docker compose -f docker-compose.yml -f docker-compose.kind.yml logs worker-provisioner
 ```
 
+The smoke script exits with `{"ok":true,...}` on success. Per-agent objects follow the naming convention `oclaw-agent-{id}` in the `openclaw-agents` namespace.
+
 If the agent reaches `running` but the gateway is unreachable, confirm the NodePort values match the port mappings in `infra/kind/nora-kind.yaml`.
+
+<Frame caption="Logs tab — worker-provisioner output during a successful K8s deploy">
+  ![Agent logs K8s](/images/provisioner-backends/k8s/_nora/nora-agent-logs-k8s.png)
+</Frame>
+
+## See also
+
+- [K3s](/configuration/provisioner-backends/kubernetes-k3s) — self-hosted production K8s
+- [AKS](/configuration/provisioner-backends/kubernetes-aks) — Azure Kubernetes Service
+- [GKE](/configuration/provisioner-backends/kubernetes-gke) — Google Kubernetes Engine
+- [EKS](/configuration/provisioner-backends/kubernetes-eks) — Amazon EKS

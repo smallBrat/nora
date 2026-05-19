@@ -4,7 +4,21 @@
 
 EKS uses the same `k8s` backend id as every Kubernetes provider. Nora ships a single Kubernetes adapter (`workers/provisioner/backends/k8s.ts`) that serves Kind, K3s, AKS, GKE, and EKS — provider-specific overlays differ only in the kubeconfig they mount and the exposure mode they default to. The EKS overlay mounts an EKS kubeconfig and defaults agent Services to cloud `LoadBalancer` exposure.
 
-## Create the kubeconfig
+## Step-by-step setup
+
+### 1. Prerequisites
+
+- AWS account with permission to call the EKS API and create LoadBalancer services in your VPC.
+- `aws` CLI installed and configured (`aws configure` or env vars / SSO profile).
+- An existing EKS cluster (or create one — AWS Console → **EKS → Add cluster**).
+- **AWS Load Balancer Controller** installed in the cluster, OR EKS **Auto Mode** enabled — without one, Service provisioning hangs at `EXTERNAL-IP: <pending>`.
+- `kubectl` installed on the host that runs Nora.
+
+<Frame caption="AWS Console — EKS cluster overview">
+  ![EKS cluster overview](/images/provisioner-backends/k8s/eks/cluster-overview.png)
+</Frame>
+
+### 2. Create the kubeconfig
 
 ```bash theme={null}
 mkdir -p .secrets
@@ -14,13 +28,19 @@ aws eks update-kubeconfig \
   --kubeconfig ./.secrets/eks-kubeconfig
 ```
 
-Verify access from the host:
+### 3. Verify access from the host
 
 ```bash theme={null}
 kubectl --kubeconfig ./.secrets/eks-kubeconfig get nodes
 ```
 
-## Configure Nora
+Confirm the node group reports `Ready` in the Console's **Compute** tab.
+
+<Frame caption="AWS Console — Cluster → Compute (node group Ready)">
+  ![EKS compute tab](/images/provisioner-backends/k8s/eks/compute-tab.png)
+</Frame>
+
+### 4. Configure Nora
 
 Set the EKS helper variables in `.env`:
 
@@ -35,11 +55,33 @@ EKS_DEPLOYMENT_JOB_TIMEOUT_MS=1800000
 EKS_PROVISION_TIMEOUT_MS=1740000
 ```
 
-Start the stack:
+Confirm the LB-creating add-on is present under **Add-ons** before continuing.
+
+<Frame caption="AWS Console — Cluster → Add-ons (AWS Load Balancer Controller / Auto Mode)">
+  ![EKS add-ons](/images/provisioner-backends/k8s/eks/add-ons.png)
+</Frame>
+
+### 5. Start the stack
 
 ```bash theme={null}
 docker compose -f docker-compose.yml -f docker-compose.eks.yml up -d --build
 ```
+
+### 6. Deploy a test agent
+
+Open the dashboard at `http://127.0.0.1:8080`, sign in, and create an agent with **Backend = Kubernetes**.
+
+<Frame caption="Nora deploy wizard — Backend dropdown showing Kubernetes">
+  ![Deploy wizard backend picker](/images/provisioner-backends/k8s/_nora/nora-deploy-backend-picker.png)
+</Frame>
+
+<Frame caption="Nora deploy wizard — Kubernetes selected, namespace + exposure fields visible">
+  ![Deploy wizard Kubernetes selected](/images/provisioner-backends/k8s/_nora/nora-deploy-k8s-selected.png)
+</Frame>
+
+<Frame caption="Agent detail — status running with the EKS NLB address">
+  ![Agent detail K8s](/images/provisioner-backends/k8s/_nora/nora-agent-running-k8s.png)
+</Frame>
 
 ## EKS Service options
 
@@ -72,6 +114,10 @@ REAL_ENABLE_OPENCLAW_DOCKER=0 REAL_ENABLE_OPENCLAW_K8S=1 \
   BASE_URL=http://localhost:8080 npm run test:real:matrix
 ```
 
+<Frame caption="Logs tab — worker-provisioner output during a successful EKS deploy">
+  ![Agent logs K8s](/images/provisioner-backends/k8s/_nora/nora-agent-logs-k8s.png)
+</Frame>
+
 ## Automated smoke
 
 Once your EKS kubeconfig is in place, run the shared lifecycle smoke:
@@ -82,3 +128,59 @@ KUBECONFIG_PATH=$PWD/../.secrets/eks-kubeconfig npm run smoke:k8s-eks
 ```
 
 This script is operator-run only — it provisions real workloads against a live EKS cluster and is not part of CI. Set `KEEP_ENV=true` to leave the stack running after the script finishes.
+
+## Promote to production
+
+Once the smoke is green, switch from the dev-mode stack to the prod-mode stack. The only changes vs the testing setup are nginx (public config + TLS) and Compose mode (auto-loaded `docker-compose.override.yml` for prod Dockerfiles + restart policies).
+
+### 1. Tighten the LoadBalancer source ranges
+
+Replace the smoke-time `<nora-control-plane-egress-cidr>` placeholder with your production control plane's egress CIDR. For internal-only NLBs, add the `aws-load-balancer-scheme: internal` annotation.
+
+### 2. Switch nginx to public + TLS
+
+In `.env`:
+
+```bash theme={null}
+NGINX_CONFIG_FILE=nginx.public.conf
+NGINX_HTTP_PORT=80
+```
+
+Provision Let's Encrypt certs once:
+
+```bash theme={null}
+sudo ./infra/setup-tls.sh <your-domain>
+```
+
+### 3. Stop the smoke-mode stack
+
+```bash theme={null}
+docker compose -f docker-compose.yml -f docker-compose.eks.yml down
+```
+
+### 4. Start the prod-mode stack
+
+```bash theme={null}
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.override.yml \
+  -f docker-compose.eks.yml \
+  up -d --build
+```
+
+### 5. Confirm
+
+```bash theme={null}
+docker compose ps
+curl -fsS https://<your-domain>/api/health
+docker compose logs worker-provisioner | tail -50
+```
+
+Deploy a real agent from the UI and confirm it reaches `running` and the EKS NLB assigns a hostname.
+
+## See also
+
+- [Kind](/configuration/provisioner-backends/kubernetes-kind) — local Kubernetes for development
+- [K3s](/configuration/provisioner-backends/kubernetes-k3s) — self-hosted production K8s
+- [AKS](/configuration/provisioner-backends/kubernetes-aks) — Azure Kubernetes Service
+- [GKE](/configuration/provisioner-backends/kubernetes-gke) — Google Kubernetes Engine
