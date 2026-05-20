@@ -1852,6 +1852,13 @@ router.post("/:id/redeploy", async (req, res) => {
       sandbox: runtimeFields.sandbox_profile,
       specs: { vcpu: agent.vcpu || 2, ram_mb: agent.ram_mb || 2048, disk_gb: agent.disk_gb || 20 },
       container_name: containerName,
+      previous_container_id: agent.container_id || null,
+      previous_container_name: agent.container_name || null,
+      previous_host: agent.host || null,
+      previous_backend: currentRuntimeFields.backend_type,
+      previous_runtime_family: currentRuntimeFields.runtime_family,
+      previous_deploy_target: currentRuntimeFields.deploy_target,
+      previous_sandbox_profile: currentRuntimeFields.sandbox_profile,
       image,
     });
 

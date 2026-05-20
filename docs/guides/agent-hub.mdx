@@ -8,6 +8,8 @@ See [Agent Hub concepts](/concepts/agent-hub) for the underlying model — listi
 
 ## Install a listing
 
+![Agent Hub catalog — internal, community, and built-in filters](/images/operator/agent-hub-list.png)
+
 <Steps>
   <Step title="Open Agent Hub">
     From the dashboard, open **Agent Hub** in the workspace navigation. The catalog shows three filters: **Internal** (your workspace's listings), **Community** (synced from the upstream hub), and **Built-in** (platform-seeded templates).
@@ -19,6 +21,8 @@ See [Agent Hub concepts](/concepts/agent-hub) for the underlying model — listi
 
   <Step title="Click Install">
     Choose the workspace (defaults to the current one) and an agent name. Nora materializes the latest version of the listing into a new agent in `queued` status. The deployment job runs the same path as a manual deploy.
+
+    ![Install dialog — workspace + agent-name confirmation before materializing the listing](/images/guides/agent-hub/install-dialog.png)
 
     <Note>
       Installing requires the `editor` role on the destination workspace.
@@ -34,6 +38,8 @@ See [Agent Hub concepts](/concepts/agent-hub) for the underlying model — listi
   </Step>
 
   <Step title="Click Publish to Agent Hub">
+    ![Publish dialog — listing name, description, category, and share target](/images/guides/agent-hub/publish-dialog.png)
+
     The publish dialog asks for:
 
     - **Name** — display name for the listing.
@@ -74,6 +80,8 @@ Workspace listings published with share target `community` or `both` sync to the
 If sharing fails (network error, missing key, validation rejection), the listing's `centralError` shows the cause and the listing stays in `pending`. Click **Retry sync** from the listing detail page to push again.
 
 ## Manage source-catalog keys
+
+![Admin Agent Hub moderation — review queue and listing detail](/images/admin/agent-hub.png)
 
 The Agent Hub source-catalog API key authenticates Nora to the upstream hub. Manage keys under **Admin Settings → Agent Hub**.
 

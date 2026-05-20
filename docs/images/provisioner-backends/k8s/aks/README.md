@@ -1,9 +1,9 @@
 # Azure Portal screenshots — AKS setup
 
-Manual captures from the Azure Portal. Drop these files in to replace the placeholder Frame blocks in `docs/configuration/provisioner-backends/kubernetes-aks.mdx`.
+Reference images for the AKS setup guide. The checked-in SVGs are screenshot-style references for the fields operators need to find in the Azure Portal; replace them with manual portal captures if you need exact tenant-specific screenshots.
 
 ## Expected files
 
-- `cluster-overview.png` — AKS cluster overview blade. Shows cluster name + resource group.
-- `connect-cluster.png` — **Connect** blade with the `az aks get-credentials` command highlighted.
-- `networking.png` — **Settings → Networking** showing the LoadBalancer SKU.
+- `cluster-overview.svg` — AKS cluster overview blade. Shows cluster name + resource group.
+- `connect-cluster.svg` — **Connect** blade with the `az aks get-credentials` command highlighted.
+- `networking.svg` — **Settings → Networking** showing the LoadBalancer SKU.

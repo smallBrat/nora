@@ -127,8 +127,8 @@ test.describe("Deploy matrix — real credentials", () => {
             diskGb: 5,
           });
         } catch (err: any) {
-          // The backend rejects some runtime/backend combinations (e.g.
-          // Hermes on K8s) with a 400 explaining the constraint. Treat that
+          // The backend rejects unsupported runtime/backend combinations with
+          // a 400 explaining the constraint. Treat that
           // as a clean skip, not a test failure.
           if (/only supported|not supported|invalid combination|not enabled/i.test(
             String(err?.message || "")

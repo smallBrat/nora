@@ -1,5 +1,6 @@
 // @ts-nocheck
 const { EventEmitter } = require("events");
+const { PassThrough } = require("stream");
 const jwt = require("jsonwebtoken");
 
 const mockDb = { query: jest.fn() };
@@ -172,5 +173,38 @@ describe("log stream websocket auth", () => {
       }),
     );
     expect(ws.closed).toBe(false);
+  });
+
+  it("surfaces backend log stream errors to the websocket client", async () => {
+    const logStream = new PassThrough();
+    mockDb.query.mockResolvedValueOnce({
+      rows: [
+        {
+          id: "agent-k8s",
+          name: "K8s Agent",
+          status: "running",
+          container_id: "oclaw-agent-k8s",
+          backend_type: "k8s",
+          deploy_target: "k8s",
+          user_id: "owner-1",
+        },
+      ],
+    });
+    mockContainerManager.status.mockResolvedValueOnce({ running: true });
+    mockContainerManager.logs.mockResolvedValueOnce(logStream);
+
+    const ws = openLogStream("agent-k8s", { id: "admin-1", role: "admin" });
+    await flushAsyncWork();
+
+    logStream.emit("error", new Error("pod log stream closed"));
+    await flushAsyncWork();
+
+    expect(ws.sent).toContainEqual(
+      expect.objectContaining({
+        type: "error",
+        message: "Log stream error: pod log stream closed",
+      }),
+    );
+    expect(ws.closed).toBe(true);
   });
 });

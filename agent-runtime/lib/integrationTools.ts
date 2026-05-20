@@ -2336,8 +2336,8 @@ async function sendGatewayChatMessage({ sessionKey, message } = {}) {
             id: "__connect__",
             method: "connect",
             params: {
-              minProtocol: 3,
-              maxProtocol: 3,
+              minProtocol: 4,
+              maxProtocol: 4,
               client: {
                 id: "gateway-client",
                 version: "1.0.0",

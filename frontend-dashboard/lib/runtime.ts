@@ -152,6 +152,18 @@ export function activeExecutionTargetFromConfig(
   );
 }
 
+function executionTargetMetadataFromConfig(
+  backendConfig: BackendConfig = {},
+  executionTarget = "",
+  runtimeFamily = "",
+) {
+  const normalizedExecutionTarget = normalizeDeployTarget(executionTarget);
+  if (!normalizedExecutionTarget) return null;
+
+  const candidates = executionTargetsForRuntimeFamily(backendConfig, runtimeFamily);
+  return candidates.find((target) => target.id === normalizedExecutionTarget) || null;
+}
+
 export function visibleSandboxOptionsFromTarget(
   executionTarget: RuntimeTarget | null = null,
   viewerRole = "user",
@@ -249,21 +261,30 @@ export function containerNamePrefixForSelection({
   runtimeFamily = "openclaw",
   sandboxProfile = "standard",
 } = {}) {
+  void sandboxProfile;
+
   if (normalizeRuntimeFamily(runtimeFamily) === "hermes") {
-    return "hermes-agent";
+    return "nora-hermes";
   }
 
-  return normalizeSandboxProfile(sandboxProfile) === "nemoclaw" ? "oclaw-nemoclaw" : "oclaw-agent";
+  return "nora-oclaw";
 }
 
 export function formatRuntimeFamilyLabel(value) {
   return RUNTIME_FAMILY_LABELS[normalizeRuntimeFamily(value)] || "OpenClaw";
 }
 
-export function formatExecutionTargetLabel(value) {
+export function formatExecutionTargetLabel(
+  value,
+  backendConfig: BackendConfig = {},
+  runtimeFamily = "",
+) {
+  const configuredTarget = executionTargetMetadataFromConfig(backendConfig, value, runtimeFamily);
+  if (configuredTarget?.label) return configuredTarget.label;
+
   switch (normalizeDeployTarget(value)) {
     case "k8s":
-      return "K3s / Kubernetes";
+      return "Kubernetes";
     case "proxmox":
       return "Proxmox";
     default:
@@ -275,9 +296,16 @@ export function formatSandboxProfileLabel(value) {
   return normalizeSandboxProfile(value) === "nemoclaw" ? "NemoClaw" : "Standard";
 }
 
-export function formatRuntimePathLabel(agent: AgentRuntimeMeta = {}) {
+export function formatRuntimePathLabel(
+  agent: AgentRuntimeMeta = {},
+  backendConfig: BackendConfig = {},
+) {
   const runtimeLabel = formatRuntimeFamilyLabel(resolveAgentRuntimeFamily(agent));
-  const targetLabel = formatExecutionTargetLabel(resolveAgentExecutionTarget(agent));
+  const targetLabel = formatExecutionTargetLabel(
+    resolveAgentExecutionTarget(agent),
+    backendConfig,
+    resolveAgentRuntimeFamily(agent),
+  );
   const sandboxProfile = resolveAgentSandboxProfile(agent);
 
   return sandboxProfile === "nemoclaw"

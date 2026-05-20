@@ -4,14 +4,16 @@
 
 Nora provisions agent runtimes onto execution targets selected through `ENABLED_BACKENDS`. Docker is the default path. Proxmox and Kubernetes add stronger placement options without changing the operator workflow.
 
+![Deploy wizard — Execution Target picker rendering the enabled backends](/images/configuration/deploy-backend-picker.png)
+
 <CardGroup cols={3}>
   <Card title="Docker" icon="docker" href="/configuration/provisioner-backends/docker">
     Single-host deployments, local development, and quick evaluation.
   </Card>
 
-  <Card title="Proxmox" icon="server" href="/configuration/provisioner-backends/proxmox">
-    Proxmox-managed LXC runtime placement with API and SSH bootstrap.
-  </Card>
+<Card title="Proxmox" icon="server" href="/configuration/provisioner-backends/proxmox">
+  Proxmox-managed LXC runtime placement with API and SSH bootstrap.
+</Card>
 
   <Card title="Kubernetes" icon="cloud" href="/configuration/provisioner-backends/kubernetes">
     K3s, AKS, GKE, EKS, or another conformant Kubernetes cluster.
@@ -20,13 +22,13 @@ Nora provisions agent runtimes onto execution targets selected through `ENABLED_
 
 ## Comparing backends
 
-|                        | Docker                                  | Proxmox                                                       | Kubernetes                                 |
-| ---------------------- | --------------------------------------- | ------------------------------------------------------------- | ------------------------------------------ |
-| **Deployment scale**   | Single host                             | Private VM/LXC fleet                                          | Multi-node cluster                         |
-| **Agent isolation**    | Container                               | Proxmox LXC                                                   | Pod and namespace boundaries               |
-| **Setup complexity**   | Low                                     | Medium - Proxmox API plus SSH bootstrap                       | Medium to high - cluster and kubeconfig    |
-| **Best for**           | Local dev, evaluation, lean self-hosted | On-prem and private infrastructure operators                  | Cloud-native and managed-cluster rollouts  |
-| **Horizontal scaling** | No                                      | Limited by Proxmox fleet capacity                             | Yes                                        |
+|                        | Docker                                  | Proxmox                                      | Kubernetes                                |
+| ---------------------- | --------------------------------------- | -------------------------------------------- | ----------------------------------------- |
+| **Deployment scale**   | Single host                             | Private VM/LXC fleet                         | Multi-node cluster                        |
+| **Agent isolation**    | Container                               | Proxmox LXC                                  | Pod and namespace boundaries              |
+| **Setup complexity**   | Low                                     | Medium - Proxmox API plus SSH bootstrap      | Medium to high - cluster and kubeconfig   |
+| **Best for**           | Local dev, evaluation, lean self-hosted | On-prem and private infrastructure operators | Cloud-native and managed-cluster rollouts |
+| **Horizontal scaling** | No                                      | Limited by Proxmox fleet capacity            | Yes                                       |
 
 ## Runtime selection
 
@@ -38,28 +40,28 @@ ENABLED_BACKENDS=docker
 ENABLED_SANDBOX_PROFILES=standard
 ```
 
-Use `ENABLED_BACKENDS=docker,k3s` when you want both local Docker and K3s visible in the deploy flow. Use `ENABLED_BACKENDS=docker,k8s` for cloud Kubernetes. Use `ENABLED_BACKENDS=k3s` or `ENABLED_BACKENDS=k8s` when every new agent should target that Kubernetes-backed option by default.
+Use `ENABLED_BACKENDS=docker,k3s` when you want both local Docker and K3s visible in the deploy flow. Use `ENABLED_BACKENDS=docker,k8s` for cloud Kubernetes. Set `K8S_PROVIDER=aks`, `gke`, `eks`, or `k3s` so the dashboard labels the target as the real connected backend, such as **Kubernetes on AKS**.
 
 ## Kubernetes providers
 
-The Kubernetes adapter is provider-neutral. Nora talks to the Kubernetes API through `KUBECONFIG`, then creates Deployments and Services for each agent.
+The Kubernetes adapter is provider-neutral. Nora talks to the Kubernetes API through `KUBECONFIG`, then creates Deployments and Services for each OpenClaw or Hermes agent. Cloud overlays label the shared `k8s` target as AKS, GKE, or EKS in the deploy flow.
 
 <CardGroup cols={2}>
   <Card title="Generic Kubernetes" icon="boxes-stacked" href="/configuration/provisioner-backends/kubernetes">
     Adapter contract, exposure modes, namespace, service annotations, and RBAC expectations.
   </Card>
 
-  <Card title="K3s" icon="server" href="/configuration/provisioner-backends/kubernetes-k3s">
-    Lightweight self-hosted Kubernetes setup through `docker-compose.k3s.yml`.
-  </Card>
+<Card title="K3s" icon="server" href="/configuration/provisioner-backends/kubernetes-k3s">
+  Lightweight self-hosted Kubernetes setup through `docker-compose.k3s.yml`.
+</Card>
 
-  <Card title="AKS" icon="microsoft" href="/configuration/provisioner-backends/kubernetes-aks">
-    Azure Kubernetes Service setup through `docker-compose.aks.yml`.
-  </Card>
+<Card title="AKS" icon="microsoft" href="/configuration/provisioner-backends/kubernetes-aks">
+  Azure Kubernetes Service setup through `docker-compose.aks.yml`.
+</Card>
 
-  <Card title="GKE" icon="google" href="/configuration/provisioner-backends/kubernetes-gke">
-    Google Kubernetes Engine setup through `docker-compose.gke.yml`.
-  </Card>
+<Card title="GKE" icon="google" href="/configuration/provisioner-backends/kubernetes-gke">
+  Google Kubernetes Engine setup through `docker-compose.gke.yml`.
+</Card>
 
   <Card title="EKS" icon="aws" href="/configuration/provisioner-backends/kubernetes-eks">
     Amazon EKS setup through `docker-compose.eks.yml`.

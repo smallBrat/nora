@@ -4,6 +4,8 @@
 
 An agent in Nora is a deployed runtime instance running inside an isolated container. When you deploy an agent, Nora provisions a sandboxed environment with the resources you specify — vCPU, RAM, and disk — and manages that container through its full lifecycle from the dashboard. You interact with a running agent through its gateway (a browser-accessible control UI), a terminal session, chat, and logs, all from a single surface.
 
+![Agent detail — gateway, chat, logs, and terminal in one operator surface](/images/operator/agent-detail.png)
+
 ## Agent lifecycle
 
 Every agent moves through a defined set of states from the moment you deploy it until it is stopped or removed. Understanding these states helps you know what Nora is doing at any point and how to respond when something needs attention.
@@ -32,10 +34,13 @@ flowchart LR
 | `error`   | Deployment or runtime failed. The agent cannot be started in its current state. Redeploy to recover.                     |
 
 <Note>
-  Nora reconciles agent status in real time when you open an agent detail page. If the actual container state has changed since the last recorded status, Nora updates the status automatically.
+  Nora reconciles agent status in real time when you open an agent detail page. If the actual
+  container state has changed since the last recorded status, Nora updates the status automatically.
 </Note>
 
 ## Agent resources
+
+![Fleet view — agents in different lifecycle states with their resource footprints](/images/operator/fleet.png)
 
 When you deploy an agent in self-hosted mode, you choose the resource allocation within the limits your operator has configured:
 
@@ -46,7 +51,9 @@ When you deploy an agent in self-hosted mode, you choose the resource allocation
 | **Disk** | Persistent storage in gigabytes allocated to the container  |
 
 <Tip>
-  You can monitor live CPU usage, memory utilization, network I/O, and disk throughput from the agent detail page after the agent is running.
+  You can monitor live CPU usage and memory utilization from the agent detail page after the agent
+  is running. Network I/O and disk throughput are shown only for execution targets that expose those
+  counters, such as Docker and Proxmox.
 </Tip>
 
 ## Gateway
@@ -58,7 +65,8 @@ The gateway is the control UI for your running agent runtime. Once an agent reac
 Every running agent provides an interactive terminal session connected directly to the agent container. You can open the terminal from the agent detail page to inspect the runtime environment, run commands, or debug issues without leaving the Nora dashboard.
 
 <Warning>
-  The terminal gives you direct shell access to your agent's container. Changes made through the terminal affect the live runtime environment.
+  The terminal gives you direct shell access to your agent's container. Changes made through the
+  terminal affect the live runtime environment.
 </Warning>
 
 ## Agent lifecycle actions
@@ -68,17 +76,21 @@ Every running agent provides an interactive terminal session connected directly 
     Starts a stopped agent container. The agent must have an existing container — if it was never deployed or the container was destroyed, you need to deploy it again.
   </Accordion>
 
-  <Accordion title="Stop">
-    Gracefully stops the running container and sets the agent status to `stopped`. The agent record and its configuration are preserved.
-  </Accordion>
+<Accordion title="Stop">
+  Gracefully stops the running container and sets the agent status to `stopped`. The agent record
+  and its configuration are preserved.
+</Accordion>
 
-  <Accordion title="Restart">
-    Stops and immediately restarts the agent container. The agent returns to `running` status when the container comes back up.
-  </Accordion>
+<Accordion title="Restart">
+  Stops and immediately restarts the agent container. The agent returns to `running` status when the
+  container comes back up.
+</Accordion>
 
-  <Accordion title="Redeploy">
-    Available when an agent is in `warning`, `error`, or `stopped` state. Re-queues the agent for a fresh deployment using the same name, sandbox type, and resource specs. Use this to recover from failed deployments.
-  </Accordion>
+<Accordion title="Redeploy">
+  Available when an agent is in `warning`, `error`, or `stopped` state. Re-queues the agent for a
+  fresh deployment using the same name, sandbox type, and resource specs. Use this to recover from
+  failed deployments.
+</Accordion>
 
   <Accordion title="Delete">
     Permanently removes the agent and destroys its container. This action cannot be undone.

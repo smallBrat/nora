@@ -4,6 +4,8 @@
 
 Nora operates in one of two platform modes, controlled by the `PLATFORM_MODE` environment variable. In `selfhosted` mode (the default), you define the resource envelope your users can draw from and no billing system is involved. In `paas` mode, Stripe billing is enabled and each user's resource allocation is determined by their subscription plan tier. Choose the mode that matches how you intend to operate Nora.
 
+![Settings — subscription / platform-mode card at the bottom of the Settings page](/images/configuration/platform-modes-toggle.png)
+
 <Note>
   You can check which mode is currently active by calling the `/config/platform` endpoint on your backend API. It returns a JSON object with the current `platform_mode` value.
 </Note>

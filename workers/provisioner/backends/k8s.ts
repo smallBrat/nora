@@ -11,11 +11,312 @@ const {
 const {
   OPENCLAW_GATEWAY_PORT,
   AGENT_RUNTIME_PORT,
+  HERMES_DASHBOARD_PORT,
 } = require("../../../agent-runtime/lib/contracts");
+const { getHermesDockerAgentImage } = require("../../../agent-runtime/lib/agentImages");
 const {
   buildContainerBootstrap,
-  toK8sLaunch,
+  shellSingleQuote,
 } = require("../../../agent-runtime/lib/containerCommand");
+const {
+  buildTelemetry,
+  buildUnavailableTelemetry,
+  bytesToMegabytes,
+  roundMetric,
+} = require("./telemetry");
+
+const HERMES_RUNTIME_PORT = 8642;
+const HERMES_HOME = "/opt/data";
+const HERMES_WORKSPACE = `${HERMES_HOME}/workspace`;
+const HERMES_DASHBOARD_LOG = `${HERMES_HOME}/hermes-dashboard.log`;
+const HERMES_ENTRYPOINT = "/opt/hermes/docker/entrypoint.sh";
+const HERMES_BIN = "/opt/hermes/.venv/bin/hermes";
+const BOOTSTRAP_CONFIGMAP_KEY = "bootstrap.sh";
+const BOOTSTRAP_MOUNT_PATH = "/opt/nora-bootstrap";
+const BOOTSTRAP_SCRIPT_PATH = `${BOOTSTRAP_MOUNT_PATH}/${BOOTSTRAP_CONFIGMAP_KEY}`;
+const K8S_METRICS_CAPABILITIES = Object.freeze({
+  cpu: true,
+  memory: true,
+  network: false,
+  disk: false,
+  pids: false,
+});
+const K8S_UNAVAILABLE_CAPABILITIES = Object.freeze({
+  cpu: false,
+  memory: false,
+  network: false,
+  disk: false,
+  pids: false,
+});
+
+function parseK8sCpuCores(value) {
+  if (value == null) return null;
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+
+  const raw = String(value).trim();
+  if (!raw) return null;
+
+  const match = raw.match(/^([+-]?\d+(?:\.\d+)?)(n|u|m)?$/);
+  if (!match) return null;
+
+  const amount = Number(match[1]);
+  if (!Number.isFinite(amount)) return null;
+
+  switch (match[2]) {
+    case "n":
+      return amount / 1_000_000_000;
+    case "u":
+      return amount / 1_000_000;
+    case "m":
+      return amount / 1_000;
+    default:
+      return amount;
+  }
+}
+
+function parseK8sMemoryBytes(value) {
+  if (value == null) return null;
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+
+  const raw = String(value).trim();
+  if (!raw) return null;
+
+  const match = raw.match(/^([+-]?\d+(?:\.\d+)?(?:e[+-]?\d+)?)([a-zA-Z]+)?$/i);
+  if (!match) return null;
+
+  const amount = Number(match[1]);
+  if (!Number.isFinite(amount)) return null;
+
+  const suffix = match[2] || "";
+  const multipliers = {
+    Ki: 1024,
+    Mi: 1024 ** 2,
+    Gi: 1024 ** 3,
+    Ti: 1024 ** 4,
+    Pi: 1024 ** 5,
+    Ei: 1024 ** 6,
+    k: 1000,
+    K: 1000,
+    M: 1000 ** 2,
+    G: 1000 ** 3,
+    T: 1000 ** 4,
+    P: 1000 ** 5,
+    E: 1000 ** 6,
+    m: 1 / 1000,
+  };
+
+  return amount * (multipliers[suffix] || 1);
+}
+
+function podUptimeSeconds(pod) {
+  const startedAt =
+    pod?.status?.containerStatuses?.find((status) => status?.state?.running?.startedAt)?.state
+      ?.running?.startedAt || pod?.status?.startTime;
+  const started = startedAt ? new Date(startedAt).getTime() : 0;
+  if (!started || Number.isNaN(started)) return 0;
+  return Math.max(0, Math.floor((Date.now() - started) / 1000));
+}
+
+function safeHostname(name, fallback) {
+  return (
+    String(name || fallback || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 63) || fallback
+  );
+}
+
+function safeK8sName(name, fallback) {
+  return safeHostname(name, fallback).slice(0, 63) || fallback;
+}
+
+function defaultDeployNameForRuntime(runtimeFamily, id, name) {
+  const prefix = runtimeFamily === "hermes" ? "nora-hermes" : "nora-oclaw";
+  return safeK8sName(`${prefix}-${name || "agent"}-${id}`, `${prefix}-${id}`);
+}
+
+function buildHermesStartCommand() {
+  const hermesRuntimeCommand = [
+    "set -eu",
+    `HERMES_BIN="${HERMES_BIN}"`,
+    '[ -x "$HERMES_BIN" ] || HERMES_BIN="$(command -v hermes)"',
+    `nohup "$HERMES_BIN" dashboard --host 0.0.0.0 --insecure --no-open >> ${HERMES_DASHBOARD_LOG} 2>&1 &`,
+    'exec "$HERMES_BIN" gateway run',
+  ].join("\n");
+
+  return [
+    "set -eu",
+    `exec ${HERMES_ENTRYPOINT} bash -lc ${shellSingleQuote(hermesRuntimeCommand)}`,
+  ].join("\n");
+}
+
+function buildOpenClawRuntimeAuthBootstrapCommand() {
+  const providerMap = {
+    ANTHROPIC_API_KEY: "anthropic",
+    OPENAI_API_KEY: "openai",
+    GEMINI_API_KEY: "google",
+    GROQ_API_KEY: "groq",
+    MISTRAL_API_KEY: "mistral",
+    DEEPSEEK_API_KEY: "deepseek",
+    OPENROUTER_API_KEY: "openrouter",
+    TOGETHER_API_KEY: "together",
+    COHERE_API_KEY: "cohere",
+    XAI_API_KEY: "xai",
+    MOONSHOT_API_KEY: "moonshot",
+    ZAI_API_KEY: "zai",
+    OLLAMA_API_KEY: "ollama",
+    MINIMAX_API_KEY: "minimax",
+    COPILOT_GITHUB_TOKEN: "github-copilot",
+    HF_TOKEN: "huggingface",
+    CEREBRAS_API_KEY: "cerebras",
+    NVIDIA_API_KEY: "nvidia",
+    MICROSOFT_FOUNDRY_API_KEY: "microsoft-foundry",
+  };
+  const endpointEnvMap = {
+    MICROSOFT_FOUNDRY_API_KEY: "MICROSOFT_FOUNDRY_BASE_URL",
+  };
+  const staticEndpointMap = {
+    GEMINI_API_KEY: "https://generativelanguage.googleapis.com/v1beta",
+    NVIDIA_API_KEY: "https://integrate.api.nvidia.com/v1",
+  };
+  const apiVersionEnvMap = {
+    MICROSOFT_FOUNDRY_API_KEY: "MICROSOFT_FOUNDRY_API_VERSION",
+  };
+  const foundryModels = [
+    {
+      id: "gpt-5.5",
+      name: "GPT-5.5 (Azure)",
+      reasoning: true,
+      input: ["text", "image"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 400000,
+      maxTokens: 16384,
+      compat: { supportsStore: false, supportsReasoningEffort: true },
+    },
+    {
+      id: "gpt-5.5-mini",
+      name: "GPT-5.5 Mini (Azure)",
+      reasoning: true,
+      input: ["text", "image"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 400000,
+      maxTokens: 16384,
+      compat: { supportsStore: false, supportsReasoningEffort: true },
+    },
+    {
+      id: "gpt-5.4-pro",
+      name: "GPT-5.4 Pro (Azure)",
+      reasoning: true,
+      input: ["text", "image"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 200000,
+      maxTokens: 128000,
+      compat: { supportsStore: false, supportsReasoningEffort: true },
+    },
+    {
+      id: "gpt-5.4",
+      name: "GPT-5.4 (Azure)",
+      reasoning: true,
+      input: ["text", "image"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 200000,
+      maxTokens: 128000,
+      compat: { supportsStore: false, supportsReasoningEffort: true },
+    },
+    {
+      id: "gpt-5.2-codex",
+      name: "GPT-5.2 Codex (Azure)",
+      reasoning: true,
+      input: ["text", "image"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 400000,
+      maxTokens: 16384,
+      compat: { supportsStore: false, supportsReasoningEffort: true },
+    },
+    {
+      id: "o3",
+      name: "o3 (Azure)",
+      reasoning: true,
+      input: ["text", "image"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 200000,
+      maxTokens: 100000,
+      compat: { supportsStore: false, supportsReasoningEffort: true },
+    },
+  ].map((entry) => ({ ...entry, api: "azure-openai-responses" }));
+
+  return [
+    "node <<'__NORA_OPENCLAW_AUTH_BOOTSTRAP__'",
+    "const fs = require('fs');",
+    `const providerMap = ${JSON.stringify(providerMap)};`,
+    `const endpointEnvMap = ${JSON.stringify(endpointEnvMap)};`,
+    `const staticEndpointMap = ${JSON.stringify(staticEndpointMap)};`,
+    `const apiVersionEnvMap = ${JSON.stringify(apiVersionEnvMap)};`,
+    `const foundryModels = ${JSON.stringify(foundryModels)};`,
+    "const authPath = '/root/.openclaw/agents/main/agent/auth-profiles.json';",
+    "const configPath = '/root/.openclaw/openclaw.json';",
+    "const auth = { version: 1, profiles: {}, order: {}, lastGood: {} };",
+    "for (const [envKey, provider] of Object.entries(providerMap)) {",
+    "  const key = process.env[envKey];",
+    "  if (!key) continue;",
+    "  const profileId = `${provider}:default`;",
+    "  const endpointEnv = endpointEnvMap[envKey];",
+    "  const apiVersionEnv = apiVersionEnvMap[envKey];",
+    "  const endpoint = (endpointEnv && process.env[endpointEnv]) || staticEndpointMap[envKey] || '';",
+    "  const apiVersion = apiVersionEnv && process.env[apiVersionEnv] ? process.env[apiVersionEnv] : '';",
+    "  auth.profiles[profileId] = { type: 'api_key', provider, key };",
+    "  if (endpoint) auth.profiles[profileId].endpoint = endpoint;",
+    "  if (apiVersion) auth.profiles[profileId].api_version = apiVersion;",
+    "  auth.order[provider] = [profileId];",
+    "  auth.lastGood[provider] = profileId;",
+    "}",
+    "fs.mkdirSync('/root/.openclaw/agents/main/agent', { recursive: true });",
+    "fs.writeFileSync(authPath, JSON.stringify(auth));",
+    "fs.chmodSync(authPath, 0o600);",
+    "let config = {};",
+    "try { config = JSON.parse(fs.readFileSync(configPath, 'utf8')); } catch { config = {}; }",
+    "if (!config || typeof config !== 'object' || Array.isArray(config)) config = {};",
+    "const defaultModel = String(process.env.NORA_DEFAULT_OPENCLAW_MODEL || '').trim();",
+    "const foundryDefaultPrefix = 'azure-openai-responses/';",
+    "const defaultFoundryDeployment = defaultModel.startsWith(foundryDefaultPrefix) ? defaultModel.slice(foundryDefaultPrefix.length).trim() : '';",
+    "function buildFoundryModelEntries() {",
+    "  if (!defaultFoundryDeployment) return foundryModels;",
+    "  const baseModelId = defaultFoundryDeployment.replace(/-\\d+$/, '');",
+    "  const template = foundryModels.find((model) => model.id === defaultFoundryDeployment) || foundryModels.find((model) => model.id === baseModelId) || foundryModels[0] || {};",
+    "  return [{",
+    "    ...template,",
+    "    id: defaultFoundryDeployment,",
+    "    name: `${defaultFoundryDeployment} (Azure deployment)`,",
+    "    api: 'azure-openai-responses',",
+    "  }];",
+    "}",
+    "const foundryKey = process.env.MICROSOFT_FOUNDRY_API_KEY;",
+    "const foundryBaseUrlRaw = process.env.MICROSOFT_FOUNDRY_BASE_URL;",
+    "if (foundryKey && foundryBaseUrlRaw) {",
+    "  config.models = config.models && typeof config.models === 'object' ? config.models : {};",
+    "  config.models.providers = config.models.providers && typeof config.models.providers === 'object' ? config.models.providers : {};",
+    "  config.models.providers['azure-openai-responses'] = {",
+    "    api: 'azure-openai-responses',",
+    "    baseUrl: String(foundryBaseUrlRaw).replace(/\\/+$/, ''),",
+    "    apiKey: foundryKey,",
+    "    models: buildFoundryModelEntries(),",
+    "  };",
+    "}",
+    "if (defaultModel) {",
+    "  config.agents = config.agents && typeof config.agents === 'object' ? config.agents : {};",
+    "  config.agents.defaults = config.agents.defaults && typeof config.agents.defaults === 'object' ? config.agents.defaults : {};",
+    "  config.agents.defaults.model = { primary: defaultModel };",
+    "  config.agents.defaults.models = config.agents.defaults.models && typeof config.agents.defaults.models === 'object' ? config.agents.defaults.models : {};",
+    "  config.agents.defaults.models[defaultModel] = config.agents.defaults.models[defaultModel] || {};",
+    "}",
+    "fs.mkdirSync('/root/.openclaw', { recursive: true });",
+    "fs.writeFileSync(configPath, JSON.stringify(config, null, 2));",
+    "__NORA_OPENCLAW_AUTH_BOOTSTRAP__",
+    "",
+  ].join("\n");
+}
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -32,9 +333,23 @@ class K8sBackend extends ProvisionerBackend {
     }
     this.coreApi = this.kc.makeApiClient(k8s.CoreV1Api);
     this.appsApi = this.kc.makeApiClient(k8s.AppsV1Api);
+    try {
+      this.metricsApi =
+        k8s.CustomObjectsApi && typeof this.kc.makeApiClient === "function"
+          ? this.kc.makeApiClient(k8s.CustomObjectsApi)
+          : null;
+    } catch {
+      this.metricsApi = null;
+    }
     this.namespace = process.env.K8S_NAMESPACE || "openclaw-agents";
+    this.runtimeNamespaces = {
+      openclaw: process.env.K8S_OPENCLAW_NAMESPACE || this.namespace,
+      hermes: process.env.K8S_HERMES_NAMESPACE || this.namespace,
+    };
     this.exposureMode = this._normalizeExposureMode(process.env.K8S_EXPOSURE_MODE);
-    this.serviceAnnotations = this._parseServiceAnnotations(process.env.K8S_SERVICE_ANNOTATIONS_JSON);
+    this.serviceAnnotations = this._parseServiceAnnotations(
+      process.env.K8S_SERVICE_ANNOTATIONS_JSON,
+    );
     this.loadBalancerSourceRanges = this._parseCsv(process.env.K8S_LOAD_BALANCER_SOURCE_RANGES);
     this.loadBalancerClass = String(process.env.K8S_LOAD_BALANCER_CLASS || "").trim();
     this.loadBalancerReadyTimeoutMs = this._normalizePositiveInt(
@@ -48,9 +363,59 @@ class K8sBackend extends ProvisionerBackend {
   }
 
   _normalizeExposureMode(value) {
-    const normalized = String(value || "cluster-ip").trim().toLowerCase();
+    const normalized = String(value || "cluster-ip")
+      .trim()
+      .toLowerCase();
     if (normalized === "loadbalancer") return "load-balancer";
     return normalized;
+  }
+
+  _namespaceForRuntimeFamily(runtimeFamily = "openclaw") {
+    const normalizedRuntimeFamily = String(runtimeFamily || "openclaw")
+      .trim()
+      .toLowerCase();
+    return this.runtimeNamespaces[normalizedRuntimeFamily] || this.namespace;
+  }
+
+  _namespaceForDeployName(deployName) {
+    const normalizedDeployName = String(deployName || "")
+      .trim()
+      .toLowerCase();
+    if (
+      normalizedDeployName.startsWith("nora-hermes-") ||
+      normalizedDeployName.startsWith("hermes-agent-")
+    ) {
+      return this._namespaceForRuntimeFamily("hermes");
+    }
+    return this._namespaceForRuntimeFamily("openclaw");
+  }
+
+  _namespaceFromClusterHost(host, deployName = "") {
+    const normalizedHost = String(host || "").trim();
+    if (!normalizedHost) return "";
+
+    const escapedDeployName = String(deployName || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const deployNameMatch = escapedDeployName
+      ? normalizedHost.match(new RegExp(`^${escapedDeployName}\\.([^.]+)\\.svc(?:\\.|$)`))
+      : null;
+    if (deployNameMatch?.[1]) return deployNameMatch[1];
+
+    return normalizedHost.match(/^[^.]+\.([^.]+)\.svc(?:\.|$)/)?.[1] || "";
+  }
+
+  _candidateNamespacesForDestroy(deployName, options = {}) {
+    const namespaces = [];
+    const add = (namespace) => {
+      const value = String(namespace || "").trim();
+      if (value && !namespaces.includes(value)) namespaces.push(value);
+    };
+
+    add(options.namespace);
+    add(this._namespaceFromClusterHost(options.host, deployName));
+    add(options.runtimeFamily ? this._namespaceForRuntimeFamily(options.runtimeFamily) : "");
+    add(this._namespaceForDeployName(deployName));
+
+    return namespaces;
   }
 
   _normalizePositiveInt(value, fallback) {
@@ -85,9 +450,7 @@ class K8sBackend extends ProvisionerBackend {
       throw new Error("K8S_SERVICE_ANNOTATIONS_JSON must be a JSON object");
     }
 
-    return Object.fromEntries(
-      Object.entries(parsed).map(([key, value]) => [key, String(value)]),
-    );
+    return Object.fromEntries(Object.entries(parsed).map(([key, value]) => [key, String(value)]));
   }
 
   _isNodePortExposure() {
@@ -104,11 +467,33 @@ class K8sBackend extends ProvisionerBackend {
     return "ClusterIP";
   }
 
-  _servicePorts() {
-    const ports = [
-      { name: "gateway", port: OPENCLAW_GATEWAY_PORT, targetPort: OPENCLAW_GATEWAY_PORT },
-      { name: "runtime", port: AGENT_RUNTIME_PORT, targetPort: AGENT_RUNTIME_PORT },
-    ];
+  _runtimePort(runtimeFamily = "openclaw") {
+    return runtimeFamily === "hermes" ? HERMES_RUNTIME_PORT : AGENT_RUNTIME_PORT;
+  }
+
+  _secondaryPort(runtimeFamily = "openclaw") {
+    return runtimeFamily === "hermes" ? HERMES_DASHBOARD_PORT : OPENCLAW_GATEWAY_PORT;
+  }
+
+  _secondaryPortName(runtimeFamily = "openclaw") {
+    return runtimeFamily === "hermes" ? "dashboard" : "gateway";
+  }
+
+  _servicePorts(runtimeFamily = "openclaw") {
+    const ports =
+      runtimeFamily === "hermes"
+        ? [
+            { name: "runtime", port: HERMES_RUNTIME_PORT, targetPort: HERMES_RUNTIME_PORT },
+            {
+              name: "dashboard",
+              port: HERMES_DASHBOARD_PORT,
+              targetPort: HERMES_DASHBOARD_PORT,
+            },
+          ]
+        : [
+            { name: "gateway", port: OPENCLAW_GATEWAY_PORT, targetPort: OPENCLAW_GATEWAY_PORT },
+            { name: "runtime", port: AGENT_RUNTIME_PORT, targetPort: AGENT_RUNTIME_PORT },
+          ];
 
     if (!this._isNodePortExposure()) {
       return ports;
@@ -117,11 +502,16 @@ class K8sBackend extends ProvisionerBackend {
     const configuredGatewayNodePort = this._normalizePort(process.env.K8S_GATEWAY_NODE_PORT);
     const configuredRuntimeNodePort = this._normalizePort(process.env.K8S_RUNTIME_NODE_PORT);
 
-    if (configuredGatewayNodePort) {
+    if (runtimeFamily !== "hermes" && configuredGatewayNodePort) {
       ports[0].nodePort = configuredGatewayNodePort;
     }
     if (configuredRuntimeNodePort) {
-      ports[1].nodePort = configuredRuntimeNodePort;
+      const runtimePort = ports.find((port) => port.name === "runtime");
+      if (runtimePort) runtimePort.nodePort = configuredRuntimeNodePort;
+    }
+    if (runtimeFamily === "hermes" && configuredGatewayNodePort) {
+      const dashboardPort = ports.find((port) => port.name === "dashboard");
+      if (dashboardPort) dashboardPort.nodePort = configuredGatewayNodePort;
     }
 
     return ports;
@@ -141,7 +531,7 @@ class K8sBackend extends ProvisionerBackend {
     return first?.ip || first?.hostname || null;
   }
 
-  async _waitForLoadBalancerAddress(deployName, initialService) {
+  async _waitForLoadBalancerAddress(deployName, initialService, namespace = this.namespace) {
     const deadline = Date.now() + this.loadBalancerReadyTimeoutMs;
     let service = this._serviceObject(initialService);
 
@@ -153,7 +543,7 @@ class K8sBackend extends ProvisionerBackend {
       service = this._serviceObject(
         await this.coreApi.readNamespacedService({
           name: deployName,
-          namespace: this.namespace,
+          namespace,
         }),
       );
     }
@@ -164,18 +554,136 @@ class K8sBackend extends ProvisionerBackend {
     );
   }
 
-  _buildService(deployName) {
+  _agentIdFromDeployName(deployName) {
+    return String(deployName || "").replace(
+      /^(oclaw-agent-|hermes-agent-|nora-oclaw-|nora-hermes-)/,
+      "",
+    );
+  }
+
+  _bootstrapConfigMapName(deployName) {
+    return `${deployName}-bootstrap`;
+  }
+
+  _bootstrapLaunch(bootstrap) {
+    const interpreter =
+      Array.isArray(bootstrap?.interpreter) && bootstrap.interpreter.length > 0
+        ? bootstrap.interpreter
+        : ["/bin/sh", "-c"];
+    return {
+      command: interpreter,
+      args: [`. ${BOOTSTRAP_SCRIPT_PATH}`],
+    };
+  }
+
+  _bootstrapVolume(configMapName) {
+    return {
+      name: "nora-bootstrap",
+      configMap: {
+        name: configMapName,
+        defaultMode: 365,
+      },
+    };
+  }
+
+  _bootstrapVolumeMount() {
+    return {
+      name: "nora-bootstrap",
+      mountPath: BOOTSTRAP_MOUNT_PATH,
+      readOnly: true,
+    };
+  }
+
+  async _upsertBootstrapConfigMap(deployName, script, labels = {}, namespace = this.namespace) {
+    const name = this._bootstrapConfigMapName(deployName);
+    const body = {
+      apiVersion: "v1",
+      kind: "ConfigMap",
+      metadata: {
+        name,
+        namespace,
+        labels: {
+          "nora.agent.id": this._agentIdFromDeployName(deployName),
+          "nora.bootstrap": "true",
+          ...labels,
+        },
+      },
+      data: {
+        [BOOTSTRAP_CONFIGMAP_KEY]: String(script || ""),
+      },
+    };
+
+    try {
+      await this.coreApi.createNamespacedConfigMap({
+        namespace,
+        body,
+      });
+    } catch (error) {
+      if (!this._isAlreadyExistsError(error)) throw error;
+
+      const current = this._serviceObject(
+        await this.coreApi.readNamespacedConfigMap({
+          name,
+          namespace,
+        }),
+      );
+      body.metadata.resourceVersion = current?.metadata?.resourceVersion;
+      await this.coreApi.replaceNamespacedConfigMap({
+        name,
+        namespace,
+        body,
+      });
+    }
+
+    return name;
+  }
+
+  async _createOrReplaceDeployment(deployName, deployment, namespace = this.namespace) {
+    try {
+      await this.appsApi.createNamespacedDeployment({
+        namespace,
+        body: deployment,
+      });
+    } catch (error) {
+      if (!this._isAlreadyExistsError(error)) throw error;
+
+      console.warn(`[k8s] Deployment ${deployName} already exists; replacing on retry`);
+      const current = this._serviceObject(
+        await this.appsApi.readNamespacedDeployment({
+          name: deployName,
+          namespace,
+        }),
+      );
+      deployment.metadata.resourceVersion = current?.metadata?.resourceVersion;
+      await this.appsApi.replaceNamespacedDeployment({
+        name: deployName,
+        namespace,
+        body: deployment,
+      });
+    }
+  }
+
+  _buildService(
+    deployName,
+    { runtimeFamily = "openclaw", agentId = null, namespace = this.namespace } = {},
+  ) {
+    const resolvedAgentId = agentId || this._agentIdFromDeployName(deployName);
     const metadata = {
       name: deployName,
-      namespace: this.namespace,
+      namespace,
+      labels: {
+        "nora.agent.id": String(resolvedAgentId),
+        "nora.deployment.name": deployName,
+        "nora.runtime.family": runtimeFamily,
+      },
     };
     if (Object.keys(this.serviceAnnotations).length > 0) {
       metadata.annotations = this.serviceAnnotations;
     }
 
     const spec = {
-      selector: { "openclaw.agent.id": String(deployName.replace("oclaw-agent-", "")) },
-      ports: this._servicePorts(),
+      selector: { "nora.agent.id": String(resolvedAgentId) },
+      ports: this._servicePorts(runtimeFamily),
       type: this._serviceType(),
     };
     if (this._isLoadBalancerExposure()) {
@@ -192,6 +700,128 @@ class K8sBackend extends ProvisionerBackend {
       kind: "Service",
       metadata,
       spec,
+    };
+  }
+
+  async _createOrReadService(deployName, service, namespace = this.namespace) {
+    try {
+      return await this.coreApi.createNamespacedService({
+        namespace,
+        body: service,
+      });
+    } catch (error) {
+      if (this._isAlreadyExistsError(error)) {
+        return this.coreApi.readNamespacedService({
+          name: deployName,
+          namespace,
+        });
+      }
+      if (
+        this._isNodePortExposure() &&
+        service.spec.ports.some((port) => port.nodePort != null) &&
+        this._isNodePortConflictError(error)
+      ) {
+        console.warn(
+          `[k8s] Fixed NodePort allocation unavailable for ${deployName}; retrying with dynamic NodePorts`,
+        );
+        const dynamicService = {
+          ...service,
+          spec: {
+            ...service.spec,
+            ports: this._servicePortsWithoutNodePorts(service.spec.ports),
+          },
+        };
+        return this.coreApi.createNamespacedService({
+          namespace,
+          body: dynamicService,
+        });
+      }
+      throw error;
+    }
+  }
+
+  async _buildEndpointResult({
+    deployName,
+    serviceResp,
+    service,
+    runtimeFamily,
+    gatewayToken,
+    namespace = this.namespace,
+  }) {
+    const host = `${deployName}.${namespace}.svc.cluster.local`;
+    const servicePorts =
+      serviceResp?.spec?.ports || serviceResp?.body?.spec?.ports || service.spec.ports;
+    const runtimePort = this._runtimePort(runtimeFamily);
+    const secondaryPort = this._secondaryPort(runtimeFamily);
+    const secondaryPortName = this._secondaryPortName(runtimeFamily);
+
+    if (this._isLoadBalancerExposure()) {
+      const loadBalancerHost = await this._waitForLoadBalancerAddress(
+        deployName,
+        serviceResp,
+        namespace,
+      );
+      console.log(
+        `[k8s] Deployment ${deployName} created -> ${host} ` +
+          `(load balancer ${loadBalancerHost})`,
+      );
+      return {
+        containerId: deployName,
+        host,
+        gatewayToken,
+        runtimeHost: loadBalancerHost,
+        runtimePort,
+        gatewayHost: loadBalancerHost,
+        gatewayPort: secondaryPort,
+      };
+    }
+
+    if (this._isNodePortExposure()) {
+      const runtimeNodePort = servicePorts.find((port) => port.name === "runtime")?.nodePort;
+      const secondaryNodePort = servicePorts.find(
+        (port) => port.name === secondaryPortName,
+      )?.nodePort;
+      if (!runtimeNodePort || !secondaryNodePort) {
+        throw new Error(
+          `K8s NodePort exposure requires runtime and ${secondaryPortName} node ports`,
+        );
+      }
+
+      const nodePortHost =
+        process.env.K8S_RUNTIME_HOST || process.env.GATEWAY_HOST || "host.docker.internal";
+
+      console.log(
+        `[k8s] Deployment ${deployName} created -> ${host} ` +
+          `(runtime nodePort ${runtimeNodePort}, ${secondaryPortName} nodePort ${secondaryNodePort})`,
+      );
+      const result = {
+        containerId: deployName,
+        host,
+        gatewayToken,
+        runtimeHost: nodePortHost,
+        runtimePort: runtimeNodePort,
+        gatewayHost: nodePortHost,
+      };
+      if (runtimeFamily === "hermes") {
+        result.gatewayPort = secondaryNodePort;
+      } else {
+        result.gatewayHostPort = secondaryNodePort;
+      }
+      return result;
+    }
+
+    console.log(
+      `[k8s] Deployment ${deployName} created -> ${host} ` +
+        `(${secondaryPortName} ${secondaryPort}, runtime ${runtimePort})`,
+    );
+    return {
+      containerId: deployName,
+      host,
+      gatewayToken,
+      runtimeHost: host,
+      runtimePort,
+      gatewayHost: host,
+      gatewayPort: secondaryPort,
     };
   }
 
@@ -212,9 +842,84 @@ class K8sBackend extends ProvisionerBackend {
     return error?.statusCode || error?.code || error?.response?.status || null;
   }
 
+  _isNotFoundError(error) {
+    const text = this._errorBodyText(error);
+    return this._errorStatus(error) === 404 || /\b404\b|not found|NotFound/i.test(text);
+  }
+
   _isAlreadyExistsError(error) {
     const text = this._errorBodyText(error);
     return this._errorStatus(error) === 409 || /\b409\b|already exists|AlreadyExists/i.test(text);
+  }
+
+  async _waitForDeleted(kind, name, namespace, readFn, timeoutMs = 60000) {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      try {
+        await readFn();
+      } catch (error) {
+        if (this._isNotFoundError(error)) return true;
+        throw error;
+      }
+      await sleep(1000);
+    }
+
+    throw new Error(`Timed out waiting for K8s ${kind} ${name} in ${namespace} to be deleted`);
+  }
+
+  async _deleteDeploymentIfExists(deployName, namespace) {
+    try {
+      await this.appsApi.deleteNamespacedDeployment({
+        name: deployName,
+        namespace,
+        propagationPolicy: "Foreground",
+      });
+    } catch (error) {
+      if (this._isNotFoundError(error)) return false;
+      throw error;
+    }
+
+    await this._waitForDeleted("Deployment", deployName, namespace, () =>
+      this.appsApi.readNamespacedDeployment({ name: deployName, namespace }),
+    );
+    return true;
+  }
+
+  async _deleteServiceIfExists(deployName, namespace) {
+    try {
+      await this.coreApi.deleteNamespacedService({
+        name: deployName,
+        namespace,
+        propagationPolicy: "Foreground",
+      });
+    } catch (error) {
+      if (this._isNotFoundError(error)) return false;
+      throw error;
+    }
+
+    await this._waitForDeleted("Service", deployName, namespace, () =>
+      this.coreApi.readNamespacedService({ name: deployName, namespace }),
+    );
+    return true;
+  }
+
+  async _deleteBootstrapConfigMapIfExists(deployName, namespace) {
+    const name = this._bootstrapConfigMapName(deployName);
+    try {
+      await this.coreApi.deleteNamespacedConfigMap({
+        name,
+        namespace,
+        propagationPolicy: "Foreground",
+      });
+    } catch (error) {
+      if (this._isNotFoundError(error)) return false;
+      throw error;
+    }
+
+    await this._waitForDeleted("ConfigMap", name, namespace, () =>
+      this.coreApi.readNamespacedConfigMap({ name, namespace }),
+    );
+    return true;
   }
 
   _isNodePortConflictError(error) {
@@ -226,35 +931,161 @@ class K8sBackend extends ProvisionerBackend {
     );
   }
 
-  async _ensureNamespace() {
+  async _ensureNamespace(namespace = this.namespace) {
     try {
-      await this.coreApi.readNamespace({ name: this.namespace });
+      await this.coreApi.readNamespace({ name: namespace });
     } catch {
       await this.coreApi.createNamespace({
         body: {
           apiVersion: "v1",
           kind: "Namespace",
-          metadata: { name: this.namespace },
+          metadata: { name: namespace },
         },
       });
     }
   }
 
+  async _createHermes(config, deployName) {
+    const { id, name, image, vcpu, ram_mb, env } = config;
+    const namespace = this._namespaceForRuntimeFamily("hermes");
+    const imgName = image || getHermesDockerAgentImage();
+    const apiServerKey = config.gatewayToken || crypto.randomBytes(32).toString("hex");
+
+    await this._ensureNamespace(namespace);
+    console.log(`[k8s] Creating Hermes deployment ${deployName}`);
+
+    const hermesBootstrap = buildContainerBootstrap(buildHermesStartCommand(), {
+      shell: "/bin/bash",
+      login: true,
+    });
+    const bootstrapConfigMapName = await this._upsertBootstrapConfigMap(
+      deployName,
+      hermesBootstrap.script,
+      {
+        "nora.agent.id": String(id),
+        "nora.deployment.name": deployName,
+        "nora.runtime.family": "hermes",
+      },
+      namespace,
+    );
+    const hermesLaunch = this._bootstrapLaunch(hermesBootstrap);
+
+    const envVars = Object.entries({
+      ...(env || {}),
+      HERMES_HOME,
+      HOME: `${HERMES_HOME}/home`,
+      API_SERVER_ENABLED: "true",
+      API_SERVER_HOST: "0.0.0.0",
+      API_SERVER_PORT: String(HERMES_RUNTIME_PORT),
+      API_SERVER_KEY: apiServerKey,
+      GATEWAY_HEALTH_URL: `http://127.0.0.1:${HERMES_RUNTIME_PORT}`,
+      MESSAGING_CWD: HERMES_WORKSPACE,
+      TERMINAL_CWD: HERMES_WORKSPACE,
+    }).map(([key, value]) => ({ name: key, value: String(value) }));
+
+    const deployment = {
+      apiVersion: "apps/v1",
+      kind: "Deployment",
+      metadata: {
+        name: deployName,
+        namespace,
+        labels: {
+          app: "hermes-agent",
+          "nora.agent.id": String(id),
+          "nora.deployment.name": deployName,
+          "nora.runtime.family": "hermes",
+        },
+      },
+      spec: {
+        replicas: 1,
+        selector: {
+          matchLabels: { "nora.agent.id": String(id) },
+        },
+        template: {
+          metadata: {
+            labels: {
+              app: "hermes-agent",
+              "nora.agent.id": String(id),
+              "nora.deployment.name": deployName,
+              "nora.runtime.family": "hermes",
+            },
+          },
+          spec: {
+            hostname: safeHostname(name || deployName, `hermes-${id}`),
+            containers: [
+              {
+                name: "agent",
+                image: imgName,
+                command: hermesLaunch.command,
+                args: hermesLaunch.args,
+                workingDir: HERMES_HOME,
+                env: envVars,
+                volumeMounts: [this._bootstrapVolumeMount()],
+                ports: [
+                  { name: "runtime", containerPort: HERMES_RUNTIME_PORT },
+                  { name: "dashboard", containerPort: HERMES_DASHBOARD_PORT },
+                ],
+                resources: {
+                  requests: {
+                    cpu: `${(vcpu || 2) * 1000}m`,
+                    memory: `${ram_mb || 2048}Mi`,
+                  },
+                  limits: {
+                    cpu: `${(vcpu || 2) * 1000}m`,
+                    memory: `${ram_mb || 2048}Mi`,
+                  },
+                },
+              },
+            ],
+            volumes: [this._bootstrapVolume(bootstrapConfigMapName)],
+          },
+        },
+      },
+    };
+
+    await this._createOrReplaceDeployment(deployName, deployment, namespace);
+
+    const service = this._buildService(deployName, {
+      runtimeFamily: "hermes",
+      agentId: id,
+      namespace,
+    });
+    const serviceResp = await this._createOrReadService(deployName, service, namespace);
+    return this._buildEndpointResult({
+      deployName,
+      serviceResp,
+      service,
+      runtimeFamily: "hermes",
+      gatewayToken: apiServerKey,
+      namespace,
+    });
+  }
+
   async create(config) {
     const { id, name, image, vcpu, ram_mb, env, templatePayload, sandboxProfile } = config;
-    const deployName = `oclaw-agent-${id}`;
+    const runtimeFamily = String(config.runtimeFamily || "openclaw")
+      .trim()
+      .toLowerCase();
+    const deployName = safeK8sName(
+      config.container_name || defaultDeployNameForRuntime(runtimeFamily, id, name),
+      defaultDeployNameForRuntime(runtimeFamily, id, name),
+    );
+    if (runtimeFamily === "hermes") {
+      return this._createHermes(config, deployName);
+    }
+    const namespace = this._namespaceForRuntimeFamily("openclaw");
     const isNemoClaw = sandboxProfile === "nemoclaw";
     const nemoModel =
       env?.NEMOCLAW_MODEL ||
       process.env.NEMOCLAW_DEFAULT_MODEL ||
       "nvidia/nemotron-3-super-120b-a12b";
 
-    await this._ensureNamespace();
+    await this._ensureNamespace(namespace);
 
     console.log(`[k8s] Creating deployment ${deployName}`);
 
     // Generate per-agent Gateway auth token
-    const gatewayToken = crypto.randomBytes(16).toString("hex");
+    const gatewayToken = config.gatewayToken || crypto.randomBytes(16).toString("hex");
 
     // Derive deterministic Ed25519 device identity from gatewayToken
     const ED25519_SPKI_PREFIX = Buffer.from("302a300506032b6570032100", "hex");
@@ -367,27 +1198,44 @@ class K8sBackend extends ProvisionerBackend {
         }).replace(/'/g, "'\\''")}' > /opt/openclaw/policy.yaml && `
       : "";
     const gatewayScript =
+      "set -eu\n" +
       ensureOpenClawCmd +
       "mkdir -p ~/.openclaw/devices && " +
       `echo '{"gateway":{"port":${OPENCLAW_GATEWAY_PORT},"bind":"lan","mode":"local"}}' > ~/.openclaw/openclaw.json && ` +
       `echo '${escapedPaired}' > ~/.openclaw/devices/paired.json && ` +
       `echo '{}' > ~/.openclaw/devices/pending.json && ` +
       nemoPolicyCmd +
+      buildOpenClawRuntimeAuthBootstrapCommand() +
       templateBootstrapCmd +
       runtimeBootstrapCmd +
       '"$OPENCLAW_BIN" gateway --port ' +
       OPENCLAW_GATEWAY_PORT +
       ` --password ${gatewayToken}`;
-    const gatewayLaunch = toK8sLaunch(buildContainerBootstrap(gatewayScript));
+    const gatewayBootstrap = buildContainerBootstrap(gatewayScript);
+    const bootstrapConfigMapName = await this._upsertBootstrapConfigMap(
+      deployName,
+      gatewayBootstrap.script,
+      {
+        "nora.agent.id": String(id),
+        "nora.deployment.name": deployName,
+        "nora.runtime.family": "openclaw",
+        "openclaw.agent.id": String(id),
+      },
+      namespace,
+    );
+    const gatewayLaunch = this._bootstrapLaunch(gatewayBootstrap);
 
     const deployment = {
       apiVersion: "apps/v1",
       kind: "Deployment",
       metadata: {
         name: deployName,
-        namespace: this.namespace,
+        namespace,
         labels: {
           app: "openclaw-agent",
+          "nora.agent.id": String(id),
+          "nora.deployment.name": deployName,
+          "nora.runtime.family": "openclaw",
           "openclaw.agent.id": String(id),
         },
       },
@@ -400,6 +1248,9 @@ class K8sBackend extends ProvisionerBackend {
           metadata: {
             labels: {
               app: "openclaw-agent",
+              "nora.agent.id": String(id),
+              "nora.deployment.name": deployName,
+              "nora.runtime.family": "openclaw",
               "openclaw.agent.id": String(id),
             },
           },
@@ -420,6 +1271,7 @@ class K8sBackend extends ProvisionerBackend {
                 args: gatewayLaunch.args,
                 workingDir: isNemoClaw ? "/sandbox" : undefined,
                 env: envVars,
+                volumeMounts: [this._bootstrapVolumeMount()],
                 ports: [
                   { name: "gateway", containerPort: OPENCLAW_GATEWAY_PORT },
                   { name: "runtime", containerPort: AGENT_RUNTIME_PORT },
@@ -436,150 +1288,62 @@ class K8sBackend extends ProvisionerBackend {
                 },
               },
             ],
+            volumes: [this._bootstrapVolume(bootstrapConfigMapName)],
           },
         },
       },
     };
 
-    try {
-      await this.appsApi.createNamespacedDeployment({
-        namespace: this.namespace,
-        body: deployment,
-      });
-    } catch (error) {
-      if (!this._isAlreadyExistsError(error)) throw error;
-      console.warn(`[k8s] Deployment ${deployName} already exists; reusing on retry`);
-    }
+    await this._createOrReplaceDeployment(deployName, deployment, namespace);
 
     // Create a service that exposes both the control-plane gateway and runtime
     // sidecar. ClusterIP is the in-cluster default, NodePort supports kind/local
     // verification, and LoadBalancer covers cloud-managed clusters.
-    const service = this._buildService(deployName);
+    const service = this._buildService(deployName, {
+      runtimeFamily: "openclaw",
+      agentId: id,
+      namespace,
+    });
+    const serviceResp = await this._createOrReadService(deployName, service, namespace);
+    return this._buildEndpointResult({
+      deployName,
+      serviceResp,
+      service,
+      runtimeFamily: "openclaw",
+      gatewayToken,
+      namespace,
+    });
+  }
 
-    let serviceResp = null;
-    try {
-      serviceResp = await this.coreApi.createNamespacedService({
-        namespace: this.namespace,
-        body: service,
-      });
-    } catch (error) {
-      if (this._isAlreadyExistsError(error)) {
-        serviceResp = await this.coreApi.readNamespacedService({
-          name: deployName,
-          namespace: this.namespace,
-        });
-      } else if (
-        this._isNodePortExposure() &&
-        service.spec.ports.some((port) => port.nodePort != null) &&
-        this._isNodePortConflictError(error)
-      ) {
-        console.warn(
-          `[k8s] Fixed NodePort allocation unavailable for ${deployName}; retrying with dynamic NodePorts`,
-        );
-        const dynamicService = {
-          ...service,
-          spec: {
-            ...service.spec,
-            ports: this._servicePortsWithoutNodePorts(service.spec.ports),
-          },
-        };
-        serviceResp = await this.coreApi.createNamespacedService({
-          namespace: this.namespace,
-          body: dynamicService,
-        });
-      } else {
-        throw error;
-      }
-    }
+  async destroy(containerId, options = {}) {
+    const deployName = containerId;
+    if (!deployName) return;
 
-    const host = `${deployName}.${this.namespace}.svc.cluster.local`;
-    // v1.x returns the object directly; fall back to `.body` for belt-and-braces.
-    const servicePorts =
-      serviceResp?.spec?.ports || serviceResp?.body?.spec?.ports || service.spec.ports;
+    const namespaces = this._candidateNamespacesForDestroy(deployName, options);
+    console.log(`[k8s] Destroying deployment ${deployName} in ${namespaces.join(", ")}`);
 
-    if (this._isLoadBalancerExposure()) {
-      const loadBalancerHost = await this._waitForLoadBalancerAddress(deployName, serviceResp);
-      console.log(
-        `[k8s] Deployment ${deployName} created -> ${host} ` +
-          `(load balancer ${loadBalancerHost})`,
-      );
-      return {
-        containerId: deployName,
-        host,
-        gatewayToken,
-        runtimeHost: loadBalancerHost,
-        runtimePort: AGENT_RUNTIME_PORT,
-        gatewayHost: loadBalancerHost,
-        gatewayPort: OPENCLAW_GATEWAY_PORT,
-      };
-    }
-
-    if (this._isNodePortExposure()) {
-      const runtimeNodePort = servicePorts.find((port) => port.name === "runtime")?.nodePort;
-      const gatewayNodePort = servicePorts.find((port) => port.name === "gateway")?.nodePort;
-      if (!runtimeNodePort || !gatewayNodePort) {
-        throw new Error("K8s NodePort exposure requires runtime and gateway node ports");
-      }
-
-      const nodePortHost =
-        process.env.K8S_RUNTIME_HOST || process.env.GATEWAY_HOST || "host.docker.internal";
-
-      console.log(
-        `[k8s] Deployment ${deployName} created -> ${host} ` +
-          `(runtime nodePort ${runtimeNodePort}, gateway nodePort ${gatewayNodePort})`,
-      );
-      return {
-        containerId: deployName,
-        host,
-        gatewayToken,
-        runtimeHost: nodePortHost,
-        runtimePort: runtimeNodePort,
-        gatewayHost: nodePortHost,
-        gatewayHostPort: gatewayNodePort,
-      };
+    let deletedAny = false;
+    for (const namespace of namespaces) {
+      const deletedDeployment = await this._deleteDeploymentIfExists(deployName, namespace);
+      const deletedService = await this._deleteServiceIfExists(deployName, namespace);
+      const deletedConfigMap = await this._deleteBootstrapConfigMapIfExists(deployName, namespace);
+      deletedAny = deletedAny || deletedDeployment || deletedService || deletedConfigMap;
     }
 
     console.log(
-      `[k8s] Deployment ${deployName} created -> ${host} ` +
-        `(gateway ${OPENCLAW_GATEWAY_PORT}, runtime ${AGENT_RUNTIME_PORT})`,
+      deletedAny
+        ? `[k8s] Deployment ${deployName} deleted`
+        : `[k8s] Deployment ${deployName} was already absent`,
     );
-    return {
-      containerId: deployName,
-      host,
-      gatewayToken,
-      runtimeHost: host,
-      runtimePort: AGENT_RUNTIME_PORT,
-      gatewayHost: host,
-      gatewayPort: OPENCLAW_GATEWAY_PORT,
-    };
-  }
-
-  async destroy(containerId) {
-    const deployName = containerId;
-    console.log(`[k8s] Destroying deployment ${deployName}`);
-
-    try {
-      await this.appsApi.deleteNamespacedDeployment({
-        name: deployName,
-        namespace: this.namespace,
-      });
-    } catch {
-      // already gone
-    }
-    try {
-      await this.coreApi.deleteNamespacedService({ name: deployName, namespace: this.namespace });
-    } catch {
-      // already gone
-    }
-    console.log(`[k8s] Deployment ${deployName} deleted`);
   }
 
   async status(containerId) {
     const deployName = containerId;
+    const namespace = this._namespaceForDeployName(deployName);
     try {
       const res = await this.appsApi.readNamespacedDeployment({
         name: deployName,
-        namespace: this.namespace,
+        namespace,
       });
       // v1.x returns the object directly; fall back to `.body` for belt-and-braces.
       const status = res?.status || res?.body?.status || {};
@@ -590,14 +1354,161 @@ class K8sBackend extends ProvisionerBackend {
     }
   }
 
+  async stats(containerId) {
+    const deployName = containerId;
+    const namespace = this._namespaceForDeployName(deployName);
+    let deployment = null;
+    let running = false;
+    let uptimeSeconds = 0;
+
+    try {
+      const res = await this.appsApi.readNamespacedDeployment({
+        name: deployName,
+        namespace,
+      });
+      deployment = res?.body || res || null;
+      running = (deployment?.status?.availableReplicas || 0) > 0;
+    } catch {
+      // Keep the same best-effort behavior as status(); callers still get a stable payload.
+    }
+
+    let runningPod = null;
+    try {
+      runningPod = await this._findRunningPod(deployName, namespace);
+      if (runningPod) {
+        running = true;
+        uptimeSeconds = podUptimeSeconds(runningPod);
+      }
+    } catch {
+      // Fall through to unavailable telemetry below.
+    }
+
+    if (!running || !runningPod) {
+      return buildUnavailableTelemetry({
+        backendType: "k8s",
+        running,
+        uptime_seconds: uptimeSeconds,
+        capabilities: K8S_UNAVAILABLE_CAPABILITIES,
+      });
+    }
+
+    try {
+      const podMetrics = await this._readPodMetrics(runningPod.metadata.name, namespace);
+      const current = this._buildK8sCurrentSample({
+        deployment,
+        podMetrics,
+        running,
+        uptimeSeconds,
+      });
+
+      return buildTelemetry({
+        backendType: "k8s",
+        capabilities: {
+          ...K8S_METRICS_CAPABILITIES,
+          cpu: current.cpu_percent != null,
+          memory: current.memory_usage_mb != null || current.memory_limit_mb != null,
+        },
+        current,
+      });
+    } catch {
+      return buildUnavailableTelemetry({
+        backendType: "k8s",
+        running,
+        uptime_seconds: uptimeSeconds,
+        capabilities: K8S_UNAVAILABLE_CAPABILITIES,
+      });
+    }
+  }
+
+  async _readPodMetrics(podName, namespace = this.namespace) {
+    if (!this.metricsApi || typeof this.metricsApi.getNamespacedCustomObject !== "function") {
+      throw new Error("Kubernetes metrics API is not available");
+    }
+
+    const res = await this.metricsApi.getNamespacedCustomObject({
+      group: "metrics.k8s.io",
+      version: "v1beta1",
+      namespace,
+      plural: "pods",
+      name: podName,
+    });
+    return res?.body || res;
+  }
+
+  _buildK8sCurrentSample({ deployment, podMetrics, running, uptimeSeconds }) {
+    const metricContainers = Array.isArray(podMetrics?.containers) ? podMetrics.containers : [];
+    const metricContainerNames = new Set(
+      metricContainers.map((container) => container?.name).filter(Boolean),
+    );
+    const usage = metricContainers.reduce(
+      (acc, container) => {
+        const cpu = parseK8sCpuCores(container?.usage?.cpu);
+        const memory = parseK8sMemoryBytes(container?.usage?.memory);
+        if (cpu != null) acc.cpuCores += cpu;
+        if (memory != null) acc.memoryBytes += memory;
+        return acc;
+      },
+      { cpuCores: 0, memoryBytes: 0 },
+    );
+    const hasCpuUsage = metricContainers.some(
+      (container) => parseK8sCpuCores(container?.usage?.cpu) != null,
+    );
+    const hasMemoryUsage = metricContainers.some(
+      (container) => parseK8sMemoryBytes(container?.usage?.memory) != null,
+    );
+    const limits = this._podResourceLimits(deployment, metricContainerNames);
+    const cpuPercent =
+      hasCpuUsage && limits.cpuCores > 0
+        ? roundMetric((usage.cpuCores / limits.cpuCores) * 100)
+        : null;
+    const memoryUsageMb = hasMemoryUsage ? bytesToMegabytes(usage.memoryBytes, 0) : null;
+    const memoryLimitMb = limits.memoryBytes > 0 ? bytesToMegabytes(limits.memoryBytes, 0) : null;
+    const memoryPercent =
+      hasMemoryUsage && limits.memoryBytes > 0
+        ? roundMetric((usage.memoryBytes / limits.memoryBytes) * 100)
+        : null;
+
+    return {
+      recorded_at: podMetrics?.timestamp || new Date().toISOString(),
+      running,
+      uptime_seconds: uptimeSeconds,
+      cpu_percent: cpuPercent,
+      memory_usage_mb: memoryUsageMb,
+      memory_limit_mb: memoryLimitMb,
+      memory_percent: memoryPercent,
+    };
+  }
+
+  _podResourceLimits(deployment, metricContainerNames = new Set()) {
+    const containers = deployment?.spec?.template?.spec?.containers || [];
+    const relevantContainers =
+      metricContainerNames.size > 0
+        ? containers.filter((container) => metricContainerNames.has(container?.name))
+        : containers;
+
+    return relevantContainers.reduce(
+      (acc, container) => {
+        const limits = container?.resources?.limits || {};
+        const requests = container?.resources?.requests || {};
+        const cpu = parseK8sCpuCores(limits.cpu ?? requests.cpu);
+        const memory = parseK8sMemoryBytes(limits.memory ?? requests.memory);
+        if (cpu != null) acc.cpuCores += cpu;
+        if (memory != null) acc.memoryBytes += memory;
+        return acc;
+      },
+      { cpuCores: 0, memoryBytes: 0 },
+    );
+  }
+
   async stop(containerId) {
     const deployName = containerId;
+    const namespace = this._namespaceForDeployName(deployName);
     console.log(`[k8s] Stopping deployment ${deployName} (scaling to 0)`);
     // v1.x's auto-selected Content-Type for patch is application/json-patch+json,
     // so the body MUST be a JSON Patch ops array (RFC 6902), not a merge object.
     await this.appsApi.patchNamespacedDeployment({
       name: deployName,
-      namespace: this.namespace,
+      namespace,
       body: [{ op: "replace", path: "/spec/replicas", value: 0 }],
     });
     console.log(`[k8s] Deployment ${deployName} scaled to 0`);
@@ -605,10 +1516,11 @@ class K8sBackend extends ProvisionerBackend {
 
   async start(containerId) {
     const deployName = containerId;
+    const namespace = this._namespaceForDeployName(deployName);
     console.log(`[k8s] Starting deployment ${deployName} (scaling to 1)`);
     await this.appsApi.patchNamespacedDeployment({
       name: deployName,
-      namespace: this.namespace,
+      namespace,
       body: [{ op: "replace", path: "/spec/replicas", value: 1 }],
     });
     console.log(`[k8s] Deployment ${deployName} scaled to 1`);
@@ -616,10 +1528,11 @@ class K8sBackend extends ProvisionerBackend {
 
   async restart(containerId) {
     const deployName = containerId;
+    const namespace = this._namespaceForDeployName(deployName);
     console.log(`[k8s] Restarting deployment ${deployName}`);
     await this.appsApi.patchNamespacedDeployment({
       name: deployName,
-      namespace: this.namespace,
+      namespace,
       body: [
         {
           op: "add",
@@ -637,16 +1550,100 @@ class K8sBackend extends ProvisionerBackend {
    */
   async exec(containerId, opts = {}) {
     const deployName = containerId;
-    const exec = new k8s.Exec(this.kc);
+    const namespace = this._namespaceForDeployName(deployName);
+    const execClient = new k8s.Exec(this.kc);
 
     // Find a running pod for this deployment
-    const labelSelector = `openclaw.agent.id=${deployName.replace("oclaw-agent-", "")}`;
-    const pods = await this.coreApi.listNamespacedPod({ namespace: this.namespace, labelSelector });
-    const podItems = pods?.items || pods?.body?.items || [];
-    const runningPod = podItems.find((p) => p.status?.phase === "Running");
+    const runningPod = await this._findRunningPod(deployName, namespace);
     if (!runningPod) return null;
 
-    return { podName: runningPod.metadata.name, exec, namespace: this.namespace };
+    const { PassThrough } = require("stream");
+    const stdout = new PassThrough();
+    const stderr = new PassThrough();
+    const stdin = opts.cmd ? null : new PassThrough();
+    const stream = stdout;
+    stderr.on("data", (chunk) => stdout.write(chunk));
+
+    let exitCode = 0;
+    let statusSeen = false;
+    let resolveStatus;
+    const statusPromise = new Promise((resolve) => {
+      resolveStatus = resolve;
+    });
+    const statusCallback = (status) => {
+      statusSeen = true;
+      exitCode = this._execExitCode(status);
+      resolveStatus(status);
+      stdout.end();
+    };
+
+    const ws = await execClient.exec(
+      namespace,
+      runningPod.metadata.name,
+      "agent",
+      opts.cmd || ["/bin/sh", "-c", "command -v bash >/dev/null 2>&1 && exec bash || exec sh"],
+      stdout,
+      stderr,
+      stdin,
+      opts.tty !== false,
+      statusCallback,
+    );
+
+    const originalDestroy = stream.destroy.bind(stream);
+    stream.destroy = (...args) => {
+      try {
+        ws.close();
+      } catch {
+        // Ignore already-closed sockets.
+      }
+      return originalDestroy(...args);
+    };
+
+    return {
+      podName: runningPod.metadata.name,
+      namespace,
+      exec: {
+        inspect: async () => {
+          if (!statusSeen) {
+            await Promise.race([
+              statusPromise,
+              new Promise((resolve) => setTimeout(resolve, 1000)),
+            ]);
+          }
+          return { ExitCode: exitCode };
+        },
+        resize: async () => {},
+      },
+      stream,
+      stdin,
+    };
+  }
+
+  _execExitCode(status = {}) {
+    if (status?.status === "Success") return 0;
+    const causes = status?.details?.causes || [];
+    const exitCodeCause = causes.find((cause) => cause?.reason === "ExitCode");
+    const parsed = Number.parseInt(exitCodeCause?.message, 10);
+    return Number.isFinite(parsed) ? parsed : 1;
+  }
+
+  async _findRunningPod(deployName, namespace = this._namespaceForDeployName(deployName)) {
+    const agentId = this._agentIdFromDeployName(deployName);
+    const selectors = [
+      `nora.deployment.name=${deployName}`,
+      `nora.agent.id=${agentId}`,
+      `openclaw.agent.id=${agentId}`,
+    ];
+    for (const labelSelector of selectors) {
+      const pods = await this.coreApi.listNamespacedPod({
+        namespace,
+        labelSelector,
+      });
+      const podItems = pods?.items || pods?.body?.items || [];
+      const runningPod = podItems.find((p) => p.status?.phase === "Running");
+      if (runningPod) return runningPod;
+    }
+    return null;
   }
 
   /**
@@ -654,16 +1651,14 @@ class K8sBackend extends ProvisionerBackend {
    */
   async logs(containerId, opts = {}) {
     const deployName = containerId;
+    const namespace = this._namespaceForDeployName(deployName);
     const log = new k8s.Log(this.kc);
 
-    const labelSelector = `openclaw.agent.id=${deployName.replace("oclaw-agent-", "")}`;
-    const pods = await this.coreApi.listNamespacedPod({ namespace: this.namespace, labelSelector });
-    const podItems = pods?.items || pods?.body?.items || [];
-    const runningPod = podItems.find((p) => p.status?.phase === "Running");
+    const runningPod = await this._findRunningPod(deployName, namespace);
     if (!runningPod) return null;
 
     const stream = new (require("stream").PassThrough)();
-    await log.log(this.namespace, runningPod.metadata.name, "agent", stream, {
+    await log.log(namespace, runningPod.metadata.name, "agent", stream, {
       follow: opts.follow !== false,
       tailLines: opts.tail || 100,
       timestamps: true,

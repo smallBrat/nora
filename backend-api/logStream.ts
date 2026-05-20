@@ -182,6 +182,7 @@ function attachLogStream(server) {
                 message: `Log stream error: ${err.message}`,
               }),
             );
+            ws.close();
           }
         });
       } catch (err) {
@@ -196,6 +197,11 @@ function attachLogStream(server) {
       }
 
       ws.on("close", () => {
+        if (logStream && typeof logStream.destroy === "function") {
+          logStream.destroy();
+        }
+      });
+      ws.on("error", () => {
         if (logStream && typeof logStream.destroy === "function") {
           logStream.destroy();
         }

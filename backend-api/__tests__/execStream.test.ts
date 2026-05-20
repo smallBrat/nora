@@ -1,5 +1,6 @@
 // @ts-nocheck
 const { EventEmitter } = require("events");
+const { PassThrough } = require("stream");
 const jwt = require("jsonwebtoken");
 
 const mockDb = { query: jest.fn() };
@@ -163,5 +164,60 @@ describe("exec stream websocket auth", () => {
       message: "No container ID — agent may still be provisioning",
     });
     expect(ws.closed).toBe(true);
+  });
+
+  it("forwards non-docker backend exec output and input over the websocket", async () => {
+    const backendStream = new PassThrough();
+    const backendStdin = new PassThrough();
+    const resize = jest.fn().mockResolvedValue(undefined);
+    const stdinChunks = [];
+    backendStdin.on("data", (chunk) => stdinChunks.push(chunk.toString("utf8")));
+
+    mockDb.query.mockResolvedValueOnce({
+      rows: [
+        {
+          id: "agent-k8s",
+          name: "K8s Agent",
+          status: "running",
+          container_id: "oclaw-agent-k8s",
+          backend_type: "k8s",
+          deploy_target: "k8s",
+          user_id: "owner-1",
+        },
+      ],
+    });
+    mockContainerManager.status.mockResolvedValueOnce({ running: true });
+    mockContainerManager.exec.mockResolvedValueOnce({
+      stream: backendStream,
+      stdin: backendStdin,
+      exec: { resize },
+    });
+
+    const ws = openExecStream("agent-k8s", { id: "admin-1", role: "admin" });
+    await flushAsyncWork();
+
+    backendStream.write("ready\n");
+    ws.emit("message", JSON.stringify({ type: "input", data: "echo NORA_WS_EXEC_OK\n" }));
+    ws.emit("message", JSON.stringify({ type: "resize", cols: 100, rows: 30 }));
+    await flushAsyncWork();
+
+    expect(ws.sent).toContainEqual({
+      type: "system",
+      message: "Terminal for k8s backend — limited TTY support",
+    });
+    expect(ws.sent).toContainEqual({
+      type: "system",
+      message: "Connected to K8s Agent via k8s",
+    });
+    expect(ws.sent).toContainEqual({
+      type: "output",
+      data: "ready\n",
+    });
+    expect(stdinChunks.join("")).toContain("echo NORA_WS_EXEC_OK\n");
+    expect(resize).toHaveBeenCalledWith({ h: 30, w: 100 });
+
+    ws.close();
+    expect(backendStdin.destroyed || backendStdin.writableEnded).toBe(true);
+    expect(backendStream.destroyed).toBe(true);
   });
 });

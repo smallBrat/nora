@@ -57,6 +57,23 @@ function throwIfAborted(abortSignal, stage = "docker create") {
   throw reason;
 }
 
+function safeContainerName(prefix, name, id) {
+  const suffix =
+    String(id || Date.now().toString(36))
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(-12) || "agent";
+  const maxSlugLength = Math.max(8, 63 - prefix.length - suffix.length - 2);
+  const slug =
+    String(name || "agent")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, maxSlugLength) || "agent";
+  return `${prefix}-${slug}-${suffix}`;
+}
+
 class DockerBackend extends ProvisionerBackend {
   constructor() {
     super();
@@ -315,7 +332,7 @@ class DockerBackend extends ProvisionerBackend {
       templatePayload,
       abortSignal,
     } = config;
-    const containerName = container_name || `oclaw-agent-${id}`;
+    const containerName = container_name || safeContainerName("nora-oclaw", name, id);
     let container = null;
 
     const defaultImage = getStandardDockerAgentImage();
@@ -698,9 +715,9 @@ class DockerBackend extends ProvisionerBackend {
       const gatewayHostPort = portBindings?.[0]?.HostPort || null;
 
       console.log(
-        `[docker] Container ${container.id} started at ${host} (gateway port 18789, host port ${gatewayHostPort || "none"})`,
+        `[docker] Container ${containerName} (${container.id}) started at ${host} (gateway port 18789, host port ${gatewayHostPort || "none"})`,
       );
-      return { containerId: container.id, host, gatewayToken, containerName, gatewayHostPort };
+      return { containerId: containerName, host, gatewayToken, containerName, gatewayHostPort };
     } catch (error) {
       if (container) {
         try {

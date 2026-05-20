@@ -2,7 +2,7 @@
 /**
  * Provisioner Backend Interface
  * Every backend must implement: create(agentConfig) -> { containerId, host }
- *                               destroy(containerId) -> void
+ *                               destroy(containerId, options?) -> void
  *                               status(containerId)  -> { running: bool, uptime, cpu, memory }
  */
 
@@ -21,9 +21,10 @@ class ProvisionerBackend {
   /**
    * Destroy a running agent.
    * @param {string} containerId
+   * @param {Object} [options]
    * @returns {Promise<void>}
    */
-  async destroy(containerId) {
+  async destroy(containerId, options = {}) {
     throw new Error("destroy() not implemented");
   }
 

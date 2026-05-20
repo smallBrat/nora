@@ -15,6 +15,25 @@ const SCREENSHOT_DIR =
 const K8S_DOCS_SCREENSHOT_DIR =
   process.env.NORA_K8S_SCREENSHOT_DIR ||
   path.resolve(__dirname, "../../docs/images/provisioner-backends/k8s/_nora");
+const DOCS_IMAGES_ROOT =
+  process.env.NORA_DOCS_IMAGES_ROOT ||
+  path.resolve(__dirname, "../../docs/images");
+const DOCS_DIRS = {
+  operator: path.join(DOCS_IMAGES_ROOT, "operator"),
+  admin: path.join(DOCS_IMAGES_ROOT, "admin"),
+  concepts: path.join(DOCS_IMAGES_ROOT, "concepts"),
+  configuration: path.join(DOCS_IMAGES_ROOT, "configuration"),
+  deploy: path.join(DOCS_IMAGES_ROOT, "guides/deploy"),
+  providers: path.join(DOCS_IMAGES_ROOT, "guides/providers"),
+  integrations: path.join(DOCS_IMAGES_ROOT, "guides/integrations"),
+  channels: path.join(DOCS_IMAGES_ROOT, "guides/channels"),
+  alerts: path.join(DOCS_IMAGES_ROOT, "guides/alert-rules"),
+  monitoring: path.join(DOCS_IMAGES_ROOT, "guides/monitoring"),
+  agentHub: path.join(DOCS_IMAGES_ROOT, "guides/agent-hub"),
+  backups: path.join(DOCS_IMAGES_ROOT, "guides/backups"),
+  nemoclaw: path.join(DOCS_IMAGES_ROOT, "guides/nemoclaw"),
+  support: path.join(DOCS_IMAGES_ROOT, "support"),
+};
 const DB_CONTAINER =
   process.env.NORA_SCREENSHOT_DB_CONTAINER || "nora-postgres-1";
 const DB_USER = process.env.NORA_SCREENSHOT_DB_USER || process.env.DB_USER || "nora";
@@ -67,6 +86,7 @@ const IDS = {
     queued: "33333333-3333-4333-8333-333333333333",
     stopped: "44444444-4444-4444-8444-444444444444",
     hermes: "12121212-1212-4121-8121-121212121212",
+    nemoclaw: "13131313-1313-4131-8131-131313131313",
   },
   snapshots: {
     presetSignalDesk: "55555555-5555-4555-8555-555555555551",
@@ -90,6 +110,27 @@ const IDS = {
     submitted: "99999999-9999-4999-8999-999999999994",
     reported: "99999999-9999-4999-8999-999999999995",
     stopped: "99999999-9999-4999-8999-999999999996",
+  },
+  workspaces: {
+    default: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  },
+  channels: {
+    slack: "cccc1111-cccc-4ccc-8ccc-cccccccccc01",
+    webhook: "cccc1111-cccc-4ccc-8ccc-cccccccccc02",
+  },
+  integrations: {
+    slack: "deadbeef-1111-4111-8111-111111111111",
+    github: "deadbeef-2222-4222-8222-222222222222",
+  },
+  alerts: {
+    cost: "feedface-1111-4111-8111-111111111111",
+    error: "feedface-2222-4222-8222-222222222222",
+  },
+  backups: {
+    daily: "ba6c0000-1111-4111-8111-111111111111",
+    weekly: "ba6c0000-2222-4222-8222-222222222222",
+    onDemand: "ba6c0000-3333-4333-8333-333333333333",
+    schedule: "ba6c0000-4444-4444-8444-444444444444",
   },
 };
 
@@ -1911,13 +1952,33 @@ INSERT INTO agents (
     NOW() - INTERVAL '3 hours',
     'standard',
     NULL
+  ),
+  (
+    ${sqlLiteral(IDS.agents.nemoclaw)},
+    ${sqlLiteral(operatorId)},
+    'NemoClaw Compliance Agent',
+    'running',
+    'docker',
+    'worker-04',
+    'host.docker.internal',
+    'nora-nemoclaw-compliance',
+    'nora-nemoclaw-agent:local',
+    4,
+    8192,
+    80,
+    NOW() - INTERVAL '34 minutes',
+    'nemoclaw',
+    18791
   );
+
+UPDATE agents SET sandbox_profile = 'nemoclaw' WHERE id = ${sqlLiteral(IDS.agents.nemoclaw)};
 
 INSERT INTO deployments (agent_id, status) VALUES
   (${sqlLiteral(IDS.agents.primary)}, 'running'),
   (${sqlLiteral(IDS.agents.support)}, 'warning'),
   (${sqlLiteral(IDS.agents.queued)}, 'queued'),
-  (${sqlLiteral(IDS.agents.stopped)}, 'stopped');
+  (${sqlLiteral(IDS.agents.stopped)}, 'stopped'),
+  (${sqlLiteral(IDS.agents.nemoclaw)}, 'running');
 
 INSERT INTO container_stats (
   agent_id,
@@ -2069,6 +2130,222 @@ ${eventRows
 );`
   )
   .join("\n\n")}
+
+-- Workspace + members (deterministic IDs for /app/workspaces/[id]/... routes).
+DELETE FROM workspaces WHERE user_id IN (${sqlLiteral(operatorId)});
+
+INSERT INTO workspaces (id, user_id, name, created_at) VALUES
+  (
+    ${sqlLiteral(IDS.workspaces.default)},
+    ${sqlLiteral(operatorId)},
+    'Operations',
+    NOW() - INTERVAL '7 days'
+  )
+ON CONFLICT (id) DO UPDATE SET
+  user_id = EXCLUDED.user_id,
+  name = EXCLUDED.name;
+
+INSERT INTO workspace_members (workspace_id, user_id, role) VALUES
+  (${sqlLiteral(IDS.workspaces.default)}, ${sqlLiteral(operatorId)}, 'owner'),
+  (${sqlLiteral(IDS.workspaces.default)}, ${sqlLiteral(communityId)}, 'editor'),
+  (${sqlLiteral(IDS.workspaces.default)}, ${sqlLiteral(adminId)}, 'viewer')
+ON CONFLICT (workspace_id, user_id) DO NOTHING;
+
+-- Integration catalog rows are normally seeded by app startup. Make sure the two
+-- providers referenced below exist so foreign keys resolve.
+INSERT INTO integration_catalog (id, name, icon, category, description, auth_type, config_schema, enabled) VALUES
+  ('slack', 'Slack', 'slack', 'messaging', 'Post messages and listen to Slack channels.', 'oauth2', '{}', true),
+  ('github', 'GitHub', 'github', 'developer', 'Read repositories, issues, and pull requests.', 'api_key', '{}', true)
+ON CONFLICT (id) DO UPDATE SET
+  name = EXCLUDED.name,
+  category = EXCLUDED.category,
+  auth_type = EXCLUDED.auth_type,
+  enabled = true;
+
+-- Connected accounts (Integrations panel on the operator's primary agent).
+DELETE FROM integrations WHERE agent_id IN (${sqlLiteral(IDS.agents.primary)});
+
+INSERT INTO integrations (id, agent_id, provider, catalog_id, access_token, config, status, created_at) VALUES
+  (
+    ${sqlLiteral(IDS.integrations.slack)},
+    ${sqlLiteral(IDS.agents.primary)},
+    'slack',
+    'slack',
+    'xoxb-readme-redacted',
+    '{"team":"nora-readme","botUserId":"U0README"}'::jsonb,
+    'active',
+    NOW() - INTERVAL '2 days'
+  ),
+  (
+    ${sqlLiteral(IDS.integrations.github)},
+    ${sqlLiteral(IDS.agents.primary)},
+    'github',
+    'github',
+    'ghp-readme-redacted',
+    '{"login":"nora-readme","repos":["nora-readme/operations","nora-readme/playbooks"]}'::jsonb,
+    'active',
+    NOW() - INTERVAL '5 days'
+  );
+
+-- Channels bound to the primary agent + sample message history.
+DELETE FROM channels WHERE agent_id IN (${sqlLiteral(IDS.agents.primary)});
+
+INSERT INTO channels (id, agent_id, type, name, config, enabled, created_at) VALUES
+  (
+    ${sqlLiteral(IDS.channels.slack)},
+    ${sqlLiteral(IDS.agents.primary)},
+    'slack',
+    'Ops alerts',
+    '{"channel":"#ops-alerts","integrationId":"${IDS.integrations.slack}"}'::jsonb,
+    true,
+    NOW() - INTERVAL '3 days'
+  ),
+  (
+    ${sqlLiteral(IDS.channels.webhook)},
+    ${sqlLiteral(IDS.agents.primary)},
+    'webhook',
+    'PagerDuty webhook',
+    '{"url":"https://events.pagerduty.com/v2/enqueue","method":"POST"}'::jsonb,
+    true,
+    NOW() - INTERVAL '6 days'
+  );
+
+INSERT INTO channel_messages (channel_id, direction, content, metadata, created_at) VALUES
+  (${sqlLiteral(IDS.channels.slack)}, 'inbound', 'Standup running long — push the retro to 4pm?', '{"user":"alex"}'::jsonb, NOW() - INTERVAL '12 minutes'),
+  (${sqlLiteral(IDS.channels.slack)}, 'outbound', 'Done — retro rescheduled to 4:00pm PT and calendar invites updated.', '{}'::jsonb, NOW() - INTERVAL '11 minutes'),
+  (${sqlLiteral(IDS.channels.slack)}, 'outbound', 'Reminder: weekly metrics digest will land at 9am tomorrow.', '{}'::jsonb, NOW() - INTERVAL '2 hours');
+
+-- Alert rules in the default workspace.
+DELETE FROM alert_rules WHERE workspace_id = ${sqlLiteral(IDS.workspaces.default)};
+
+INSERT INTO alert_rules (id, workspace_id, created_by, name, event_pattern, channels, enabled, last_fired_at) VALUES
+  (
+    ${sqlLiteral(IDS.alerts.cost)},
+    ${sqlLiteral(IDS.workspaces.default)},
+    ${sqlLiteral(operatorId)},
+    'Workspace cost above 80% budget',
+    'budget.threshold.*',
+    '[{"type":"webhook","url":"https://hooks.zapier.com/hooks/catch/000/budget"}]'::jsonb,
+    true,
+    NOW() - INTERVAL '6 hours'
+  ),
+  (
+    ${sqlLiteral(IDS.alerts.error)},
+    ${sqlLiteral(IDS.workspaces.default)},
+    ${sqlLiteral(operatorId)},
+    'Agent error rate spike',
+    'agent.error.*',
+    '[{"type":"email","address":"ops@example.com"}]'::jsonb,
+    true,
+    NULL
+  );
+
+-- Usage metrics — 7-day cost samples per provider for the cost panel.
+DELETE FROM usage_metrics WHERE user_id = ${sqlLiteral(operatorId)};
+
+INSERT INTO usage_metrics (agent_id, user_id, metric_type, value, metadata, recorded_at)
+SELECT
+  ${sqlLiteral(IDS.agents.primary)},
+  ${sqlLiteral(operatorId)},
+  'cost_usd',
+  ROUND((1.2 + (random() * 3.4))::numeric, 4),
+  jsonb_build_object('provider', provider, 'model', model),
+  NOW() - (days || ' days')::interval - (hours || ' hours')::interval
+FROM
+  (VALUES ('anthropic','claude-sonnet-4-5'), ('openai','gpt-5.5'), ('groq','llama-3.1-70b')) AS p(provider, model),
+  generate_series(0, 6) AS days,
+  generate_series(0, 5) AS hours;
+
+-- Backups + schedule for the primary agent.
+DELETE FROM backup_schedules WHERE agent_id IN (${sqlLiteral(IDS.agents.primary)});
+DELETE FROM backups WHERE agent_id IN (${sqlLiteral(IDS.agents.primary)});
+
+INSERT INTO backups (
+  id, user_id, agent_id, kind, status, name, storage_backend, storage_key,
+  content_type, format, size_bytes, scope, summary, created_by, completed_at, created_at, updated_at
+) VALUES
+  (
+    ${sqlLiteral(IDS.backups.daily)},
+    ${sqlLiteral(operatorId)},
+    ${sqlLiteral(IDS.agents.primary)},
+    'agent',
+    'ready',
+    'daily-2026-05-20-0200',
+    'local',
+    'local://backups/research-ops/daily-2026-05-20-0200.tar.gz',
+    'application/gzip',
+    'nora-backup-archive/v1',
+    142839122,
+    '{"agentId":"${IDS.agents.primary}","includes":["files","memory","integrations"]}'::jsonb,
+    '{"files":423,"memoryRows":2104,"integrations":2}'::jsonb,
+    ${sqlLiteral(operatorId)},
+    NOW() - INTERVAL '8 hours',
+    NOW() - INTERVAL '8 hours 5 minutes',
+    NOW() - INTERVAL '8 hours'
+  ),
+  (
+    ${sqlLiteral(IDS.backups.weekly)},
+    ${sqlLiteral(operatorId)},
+    ${sqlLiteral(IDS.agents.primary)},
+    'agent',
+    'ready',
+    'weekly-2026-05-18-0200',
+    's3',
+    's3://nora-backups/research-ops/weekly-2026-05-18-0200.tar.gz',
+    'application/gzip',
+    'nora-backup-archive/v1',
+    151203998,
+    '{"agentId":"${IDS.agents.primary}","includes":["files","memory","integrations"]}'::jsonb,
+    '{"files":419,"memoryRows":2087,"integrations":2}'::jsonb,
+    ${sqlLiteral(operatorId)},
+    NOW() - INTERVAL '2 days',
+    NOW() - INTERVAL '2 days 5 minutes',
+    NOW() - INTERVAL '2 days'
+  ),
+  (
+    ${sqlLiteral(IDS.backups.onDemand)},
+    ${sqlLiteral(operatorId)},
+    ${sqlLiteral(IDS.agents.primary)},
+    'agent',
+    'ready',
+    'on-demand-pre-redeploy',
+    'local',
+    'local://backups/research-ops/on-demand-pre-redeploy.tar.gz',
+    'application/gzip',
+    'nora-backup-archive/v1',
+    139844210,
+    '{"agentId":"${IDS.agents.primary}","includes":["files","memory","integrations"]}'::jsonb,
+    '{"files":421,"memoryRows":2099,"integrations":2}'::jsonb,
+    ${sqlLiteral(operatorId)},
+    NOW() - INTERVAL '4 days',
+    NOW() - INTERVAL '4 days 3 minutes',
+    NOW() - INTERVAL '4 days'
+  );
+
+INSERT INTO backup_schedules (
+  id, schedule_key, kind, user_id, agent_id, enabled, name, frequency, hour_utc, day_of_week,
+  next_run_at, last_run_at, last_backup_id, created_by
+) VALUES (
+  ${sqlLiteral(IDS.backups.schedule)},
+  'agent:${IDS.agents.primary}:daily',
+  'agent',
+  ${sqlLiteral(operatorId)},
+  ${sqlLiteral(IDS.agents.primary)},
+  true,
+  'Daily 02:00 UTC',
+  'daily',
+  2,
+  0,
+  NOW() + INTERVAL '16 hours',
+  NOW() - INTERVAL '8 hours',
+  ${sqlLiteral(IDS.backups.daily)},
+  ${sqlLiteral(operatorId)}
+)
+ON CONFLICT (schedule_key) DO UPDATE SET
+  enabled = EXCLUDED.enabled,
+  last_run_at = EXCLUDED.last_run_at,
+  last_backup_id = EXCLUDED.last_backup_id,
+  next_run_at = EXCLUDED.next_run_at;
 `;
 }
 
@@ -2322,6 +2599,439 @@ async function captureK8sDocsScreens(page) {
   console.log(`Saved K8s docs screenshots to ${K8S_DOCS_SCREENSHOT_DIR}`);
 }
 
+// ---------------------------------------------------------------------------
+// Per-section docs captures. Each function ensures its output dir exists, then
+// navigates the operator page and writes one or more PNGs. Selectors are
+// best-effort — every function is invoked under .catch(warn) so a single
+// broken selector cannot abort the run. Output filenames match the
+// docs/AGENTS.md "Refreshing UI screenshots" inventory.
+// ---------------------------------------------------------------------------
+
+function ensureDocsDir(dir) {
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+function safeCopy(src, dest) {
+  try {
+    if (!fs.existsSync(src)) {
+      console.warn(`[capture] mirror skipped (source missing): ${src}`);
+      return;
+    }
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    fs.copyFileSync(src, dest);
+  } catch (err) {
+    console.warn(
+      `[capture] mirror failed for ${src}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+}
+
+// Mirrors the README "proof-*.png" assets into docs/images/{operator,admin}/
+// so the docs site can reference its own copy without crossing the .github
+// directory. Runs AFTER the README captures so it copies fresh outputs.
+function mirrorReadmeAssetsToDocs() {
+  ensureDocsDir(DOCS_DIRS.operator);
+  ensureDocsDir(DOCS_DIRS.admin);
+
+  const operatorPairs = [
+    ["proof-operator-dashboard.png", "dashboard.png"],
+    ["proof-operator-fleet.png", "fleet.png"],
+    ["proof-operator-deploy-flow.png", "deploy-flow.png"],
+    ["proof-operator-agent-detail.png", "agent-detail.png"],
+    ["proof-operator-agent-hub.png", "agent-hub-list.png"],
+    ["proof-operator-agent-hub-detail.png", "agent-hub-detail.png"],
+    ["proof-operator-account-event-log.png", "account-event-log.png"],
+    ["proof-operator-hermes-webui-tab.png", "hermes-webui-tab.png"],
+    ["proof-operator-openclaw-ui-tab.png", "openclaw-ui-tab.png"],
+    ["proof-operator-settings-provider-setup.png", "settings-provider-setup.png"],
+  ];
+  for (const [src, dest] of operatorPairs) {
+    safeCopy(path.join(SCREENSHOT_DIR, src), path.join(DOCS_DIRS.operator, dest));
+  }
+
+  const adminPairs = [
+    ["proof-admin-agent-hub.png", "agent-hub.png"],
+    ["proof-admin-agent-hub-detail.png", "agent-hub-detail.png"],
+  ];
+  for (const [src, dest] of adminPairs) {
+    safeCopy(path.join(SCREENSHOT_DIR, src), path.join(DOCS_DIRS.admin, dest));
+  }
+
+  console.log(`Mirrored README PNGs to ${DOCS_DIRS.operator} and ${DOCS_DIRS.admin}`);
+}
+
+// Mirrors the K8s backend-picker shot to a non-K8s-specific path so the
+// generic configuration/provisioner-backends/* pages can reference it without
+// implying a K8s-only flow.
+function copyK8sShotToConfiguration() {
+  ensureDocsDir(DOCS_DIRS.configuration);
+  safeCopy(
+    path.join(K8S_DOCS_SCREENSHOT_DIR, "nora-deploy-backend-picker.png"),
+    path.join(DOCS_DIRS.configuration, "deploy-backend-picker.png"),
+  );
+}
+
+async function captureWorkspacesDocsScreens(page) {
+  ensureDocsDir(DOCS_DIRS.concepts);
+
+  await page.goto(`${BASE_URL}/app/workspaces`, { waitUntil: "networkidle" });
+  await page.waitForTimeout(800);
+  await page.screenshot({
+    path: path.join(DOCS_DIRS.concepts, "workspaces-list.png"),
+    fullPage: true,
+  });
+
+  await page.goto(
+    `${BASE_URL}/app/workspaces/${IDS.workspaces.default}/members`,
+    { waitUntil: "networkidle" },
+  );
+  await page.waitForTimeout(800);
+  await page.screenshot({
+    path: path.join(DOCS_DIRS.concepts, "workspaces-members.png"),
+    fullPage: true,
+  });
+}
+
+async function captureDeployDocsScreens(page) {
+  ensureDocsDir(DOCS_DIRS.deploy);
+
+  await gotoHeading(page, "/app/deploy", "Deploy New Agent");
+  const inputs = page.locator("input");
+  await inputs.nth(0).fill("research-ops-prod").catch(() => {});
+  await inputs.nth(1).fill("nora-research-ops-prod").catch(() => {});
+  await page.waitForTimeout(300);
+  await page.screenshot({
+    path: path.join(DOCS_DIRS.deploy, "wizard-start.png"),
+    fullPage: true,
+  });
+
+  // Step into runtime selection if the wizard has a Next/Continue button.
+  const nextBtn = page
+    .getByRole("button", { name: /^(next|continue)$/i })
+    .first();
+  if (await nextBtn.count()) {
+    await nextBtn.click({ timeout: 2000 }).catch(() => {});
+    await page.waitForTimeout(600);
+  }
+  await page.screenshot({
+    path: path.join(DOCS_DIRS.deploy, "wizard-runtime.png"),
+    fullPage: true,
+  });
+
+  if (await nextBtn.count()) {
+    await nextBtn.click({ timeout: 2000 }).catch(() => {});
+    await page.waitForTimeout(600);
+  }
+  await page.screenshot({
+    path: path.join(DOCS_DIRS.deploy, "wizard-confirm.png"),
+    fullPage: true,
+  });
+}
+
+async function captureProvidersDocsScreens(page) {
+  ensureDocsDir(DOCS_DIRS.providers);
+
+  await gotoHeading(page, "/app/settings", "Settings");
+  const section = page
+    .locator("section")
+    .filter({ hasText: "LLM Provider Keys" })
+    .first();
+  if (await section.count()) {
+    await section.scrollIntoViewIfNeeded().catch(() => {});
+  }
+  await page.waitForTimeout(300);
+  await page.screenshot({
+    path: path.join(DOCS_DIRS.providers, "provider-keys.png"),
+    fullPage: true,
+  });
+
+  // Open the add-provider form. The button label may be "Add Provider" or
+  // "+ Add Provider" depending on UI revision; try both.
+  const addBtn = page
+    .getByRole("button", { name: /add provider/i })
+    .first();
+  if (await addBtn.count()) {
+    await addBtn.click({ timeout: 2000 }).catch(() => {});
+    await page.waitForTimeout(500);
+  }
+  await page.screenshot({
+    path: path.join(DOCS_DIRS.providers, "provider-keys-add.png"),
+    fullPage: true,
+  });
+}
+
+async function captureIntegrationsDocsScreens(page) {
+  ensureDocsDir(DOCS_DIRS.integrations);
+
+  // The Integrations panel lives under the agent's OpenClaw sub-tab.
+  await gotoHeading(
+    page,
+    `/app/agents/${IDS.agents.primary}`,
+    "OpenClaw Research Operator",
+  );
+  await page.waitForTimeout(400);
+
+  const openClawTab = page.getByRole("button", { name: /^OpenClaw$/i }).first();
+  if (await openClawTab.count()) {
+    await openClawTab.click({ timeout: 2000 }).catch(() => {});
+    await page.waitForTimeout(500);
+  }
+
+  // Sub-tab inside OpenClaw labeled "Integrations".
+  const integrationsSubTab = page
+    .getByRole("button", { name: /^Integrations$/i })
+    .first();
+  if (await integrationsSubTab.count()) {
+    await integrationsSubTab.click({ timeout: 2000 }).catch(() => {});
+    await page.waitForTimeout(700);
+  }
+  await page.screenshot({
+    path: path.join(DOCS_DIRS.integrations, "connected-accounts.png"),
+    fullPage: true,
+  });
+
+  // Open the "Connect" or "Add" affordance for a provider.
+  const connectBtn = page
+    .getByRole("button", { name: /^(connect|add integration|connect account)$/i })
+    .first();
+  if (await connectBtn.count()) {
+    await connectBtn.click({ timeout: 2000 }).catch(() => {});
+    await page.waitForTimeout(700);
+  }
+  await page.screenshot({
+    path: path.join(DOCS_DIRS.integrations, "connected-accounts-add.png"),
+    fullPage: true,
+  });
+}
+
+async function captureChannelsDocsScreens(page) {
+  ensureDocsDir(DOCS_DIRS.channels);
+
+  await gotoHeading(
+    page,
+    `/app/agents/${IDS.agents.primary}`,
+    "OpenClaw Research Operator",
+  );
+  await page.waitForTimeout(400);
+
+  const openClawTab = page.getByRole("button", { name: /^OpenClaw$/i }).first();
+  if (await openClawTab.count()) {
+    await openClawTab.click({ timeout: 2000 }).catch(() => {});
+    await page.waitForTimeout(500);
+  }
+
+  const channelsSubTab = page
+    .getByRole("button", { name: /^Channels$/i })
+    .first();
+  if (await channelsSubTab.count()) {
+    await channelsSubTab.click({ timeout: 2000 }).catch(() => {});
+    await page.waitForTimeout(700);
+  }
+  await page.screenshot({
+    path: path.join(DOCS_DIRS.channels, "agent-channels-tab.png"),
+    fullPage: true,
+  });
+
+  const addChannelBtn = page
+    .getByRole("button", { name: /^(add channel|new channel|connect channel)$/i })
+    .first();
+  if (await addChannelBtn.count()) {
+    await addChannelBtn.click({ timeout: 2000 }).catch(() => {});
+    await page.waitForTimeout(700);
+  }
+  await page.screenshot({
+    path: path.join(DOCS_DIRS.channels, "agent-channels-add.png"),
+    fullPage: true,
+  });
+}
+
+async function captureAlertRulesDocsScreens(page) {
+  ensureDocsDir(DOCS_DIRS.alerts);
+
+  await page.goto(
+    `${BASE_URL}/app/workspaces/${IDS.workspaces.default}/alerts`,
+    { waitUntil: "networkidle" },
+  );
+  await page.waitForTimeout(900);
+  await page.screenshot({
+    path: path.join(DOCS_DIRS.alerts, "alerts-list.png"),
+    fullPage: true,
+  });
+
+  const createBtn = page
+    .getByRole("button", { name: /^(create|new rule|add rule|create rule)$/i })
+    .first();
+  if (await createBtn.count()) {
+    await createBtn.click({ timeout: 2000 }).catch(() => {});
+    await page.waitForTimeout(500);
+  }
+  await page.screenshot({
+    path: path.join(DOCS_DIRS.alerts, "alerts-create.png"),
+    fullPage: true,
+  });
+}
+
+async function captureMonitoringDocsScreens(page) {
+  ensureDocsDir(DOCS_DIRS.monitoring);
+
+  await page.goto(`${BASE_URL}/app/monitoring`, { waitUntil: "networkidle" });
+  await page.waitForTimeout(900);
+  await page.screenshot({
+    path: path.join(DOCS_DIRS.monitoring, "monitoring-overview.png"),
+    fullPage: true,
+  });
+
+  await page.goto(
+    `${BASE_URL}/app/workspaces/${IDS.workspaces.default}/cost`,
+    { waitUntil: "networkidle" },
+  );
+  await page.waitForTimeout(900);
+  await page.screenshot({
+    path: path.join(DOCS_DIRS.monitoring, "monitoring-cost.png"),
+    fullPage: true,
+  });
+}
+
+async function captureAgentHubDocsScreens(page) {
+  ensureDocsDir(DOCS_DIRS.agentHub);
+
+  // Install dialog on a listing detail page.
+  await gotoHeading(
+    page,
+    `/app/agent-hub/${IDS.listings.presetSignalDesk}`,
+    "Signal Desk Starter",
+  );
+  await page.waitForTimeout(400);
+  const installBtn = page
+    .getByRole("button", { name: /^install$/i })
+    .first();
+  if (await installBtn.count()) {
+    await installBtn.click({ timeout: 2000 }).catch(() => {});
+    await page.waitForTimeout(700);
+  }
+  await page.screenshot({
+    path: path.join(DOCS_DIRS.agentHub, "install-dialog.png"),
+    fullPage: true,
+  });
+
+  // Dismiss the dialog if the page is left in a dirty state — best effort.
+  await page.keyboard.press("Escape").catch(() => {});
+  await page.waitForTimeout(300);
+
+  // Publish dialog initiated from the operator's primary agent.
+  await gotoHeading(
+    page,
+    `/app/agents/${IDS.agents.primary}`,
+    "OpenClaw Research Operator",
+  );
+  await page.waitForTimeout(400);
+  const publishBtn = page
+    .getByRole("button", { name: /^(publish|share to agent hub|share)$/i })
+    .first();
+  if (await publishBtn.count()) {
+    await publishBtn.click({ timeout: 2000 }).catch(() => {});
+    await page.waitForTimeout(700);
+  }
+  await page.screenshot({
+    path: path.join(DOCS_DIRS.agentHub, "publish-dialog.png"),
+    fullPage: true,
+  });
+  await page.keyboard.press("Escape").catch(() => {});
+  await page.waitForTimeout(300);
+}
+
+async function captureBackupsDocsScreens(page) {
+  ensureDocsDir(DOCS_DIRS.backups);
+
+  await gotoHeading(
+    page,
+    `/app/agents/${IDS.agents.primary}`,
+    "OpenClaw Research Operator",
+  );
+  await page.waitForTimeout(400);
+  const backupsTab = page.getByRole("button", { name: /^Backups$/i }).first();
+  if (await backupsTab.count()) {
+    await backupsTab.click({ timeout: 2000 }).catch(() => {});
+    await page.waitForTimeout(800);
+  }
+  await page.screenshot({
+    path: path.join(DOCS_DIRS.backups, "backups-tab.png"),
+    fullPage: true,
+  });
+
+  const scheduleBtn = page
+    .getByRole("button", { name: /^(schedule|configure schedule|edit schedule)$/i })
+    .first();
+  if (await scheduleBtn.count()) {
+    await scheduleBtn.click({ timeout: 2000 }).catch(() => {});
+    await page.waitForTimeout(700);
+  }
+  await page.screenshot({
+    path: path.join(DOCS_DIRS.backups, "backups-schedule.png"),
+    fullPage: true,
+  });
+}
+
+async function captureNemoclawDocsScreens(page) {
+  ensureDocsDir(DOCS_DIRS.nemoclaw);
+
+  await page.goto(
+    `${BASE_URL}/app/agents/${IDS.agents.nemoclaw}`,
+    { waitUntil: "networkidle" },
+  );
+  await page.waitForTimeout(900);
+  const nemoTab = page.getByRole("button", { name: /^NemoClaw$/i }).first();
+  if (await nemoTab.count()) {
+    await nemoTab.click({ timeout: 2000 }).catch(() => {});
+    await page.waitForTimeout(700);
+  }
+  await page.screenshot({
+    path: path.join(DOCS_DIRS.nemoclaw, "nemoclaw-tab.png"),
+    fullPage: true,
+  });
+
+  // Use the Terminal top-level tab as the secondary nemoclaw view — this is
+  // present on every running agent and renders the shell UI we describe in
+  // the docs. If the agent has no live runtime, the empty-state still shows
+  // the terminal chrome which is what we want to illustrate.
+  const terminalTab = page.getByRole("button", { name: /^Terminal$/i }).first();
+  if (await terminalTab.count()) {
+    await terminalTab.click({ timeout: 2000 }).catch(() => {});
+    await page.waitForTimeout(800);
+  }
+  await page.screenshot({
+    path: path.join(DOCS_DIRS.nemoclaw, "nemoclaw-terminal.png"),
+    fullPage: true,
+  });
+}
+
+async function capturePlatformModesDocsScreens(page) {
+  ensureDocsDir(DOCS_DIRS.configuration);
+
+  await gotoHeading(page, "/app/settings", "Settings");
+  // Scroll to the lower half of the settings page where subscription /
+  // platform-mode info lives. We don't depend on a specific section heading
+  // because the label varies across PaaS vs self-hosted builds.
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  await page.waitForTimeout(400);
+  await page.screenshot({
+    path: path.join(DOCS_DIRS.configuration, "platform-modes-toggle.png"),
+    fullPage: true,
+  });
+}
+
+async function captureSupportDocsScreens(page) {
+  ensureDocsDir(DOCS_DIRS.support);
+
+  await gotoHeading(page, "/app/logs", "Account event log");
+  await page.waitForTimeout(700);
+  await page.screenshot({
+    path: path.join(DOCS_DIRS.support, "troubleshooting-logs.png"),
+    fullPage: true,
+  });
+}
+
 async function captureScreens() {
   fs.mkdirSync(SCREENSHOT_DIR, { recursive: true });
 
@@ -2427,6 +3137,27 @@ async function captureScreens() {
       );
     });
 
+    // Per-section docs captures. Each is best-effort so a single broken
+    // selector cannot abort the rest of the run. See e2e/scripts/AGENTS.md
+    // for the per-function selector notes.
+    const warn = (section) => (err) =>
+      console.warn(
+        `[capture] ${section} docs section failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+
+    await captureWorkspacesDocsScreens(operator.page).catch(warn("workspaces"));
+    await captureDeployDocsScreens(operator.page).catch(warn("deploy"));
+    await captureProvidersDocsScreens(operator.page).catch(warn("providers"));
+    await captureIntegrationsDocsScreens(operator.page).catch(warn("integrations"));
+    await captureChannelsDocsScreens(operator.page).catch(warn("channels"));
+    await captureAlertRulesDocsScreens(operator.page).catch(warn("alert-rules"));
+    await captureMonitoringDocsScreens(operator.page).catch(warn("monitoring"));
+    await captureAgentHubDocsScreens(operator.page).catch(warn("agent-hub"));
+    await captureBackupsDocsScreens(operator.page).catch(warn("backups"));
+    await captureNemoclawDocsScreens(operator.page).catch(warn("nemoclaw"));
+    await capturePlatformModesDocsScreens(operator.page).catch(warn("platform-modes"));
+    await captureSupportDocsScreens(operator.page).catch(warn("support"));
+
     await gotoHeading(operator.page, "/app/logs", "Account event log");
     await operator.page.waitForTimeout(500);
     await operator.page.screenshot({
@@ -2464,6 +3195,18 @@ async function captureScreens() {
     await operator.context.close();
     await admin.context.close();
     await browser.close();
+  }
+
+  // Mirror README PNGs into docs/images/ + copy the K8s backend-picker shot
+  // to its non-K8s docs path. Runs AFTER the browser closes so every PNG it
+  // copies from is already written and flushed.
+  try {
+    mirrorReadmeAssetsToDocs();
+    copyK8sShotToConfiguration();
+  } catch (err) {
+    console.warn(
+      `[capture] mirror/copy step failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 
   console.log(`Saved README screenshots to ${SCREENSHOT_DIR}`);

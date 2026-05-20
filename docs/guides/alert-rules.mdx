@@ -4,6 +4,8 @@
 
 Alert rules let a workspace listen for specific event types and forward each match to one or more delivery channels. A rule has an event pattern (literal or suffix glob), a list of channels, and an enabled toggle. Rules only fire for events emitted within the same workspace.
 
+![Workspace alert rules — active rules with last-fired and last-error fields](/images/guides/alert-rules/alerts-list.png)
+
 ## Event patterns
 
 A pattern matches an event type using one of three forms:
@@ -17,6 +19,8 @@ A pattern matches an event type using one of three forms:
 Common event types include `agent.error`, `agent.warning`, `backup_agent_completed`, `backup_agent_failed`, `agent_hub_listing_published`, and `workspace.invitation_accepted`. The full list grows over time — point a `*` rule at a webhook in a staging workspace to discover what's emitted.
 
 ## Channels
+
+![Create-alert-rule form — name, event pattern, and delivery channels](/images/guides/alert-rules/alerts-create.png)
 
 A rule must define at least one channel. Channels are objects on the rule body.
 

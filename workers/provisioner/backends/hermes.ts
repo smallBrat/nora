@@ -74,6 +74,23 @@ function safeHostname(name, fallback) {
   );
 }
 
+function safeContainerName(prefix, name, id) {
+  const suffix =
+    String(id || Date.now().toString(36))
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(-12) || "agent";
+  const maxSlugLength = Math.max(8, 63 - prefix.length - suffix.length - 2);
+  const slug =
+    String(name || "agent")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, maxSlugLength) || "agent";
+  return `${prefix}-${slug}-${suffix}`;
+}
+
 class HermesBackend extends DockerBackend {
   async _pullImage(imgName) {
     console.log(`[hermes] Pulling image ${imgName}...`);
@@ -121,7 +138,7 @@ class HermesBackend extends DockerBackend {
 
   async create(config) {
     const { id, name, image, vcpu, ram_mb, env, container_name, abortSignal } = config;
-    const containerName = container_name || `hermes-agent-${id}`;
+    const containerName = container_name || safeContainerName("nora-hermes", name, id);
     const imgName = image || getHermesDockerAgentImage();
     let container = null;
 
@@ -227,7 +244,7 @@ class HermesBackend extends DockerBackend {
       console.log(`[hermes] Container ${container.id} started at ${host}:${HERMES_RUNTIME_PORT}`);
 
       return {
-        containerId: container.id,
+        containerId: containerName,
         containerName,
         gatewayToken: apiServerKey,
         host,

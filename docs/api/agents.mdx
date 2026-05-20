@@ -5,10 +5,12 @@
 The Agents API is the core of Nora. You use it to deploy new agent containers, control their lifecycle (start, stop, restart, redeploy, delete), poll live resource stats, and retrieve the gateway UI URL for direct browser access. All endpoints require authentication and operate only on agents that belong to your account.
 
 <Note>
-  An agent moves through the following statuses: `queued` → `running`. From `running` it can transition to `warning`, `error`, or `stopped`. Use `POST /agents/:id/redeploy` to recover an agent that is in `warning`, `error`, or `stopped` state.
+  An agent moves through the following statuses: `queued` → `running`. From `running` it can
+  transition to `warning`, `error`, or `stopped`. Use `POST /agents/:id/redeploy` to recover an
+  agent that is in `warning`, `error`, or `stopped` state.
 </Note>
 
-***
+---
 
 ## List agents
 
@@ -20,9 +22,7 @@ GET /agents
 
 <CodeGroup>
   ```bash curl theme={null}
-  curl http://localhost:8080/api/agents \
-    -H "Authorization: Bearer $TOKEN"
-  ```
+  curl http://localhost:8080/api/agents \ -H "Authorization: Bearer $TOKEN" ```
 </CodeGroup>
 
 ```json theme={null}
@@ -42,7 +42,7 @@ GET /agents
 ]
 ```
 
-***
+---
 
 ## Deploy an agent
 
@@ -59,11 +59,13 @@ POST /agents/deploy
 </ParamField>
 
 <ParamField body="sandbox" type="string" default="standard">
-  Sandbox type. `standard` (Docker) or `nemoclaw` (NVIDIA NemoClaw). The `nemoclaw` option requires `NEMOCLAW_ENABLED=true` on the server.
+  Sandbox type. `standard` (Docker) or `nemoclaw` (NVIDIA NemoClaw). The `nemoclaw` option requires
+  `NEMOCLAW_ENABLED=true` on the server.
 </ParamField>
 
 <ParamField body="vcpu" type="number" default="2">
-  Number of virtual CPUs. Ignored on PaaS deployments (locked to subscription). On self-hosted, clamped to operator limits.
+  Number of virtual CPUs. Ignored on PaaS deployments (locked to subscription). On self-hosted,
+  clamped to operator limits.
 </ParamField>
 
 <ParamField body="ram_mb" type="number" default="2048">
@@ -75,23 +77,44 @@ POST /agents/deploy
 </ParamField>
 
 <Warning>
-  On PaaS deployments the `vcpu`, `ram_mb`, and `disk_gb` values are determined by your subscription plan and cannot be overridden.
+  On PaaS deployments the `vcpu`, `ram_mb`, and `disk_gb` values are determined by your subscription
+  plan and cannot be overridden.
 </Warning>
 
 ### Response
 
 Returns the newly created agent record.
 
-<ResponseField name="id" type="string">UUID of the new agent.</ResponseField>
-<ResponseField name="name" type="string">Agent display name.</ResponseField>
-<ResponseField name="status" type="string">`queued` — deployment is pending.</ResponseField>
-<ResponseField name="sandbox_type" type="string">`standard` or `nemoclaw`.</ResponseField>
-<ResponseField name="vcpu" type="number">Allocated vCPU count.</ResponseField>
-<ResponseField name="ram_mb" type="number">Allocated RAM in MB.</ResponseField>
-<ResponseField name="disk_gb" type="number">Allocated disk in GB.</ResponseField>
-<ResponseField name="node" type="string">Scheduler node assigned to this agent.</ResponseField>
-<ResponseField name="container_name" type="string">Docker container name.</ResponseField>
-<ResponseField name="created_at" type="string">ISO 8601 creation timestamp.</ResponseField>
+<ResponseField name="id" type="string">
+  UUID of the new agent.
+</ResponseField>
+<ResponseField name="name" type="string">
+  Agent display name.
+</ResponseField>
+<ResponseField name="status" type="string">
+  `queued` — deployment is pending.
+</ResponseField>
+<ResponseField name="sandbox_type" type="string">
+  `standard` or `nemoclaw`.
+</ResponseField>
+<ResponseField name="vcpu" type="number">
+  Allocated vCPU count.
+</ResponseField>
+<ResponseField name="ram_mb" type="number">
+  Allocated RAM in MB.
+</ResponseField>
+<ResponseField name="disk_gb" type="number">
+  Allocated disk in GB.
+</ResponseField>
+<ResponseField name="node" type="string">
+  Scheduler node assigned to this agent.
+</ResponseField>
+<ResponseField name="container_name" type="string">
+  Generated runtime resource name, such as a Docker container name or Kubernetes Deployment name.
+</ResponseField>
+<ResponseField name="created_at" type="string">
+  ISO 8601 creation timestamp.
+</ResponseField>
 
 <CodeGroup>
   ```bash curl theme={null}
@@ -112,7 +135,7 @@ Returns the newly created agent record.
   "ram_mb": 2048,
   "disk_gb": 20,
   "node": "worker-01",
-  "container_name": "oclaw-agent-my-agent-1h8z2k",
+  "container_name": "nora-oclaw-my-agent-1h8z2k",
   "created_at": "2025-03-10T09:00:00.000Z"
 }
 ```
@@ -122,7 +145,7 @@ Returns the newly created agent record.
 | `400`  | Name too long or NemoClaw not enabled |
 | `402`  | Billing limit reached                 |
 
-***
+---
 
 ## Get agent
 
@@ -140,9 +163,8 @@ GET /agents/:id
 
 <CodeGroup>
   ```bash curl theme={null}
-  curl http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890 \
-    -H "Authorization: Bearer $TOKEN"
-  ```
+  curl http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890 \ -H "Authorization:
+  Bearer $TOKEN" ```
 </CodeGroup>
 
 ```json theme={null}
@@ -161,7 +183,7 @@ GET /agents/:id
 }
 ```
 
-***
+---
 
 ## Start agent
 
@@ -181,9 +203,8 @@ Returns the updated agent record with `status: "running"`.
 
 <CodeGroup>
   ```bash curl theme={null}
-  curl -X POST http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/start \
-    -H "Authorization: Bearer $TOKEN"
-  ```
+  curl -X POST http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/start \ -H
+  "Authorization: Bearer $TOKEN" ```
 </CodeGroup>
 
 | Status | Condition                               |
@@ -191,7 +212,7 @@ Returns the updated agent record with `status: "running"`.
 | `400`  | Agent has no container — redeploy first |
 | `404`  | Agent not found                         |
 
-***
+---
 
 ## Stop agent
 
@@ -211,12 +232,11 @@ Returns the updated agent record with `status: "stopped"`.
 
 <CodeGroup>
   ```bash curl theme={null}
-  curl -X POST http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/stop \
-    -H "Authorization: Bearer $TOKEN"
-  ```
+  curl -X POST http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/stop \ -H
+  "Authorization: Bearer $TOKEN" ```
 </CodeGroup>
 
-***
+---
 
 ## Restart agent
 
@@ -234,13 +254,14 @@ POST /agents/:id/restart
 
 ### Response
 
-<ResponseField name="success" type="boolean">`true` when the container was restarted.</ResponseField>
+<ResponseField name="success" type="boolean">
+  `true` when the container was restarted.
+</ResponseField>
 
 <CodeGroup>
   ```bash curl theme={null}
-  curl -X POST http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/restart \
-    -H "Authorization: Bearer $TOKEN"
-  ```
+  curl -X POST http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/restart \ -H
+  "Authorization: Bearer $TOKEN" ```
 </CodeGroup>
 
 ```json theme={null}
@@ -251,11 +272,11 @@ POST /agents/:id/restart
 | ------ | --------------------------------------- |
 | `400`  | Agent has no container — redeploy first |
 
-***
+---
 
 ## Redeploy agent
 
-Re-queue an agent for a full redeploy. Only available when the agent is in `warning`, `error`, or `stopped` state. Clears the existing container reference and submits a new deployment job.
+Re-queue an agent for a full redeploy. Only available when the agent is in `warning`, `error`, or `stopped` state. Clears the existing container reference and submits a new deployment job. For Kubernetes-backed agents, the job deletes the previous Deployment, Service, and bootstrap ConfigMap before creating the replacement.
 
 ```
 POST /agents/:id/redeploy
@@ -269,14 +290,17 @@ POST /agents/:id/redeploy
 
 ### Response
 
-<ResponseField name="success" type="boolean">`true` when the redeploy job was queued.</ResponseField>
-<ResponseField name="status" type="string">`queued`.</ResponseField>
+<ResponseField name="success" type="boolean">
+  `true` when the redeploy job was queued.
+</ResponseField>
+<ResponseField name="status" type="string">
+  `queued`.
+</ResponseField>
 
 <CodeGroup>
   ```bash curl theme={null}
-  curl -X POST http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/redeploy \
-    -H "Authorization: Bearer $TOKEN"
-  ```
+  curl -X POST http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/redeploy \ -H
+  "Authorization: Bearer $TOKEN" ```
 </CodeGroup>
 
 ```json theme={null}
@@ -287,7 +311,7 @@ POST /agents/:id/redeploy
 | ------ | ------------------------------------------------------ |
 | `400`  | Agent is not in `warning`, `error`, or `stopped` state |
 
-***
+---
 
 ## Delete agent
 
@@ -305,13 +329,14 @@ DELETE /agents/:id
 
 ### Response
 
-<ResponseField name="success" type="boolean">`true` when the agent was deleted.</ResponseField>
+<ResponseField name="success" type="boolean">
+  `true` when the agent was deleted.
+</ResponseField>
 
 <CodeGroup>
   ```bash curl theme={null}
-  curl -X DELETE http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890 \
-    -H "Authorization: Bearer $TOKEN"
-  ```
+  curl -X DELETE http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890 \ -H
+  "Authorization: Bearer $TOKEN" ```
 </CodeGroup>
 
 ```json theme={null}
@@ -319,10 +344,11 @@ DELETE /agents/:id
 ```
 
 <Warning>
-  Deletion is irreversible. All agent data, channel configuration, and integration connections are permanently removed.
+  Deletion is irreversible. All agent data, channel configuration, and integration connections are
+  permanently removed.
 </Warning>
 
-***
+---
 
 ## Get live stats
 
@@ -340,23 +366,44 @@ GET /agents/:id/stats
 
 ### Response
 
-<ResponseField name="cpu_percent" type="number">CPU utilisation as a percentage across all cores.</ResponseField>
-<ResponseField name="memory_usage_mb" type="number">Actual memory usage in MB (excludes page cache).</ResponseField>
-<ResponseField name="memory_limit_mb" type="number">Memory limit allocated to the container in MB.</ResponseField>
-<ResponseField name="memory_percent" type="number">Memory usage as a percentage of the limit.</ResponseField>
-<ResponseField name="network_rx_mb" type="number">Total received bytes across all network interfaces, in MB.</ResponseField>
-<ResponseField name="network_tx_mb" type="number">Total transmitted bytes across all network interfaces, in MB.</ResponseField>
-<ResponseField name="disk_read_mb" type="number">Total block device read bytes in MB.</ResponseField>
-<ResponseField name="disk_write_mb" type="number">Total block device write bytes in MB.</ResponseField>
-<ResponseField name="pids" type="number">Number of processes running inside the container.</ResponseField>
-<ResponseField name="uptime_seconds" type="number">Seconds since the container last started.</ResponseField>
-<ResponseField name="running" type="boolean">Whether the container is currently running.</ResponseField>
+<ResponseField name="cpu_percent" type="number">
+  CPU utilisation as a percentage across all cores.
+</ResponseField>
+<ResponseField name="memory_usage_mb" type="number">
+  Actual memory usage in MB (excludes page cache).
+</ResponseField>
+<ResponseField name="memory_limit_mb" type="number">
+  Memory limit allocated to the container in MB.
+</ResponseField>
+<ResponseField name="memory_percent" type="number">
+  Memory usage as a percentage of the limit.
+</ResponseField>
+<ResponseField name="network_rx_mb" type="number">
+  Total received bytes across all network interfaces, in MB.
+</ResponseField>
+<ResponseField name="network_tx_mb" type="number">
+  Total transmitted bytes across all network interfaces, in MB.
+</ResponseField>
+<ResponseField name="disk_read_mb" type="number">
+  Total block device read bytes in MB.
+</ResponseField>
+<ResponseField name="disk_write_mb" type="number">
+  Total block device write bytes in MB.
+</ResponseField>
+<ResponseField name="pids" type="number">
+  Number of processes running inside the container.
+</ResponseField>
+<ResponseField name="uptime_seconds" type="number">
+  Seconds since the container last started.
+</ResponseField>
+<ResponseField name="running" type="boolean">
+  Whether the container is currently running.
+</ResponseField>
 
 <CodeGroup>
   ```bash curl theme={null}
-  curl http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/stats \
-    -H "Authorization: Bearer $TOKEN"
-  ```
+  curl http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/stats \ -H
+  "Authorization: Bearer $TOKEN" ```
 </CodeGroup>
 
 ```json theme={null}
@@ -380,7 +427,7 @@ GET /agents/:id/stats
 | `409`  | Agent has no container            |
 | `502`  | Could not reach the Docker daemon |
 
-***
+---
 
 ## Get stats history
 
@@ -399,7 +446,8 @@ GET /agents/:id/stats/history
 ### Query parameters
 
 <ParamField query="range" type="string" default="15m">
-  Preset time window. One of `5m`, `15m`, `30m`, `1h`, `6h`, `24h`. Ignored when `from` and `to` are provided.
+  Preset time window. One of `5m`, `15m`, `30m`, `1h`, `6h`, `24h`. Ignored when `from` and `to` are
+  provided.
 </ParamField>
 
 <ParamField query="from" type="string">
@@ -412,16 +460,36 @@ GET /agents/:id/stats/history
 
 Returns an array of up to 2 000 stat records, ordered oldest-first.
 
-<ResponseField name="cpu_percent" type="number">CPU % at sample time.</ResponseField>
-<ResponseField name="memory_usage_mb" type="number">Memory usage in MB at sample time.</ResponseField>
-<ResponseField name="memory_limit_mb" type="number">Memory limit in MB.</ResponseField>
-<ResponseField name="memory_percent" type="number">Memory % at sample time.</ResponseField>
-<ResponseField name="network_rx_mb" type="number">Cumulative received MB at sample time.</ResponseField>
-<ResponseField name="network_tx_mb" type="number">Cumulative transmitted MB at sample time.</ResponseField>
-<ResponseField name="disk_read_mb" type="number">Cumulative disk read MB at sample time.</ResponseField>
-<ResponseField name="disk_write_mb" type="number">Cumulative disk write MB at sample time.</ResponseField>
-<ResponseField name="pids" type="number">Process count at sample time.</ResponseField>
-<ResponseField name="recorded_at" type="string">ISO 8601 timestamp when the sample was recorded.</ResponseField>
+<ResponseField name="cpu_percent" type="number">
+  CPU % at sample time.
+</ResponseField>
+<ResponseField name="memory_usage_mb" type="number">
+  Memory usage in MB at sample time.
+</ResponseField>
+<ResponseField name="memory_limit_mb" type="number">
+  Memory limit in MB.
+</ResponseField>
+<ResponseField name="memory_percent" type="number">
+  Memory % at sample time.
+</ResponseField>
+<ResponseField name="network_rx_mb" type="number">
+  Cumulative received MB at sample time.
+</ResponseField>
+<ResponseField name="network_tx_mb" type="number">
+  Cumulative transmitted MB at sample time.
+</ResponseField>
+<ResponseField name="disk_read_mb" type="number">
+  Cumulative disk read MB at sample time.
+</ResponseField>
+<ResponseField name="disk_write_mb" type="number">
+  Cumulative disk write MB at sample time.
+</ResponseField>
+<ResponseField name="pids" type="number">
+  Process count at sample time.
+</ResponseField>
+<ResponseField name="recorded_at" type="string">
+  ISO 8601 timestamp when the sample was recorded.
+</ResponseField>
 
 <CodeGroup>
   ```bash curl (preset range) theme={null}
@@ -429,10 +497,11 @@ Returns an array of up to 2 000 stat records, ordered oldest-first.
     -H "Authorization: Bearer $TOKEN"
   ```
 
-  ```bash curl (custom range) theme={null}
-  curl "http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/stats/history?from=2025-03-10T08:00:00Z&to=2025-03-10T09:00:00Z" \
-    -H "Authorization: Bearer $TOKEN"
-  ```
+```bash curl (custom range) theme={null}
+curl "http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/stats/history?from=2025-03-10T08:00:00Z&to=2025-03-10T09:00:00Z" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
 </CodeGroup>
 
 ```json theme={null}
@@ -452,7 +521,7 @@ Returns an array of up to 2 000 stat records, ordered oldest-first.
 ]
 ```
 
-***
+---
 
 ## Get gateway URL
 
@@ -470,14 +539,17 @@ GET /agents/:id/gateway-url
 
 ### Response
 
-<ResponseField name="url" type="string">Full HTTP URL to the gateway UI, e.g. `http://localhost:32101`.</ResponseField>
-<ResponseField name="port" type="number">Resolved host port number.</ResponseField>
+<ResponseField name="url" type="string">
+  Full HTTP URL to the gateway UI, e.g. `http://localhost:32101`.
+</ResponseField>
+<ResponseField name="port" type="number">
+  Resolved host port number.
+</ResponseField>
 
 <CodeGroup>
   ```bash curl theme={null}
-  curl http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/gateway-url \
-    -H "Authorization: Bearer $TOKEN"
-  ```
+  curl http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/gateway-url \ -H
+  "Authorization: Bearer $TOKEN" ```
 </CodeGroup>
 
 ```json theme={null}

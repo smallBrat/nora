@@ -31,6 +31,7 @@ class mockFakeWebSocket extends EventEmitter {
   send(payload) {
     const msg = JSON.parse(payload);
     if (msg.method === "connect") {
+      mockFakeWebSocket.connectParams.push(msg.params);
       return setImmediate(() => {
         this.emit(
           "message",
@@ -150,6 +151,7 @@ mockFakeWebSocket.CLOSED = 3;
 mockFakeWebSocket.healthMode = "success";
 mockFakeWebSocket.statusMode = "success";
 mockFakeWebSocket.toolsCatalogResult = { tools: [] };
+mockFakeWebSocket.connectParams = [];
 
 class mockFakeWebSocketServer {
   on() {}
@@ -183,6 +185,7 @@ describe("gateway proxy control-plane routes", () => {
     mockFakeWebSocket.healthMode = "success";
     mockFakeWebSocket.statusMode = "success";
     mockFakeWebSocket.toolsCatalogResult = { tools: [] };
+    mockFakeWebSocket.connectParams = [];
     mockGetIntegrationsForSync.mockReset();
     mockBuildIntegrationToolCatalogEntries.mockReset();
 
@@ -222,6 +225,12 @@ describe("gateway proxy control-plane routes", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.content).toBe("pong");
+    expect(mockFakeWebSocket.connectParams[0]).toEqual(
+      expect.objectContaining({
+        minProtocol: 4,
+        maxProtocol: 4,
+      }),
+    );
     expect(mockRecordMetric).toHaveBeenCalledWith("agent-1", "user-1", "messages_sent", 1);
     expect(mockRecordMetric).toHaveBeenCalledWith("agent-1", "user-1", "tokens_used", 42);
   });

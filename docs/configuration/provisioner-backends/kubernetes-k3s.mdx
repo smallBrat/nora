@@ -10,13 +10,13 @@ Use K3s when Nora runs on your own server, homelab, edge node, or private VM fle
 
 Use AKS, GKE, EKS, or another cloud `k8s` target when you want managed control-plane operations, cloud load balancers, cloud identity, and multi-zone cluster management.
 
-|                        | K3s                                      | Cloud Kubernetes (`k8s`)                         |
-| ---------------------- | ---------------------------------------- | ------------------------------------------------ |
-| **Backend id**         | `k3s`                                    | `k8s`                                            |
-| **Operator model**     | You own the cluster host and upgrades    | Cloud provider manages the Kubernetes control plane |
-| **Typical exposure**   | `node-port` from Compose to the K3s node | `load-balancer` with provider-managed Services   |
-| **Best for**           | Self-hosted, edge, lab, and private infra | Production cloud clusters and managed networking |
-| **Adapter behavior**   | Same generic Kubernetes adapter          | Same generic Kubernetes adapter                  |
+|                      | K3s                                       | Cloud Kubernetes (`k8s`)                            |
+| -------------------- | ----------------------------------------- | --------------------------------------------------- |
+| **Backend id**       | `k3s`                                     | `k8s`                                               |
+| **Operator model**   | You own the cluster host and upgrades     | Cloud provider manages the Kubernetes control plane |
+| **Typical exposure** | `node-port` from Compose to the K3s node  | `load-balancer` with provider-managed Services      |
+| **Best for**         | Self-hosted, edge, lab, and private infra | Production cloud clusters and managed networking    |
+| **Adapter behavior** | Same generic Kubernetes adapter           | Same generic Kubernetes adapter                     |
 
 ## Step-by-step setup
 
@@ -73,14 +73,16 @@ docker compose -f docker-compose.yml -f docker-compose.k3s.yml up -d --build
 
 ### 6. Deploy a test agent
 
-Open the dashboard at `http://127.0.0.1:8080`, sign in, and create an agent with **Backend = Kubernetes**.
+Open the dashboard at `http://127.0.0.1:8080`, sign in, and create an agent with **Backend = Kubernetes on K3s**.
 
-<Frame caption="Nora deploy wizard — Backend dropdown showing Kubernetes">
-  ![Deploy wizard backend picker](/images/provisioner-backends/k8s/_nora/nora-deploy-backend-picker.png)
+<Frame caption="Nora deploy wizard — Backend dropdown showing Kubernetes on K3s">
+  ![Deploy wizard backend
+  picker](/images/provisioner-backends/k8s/_nora/nora-deploy-backend-picker.png)
 </Frame>
 
-<Frame caption="Nora deploy wizard — Kubernetes selected, namespace + exposure fields visible">
-  ![Deploy wizard Kubernetes selected](/images/provisioner-backends/k8s/_nora/nora-deploy-k8s-selected.png)
+<Frame caption="Nora deploy wizard — Kubernetes on K3s selected">
+  ![Deploy wizard Kubernetes
+  selected](/images/provisioner-backends/k8s/_nora/nora-deploy-k8s-selected.png)
 </Frame>
 
 <Frame caption="Agent detail page — status running, K3s NodePort address shown">
@@ -128,7 +130,7 @@ The script brings up the Compose stack with `docker-compose.k3s.yml`, deploys an
 
 ## Promote to production
 
-Once the smoke is green and you trust the cluster, switch from the dev-mode stack to the prod-mode stack. The only changes vs the testing setup are nginx (public config + TLS) and Compose mode (auto-loaded `docker-compose.override.yml` for prod Dockerfiles + restart policies).
+Once the smoke is green and you trust the cluster, switch from the dev-mode stack to the prod-mode stack. The only changes vs the testing setup are nginx (public config + TLS) and Compose mode (`infra/docker-compose.public-tls.yml` for prod Dockerfiles, TLS mounts, public ports, and restart policies).
 
 ### 1. Switch nginx to public + TLS
 
@@ -153,12 +155,12 @@ docker compose -f docker-compose.yml -f docker-compose.k3s.yml down
 
 ### 3. Start the prod-mode stack
 
-The default Compose invocation auto-loads `docker-compose.override.yml` (`Dockerfile.prod`, `npm start`, `restart: unless-stopped`). Layer the K3s overlay on top via explicit `-f` flags:
+Use the tracked TLS compose layer, then layer the K3s backend overlay on top:
 
 ```bash theme={null}
 docker compose \
   -f docker-compose.yml \
-  -f docker-compose.override.yml \
+  -f infra/docker-compose.public-tls.yml \
   -f docker-compose.k3s.yml \
   up -d --build
 ```

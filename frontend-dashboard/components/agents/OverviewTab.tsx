@@ -67,6 +67,7 @@ function formatRuntimeAddress(agent) {
 
 export default function OverviewTab({
   agent,
+  backendConfig,
   actionLoading,
   onStart,
   onStop,
@@ -77,8 +78,12 @@ export default function OverviewTab({
 }) {
   const [lastError, setLastError] = useState(null);
   const [browserHostname, setBrowserHostname] = useState("");
-  const deployModeLabel = formatRuntimePathLabel(agent);
-  const executionTargetLabel = formatExecutionTargetLabel(resolveAgentExecutionTarget(agent));
+  const deployModeLabel = formatRuntimePathLabel(agent, backendConfig);
+  const executionTargetLabel = formatExecutionTargetLabel(
+    resolveAgentExecutionTarget(agent),
+    backendConfig,
+    agent.runtime_family,
+  );
   const sandboxLabel = formatSandboxProfileLabel(resolveAgentSandboxProfile(agent));
   const isNemoClawAgent = isNemoClawSandbox(agent);
   const isHermesAgent = isHermesRuntime(agent);
@@ -424,7 +429,9 @@ export default function OverviewTab({
             <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
               Runtime Host
             </label>
-            <p className="text-sm text-slate-900 mt-1">{agent.node || "—"}</p>
+            <p className="text-sm text-slate-900 mt-1">
+              {agent.runtime_host || agent.host || agent.node || "—"}
+            </p>
           </div>
         </div>
       </section>

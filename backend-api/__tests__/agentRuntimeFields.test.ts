@@ -177,6 +177,29 @@ describe("agent runtime fields", () => {
     );
   });
 
+  it("keeps an explicitly requested Hermes Kubernetes target", () => {
+    process.env.ENABLED_RUNTIME_FAMILIES = "openclaw,hermes";
+    process.env.ENABLED_BACKENDS = "docker,k8s";
+    process.env.KUBECONFIG = "/tmp/test-kubeconfig";
+
+    expect(
+      resolveRequestedRuntimeFields({
+        request: {
+          runtime_family: "hermes",
+          deploy_target: "k8s",
+        },
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        runtime_family: "hermes",
+        deploy_target: "k8s",
+        sandbox_profile: "standard",
+        backend_type: "k8s",
+        sandbox_type: "standard",
+      }),
+    );
+  });
+
   it("uses the enabled sandbox default when NemoClaw is the only OpenClaw sandbox profile", () => {
     process.env.ENABLED_SANDBOX_PROFILES = "nemoclaw";
 

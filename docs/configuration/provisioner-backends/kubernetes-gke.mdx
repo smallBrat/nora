@@ -46,7 +46,9 @@ Set the GKE helper variables in `.env`:
 ```bash theme={null}
 GKE_KUBECONFIG_PATH=./.secrets/gke-kubeconfig
 GKE_ENABLED_BACKENDS=k8s
-GKE_K8S_NAMESPACE=openclaw-agents
+GKE_K8S_NAMESPACE=nora-openclaw-agents
+GKE_K8S_OPENCLAW_NAMESPACE=nora-openclaw-agents
+GKE_K8S_HERMES_NAMESPACE=nora-hermes-agents
 GKE_K8S_EXPOSURE_MODE=load-balancer
 GKE_K8S_LOAD_BALANCER_SOURCE_RANGES=<nora-control-plane-egress-cidr>
 GKE_K8S_LOAD_BALANCER_READY_TIMEOUT_MS=1200000
@@ -66,16 +68,26 @@ Confirm region / VPC alignment in the Console's **Networking** tab before exposi
 docker compose -f docker-compose.yml -f docker-compose.gke.yml up -d --build
 ```
 
+<Warning>
+  This smoke-mode command is for the local nginx config (`NGINX_CONFIG_FILE=nginx.conf`, usually
+  `NGINX_HTTP_PORT=8080`). If your `.env` already points to the public TLS config
+  (`NGINX_CONFIG_FILE=nginx.public.conf`), include the tracked `infra/docker-compose.public-tls.yml`
+  layer as shown in [Promote to production](#promote-to-production); otherwise nginx will not mount
+  `/etc/letsencrypt` and Cloudflare can return 521 because the origin web server is down.
+</Warning>
+
 ### 6. Deploy a test agent
 
-Open the dashboard at `http://127.0.0.1:8080`, sign in, and create an agent with **Backend = Kubernetes**.
+Open the dashboard at `http://127.0.0.1:8080`, sign in, and create an agent with **Backend = Kubernetes on GKE**.
 
-<Frame caption="Nora deploy wizard — Backend dropdown showing Kubernetes">
-  ![Deploy wizard backend picker](/images/provisioner-backends/k8s/_nora/nora-deploy-backend-picker.png)
+<Frame caption="Nora deploy wizard — Backend dropdown showing Kubernetes on GKE">
+  ![Deploy wizard backend
+  picker](/images/provisioner-backends/k8s/_nora/nora-deploy-backend-picker.png)
 </Frame>
 
-<Frame caption="Nora deploy wizard — Kubernetes selected, namespace + exposure fields visible">
-  ![Deploy wizard Kubernetes selected](/images/provisioner-backends/k8s/_nora/nora-deploy-k8s-selected.png)
+<Frame caption="Nora deploy wizard — Kubernetes on GKE selected">
+  ![Deploy wizard Kubernetes
+  selected](/images/provisioner-backends/k8s/_nora/nora-deploy-k8s-selected.png)
 </Frame>
 
 <Frame caption="Agent detail — status running with the GKE LoadBalancer address">
@@ -101,7 +113,9 @@ Leave `GKE_K8S_SERVICE_ANNOTATIONS_JSON` empty unless your cluster policy requir
 ## Verification
 
 ```bash theme={null}
-kubectl --kubeconfig ./.secrets/gke-kubeconfig -n openclaw-agents get deploy,svc,pods
+kubectl --kubeconfig ./.secrets/gke-kubeconfig -n nora-openclaw-agents get deploy,svc,pods
+# If Hermes is enabled and deployed:
+kubectl --kubeconfig ./.secrets/gke-kubeconfig -n nora-hermes-agents get deploy,svc,pods
 docker compose -f docker-compose.yml -f docker-compose.gke.yml logs worker-provisioner
 ```
 
@@ -130,7 +144,7 @@ This script is operator-run only — it provisions real workloads against a live
 
 ## Promote to production
 
-Once the smoke is green, switch from the dev-mode stack to the prod-mode stack. The only changes vs the testing setup are nginx (public config + TLS) and Compose mode (auto-loaded `docker-compose.override.yml` for prod Dockerfiles + restart policies).
+Once the smoke is green, switch from the dev-mode stack to the prod-mode stack. The only changes vs the testing setup are nginx (public config + TLS) and Compose mode (`infra/docker-compose.public-tls.yml` for prod Dockerfiles, TLS mounts, public ports, and restart policies).
 
 ### 1. Tighten the LoadBalancer source ranges
 
@@ -162,7 +176,7 @@ docker compose -f docker-compose.yml -f docker-compose.gke.yml down
 ```bash theme={null}
 docker compose \
   -f docker-compose.yml \
-  -f docker-compose.override.yml \
+  -f infra/docker-compose.public-tls.yml \
   -f docker-compose.gke.yml \
   up -d --build
 ```

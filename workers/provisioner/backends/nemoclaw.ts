@@ -67,6 +67,23 @@ const BASELINE_POLICY = {
   },
 };
 
+function safeContainerName(prefix, name, id) {
+  const suffix =
+    String(id || Date.now().toString(36))
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(-12) || "agent";
+  const maxSlugLength = Math.max(8, 63 - prefix.length - suffix.length - 2);
+  const slug =
+    String(name || "agent")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, maxSlugLength) || "agent";
+  return `${prefix}-${slug}-${suffix}`;
+}
+
 class NemoClawBackend extends ProvisionerBackend {
   constructor() {
     super();
@@ -231,7 +248,7 @@ class NemoClawBackend extends ProvisionerBackend {
 
   async create(config) {
     const { id, name, vcpu, ram_mb, disk_gb, env, container_name, templatePayload } = config;
-    const containerName = container_name || `oclaw-nemoclaw-${id}`;
+    const containerName = container_name || safeContainerName("nora-oclaw", name, id);
     const model = (env && env.NEMOCLAW_MODEL) || DEFAULT_MODEL;
     let container = null;
 
@@ -485,9 +502,9 @@ class NemoClawBackend extends ProvisionerBackend {
       }
 
       console.log(
-        `[nemoclaw] Container ${container.id} started at ${host} (gateway port 18789, model: ${model})`,
+        `[nemoclaw] Container ${containerName} (${container.id}) started at ${host} (gateway port 18789, model: ${model})`,
       );
-      return { containerId: container.id, host, gatewayToken, containerName };
+      return { containerId: containerName, host, gatewayToken, containerName };
     } catch (error) {
       if (container) {
         try {

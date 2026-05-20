@@ -350,7 +350,7 @@ describe("public platform config", () => {
       expect.objectContaining({
         enabled: true,
         available: true,
-        maturityTier: "beta",
+        maturityTier: "ga",
         supportsSandboxSelection: true,
       }),
     );
@@ -418,7 +418,7 @@ describe("public platform config", () => {
     expect(res.body.backends.map((backend) => backend.id)).not.toContain("hermes");
   });
 
-  it("does not synthesize backend ids for runtime families that lack a compatible enabled target", async () => {
+  it("surfaces Kubernetes as a compatible target for OpenClaw and Hermes", async () => {
     process.env.ENABLED_RUNTIME_FAMILIES = "openclaw,hermes";
     process.env.ENABLED_BACKENDS = "k8s";
     process.env.KUBECONFIG = "/tmp/test-kubeconfig";
@@ -430,7 +430,11 @@ describe("public platform config", () => {
     expect(res.body.runtimeFamilies).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ id: "openclaw" }),
-        expect.objectContaining({ id: "hermes", available: false }),
+        expect.objectContaining({
+          id: "hermes",
+          available: true,
+          enabledDeployTargets: ["k8s"],
+        }),
       ]),
     );
     expect(res.body.backends).toEqual(
@@ -459,7 +463,7 @@ describe("public platform config", () => {
       expect.arrayContaining([
         expect.objectContaining({
           id: "k8s",
-          label: "K3s / Kubernetes",
+          label: "Kubernetes on K3s",
           enabled: true,
           available: true,
         }),

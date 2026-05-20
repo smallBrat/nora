@@ -13,6 +13,7 @@ import {
 
 export default function SettingsTab({
   agent,
+  backendConfig,
   onDelete,
   onRename,
   onDuplicate,
@@ -26,7 +27,11 @@ export default function SettingsTab({
   const toast = useToast();
   const runtimeFamilyLabel = formatRuntimeFamilyLabel(agent.runtime_family);
   const supportsAgentHub = runtimeSupportsAgentHubSharing(agent);
-  const executionTargetLabel = formatExecutionTargetLabel(resolveAgentExecutionTarget(agent));
+  const executionTargetLabel = formatExecutionTargetLabel(
+    resolveAgentExecutionTarget(agent),
+    backendConfig,
+    agent.runtime_family,
+  );
   const sandboxLabel = formatSandboxProfileLabel(resolveAgentSandboxProfile(agent));
 
   useEffect(() => {

@@ -374,6 +374,8 @@ function sanitizeAgentName(rawName, fallbackLabel = "OpenClaw-Agent") {
 }
 
 const GENERATED_CONTAINER_NAME_PREFIXES = Object.freeze([
+  "nora-oclaw",
+  "nora-hermes",
   "oclaw-agent",
   "oclaw-nemoclaw",
   "hermes-agent",
@@ -382,12 +384,9 @@ const GENERATED_CONTAINER_NAME_PREFIXES = Object.freeze([
 function containerNamePrefixForRuntime(runtimeSelection = {}) {
   const runtimeFields = buildAgentRuntimeFields(runtimeSelection);
   if (runtimeFields.runtime_family === "hermes") {
-    return "hermes-agent";
+    return "nora-hermes";
   }
-  if (runtimeFields.sandbox_profile === "nemoclaw") {
-    return "oclaw-nemoclaw";
-  }
-  return "oclaw-agent";
+  return "nora-oclaw";
 }
 
 function isGeneratedContainerName(value) {
@@ -399,12 +398,14 @@ function isGeneratedContainerName(value) {
 
 function buildContainerName(name, runtimeSelection = {}) {
   const prefix = containerNamePrefixForRuntime(runtimeSelection);
+  const suffix = Date.now().toString(36);
+  const maxSlugLength = Math.max(16, 63 - prefix.length - suffix.length - 2);
   const slug = String(name || "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "")
-    .slice(0, 48);
-  return `${prefix}-${slug || "agent"}-${Date.now().toString(36)}`;
+    .slice(0, maxSlugLength);
+  return `${prefix}-${slug || "agent"}-${suffix}`;
 }
 
 function resolveContainerName({

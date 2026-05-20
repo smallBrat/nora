@@ -3,6 +3,7 @@ services:
     environment:
       ENABLED_BACKENDS: ${K3S_ENABLED_BACKENDS:-k3s}
       KUBECONFIG: /kubeconfig/config
+      K8S_PROVIDER: k3s
       K8S_NAMESPACE: ${K3S_K8S_NAMESPACE:-openclaw-agents}
       K8S_EXPOSURE_MODE: ${K3S_K8S_EXPOSURE_MODE:-node-port}
       K8S_RUNTIME_HOST: ${K3S_K8S_RUNTIME_HOST:-host.docker.internal}
@@ -23,6 +24,7 @@ services:
       DEPLOYMENT_WORKER_CONCURRENCY: ${DEPLOYMENT_WORKER_CONCURRENCY:-6}
       ENABLED_BACKENDS: ${K3S_ENABLED_BACKENDS:-k3s}
       KUBECONFIG: /kubeconfig/config
+      K8S_PROVIDER: k3s
       K8S_NAMESPACE: ${K3S_K8S_NAMESPACE:-openclaw-agents}
       K8S_EXPOSURE_MODE: ${K3S_K8S_EXPOSURE_MODE:-node-port}
       K8S_RUNTIME_HOST: ${K3S_K8S_RUNTIME_HOST:-host.docker.internal}

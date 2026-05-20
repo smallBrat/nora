@@ -29,6 +29,7 @@ const K8S_NODE_PORT_MIN = 30000;
 const K8S_NODE_PORT_MAX = 32767;
 const GATEWAY_PROXY_PATH_RE = /^[A-Za-z0-9._~/-]*$/;
 const GATEWAY_PROXY_SEARCH_RE = /^\?[A-Za-z0-9._~!$&'()*+,;=:@/?%-]*$/;
+const GATEWAY_PROTOCOL_VERSION = 4;
 
 // Hostname must be a plain DNS name / IP literal — no URL meta-chars that
 // could alter the parsed origin (no "@", "/", "?", "#", ":", whitespace, etc.).
@@ -310,8 +311,8 @@ class GatewayConnection {
               id: "__connect__",
               method: "connect",
               params: {
-                minProtocol: 3,
-                maxProtocol: 3,
+                minProtocol: GATEWAY_PROTOCOL_VERSION,
+                maxProtocol: GATEWAY_PROTOCOL_VERSION,
                 client: {
                   id: "gateway-client",
                   version: "1.0.0",
@@ -1239,8 +1240,8 @@ function attachGatewayWS(server) {
             id: "__relay_connect__",
             method: "connect",
             params: {
-              minProtocol: 3,
-              maxProtocol: 3,
+              minProtocol: GATEWAY_PROTOCOL_VERSION,
+              maxProtocol: GATEWAY_PROTOCOL_VERSION,
               client: {
                 id: "gateway-client",
                 version: "1.0.0",

@@ -10,6 +10,8 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   ShoppingBag,
+  GitBranch,
+  ExternalLink,
   X,
 } from "lucide-react";
 import { clsx } from "clsx";
@@ -20,6 +22,8 @@ type SidebarProps = {
   onToggleCollapse?: (() => void) | null;
   onClose?: (() => void) | null;
 };
+
+const REPO_URL = "https://github.com/solomon2773/nora";
 
 export default function Sidebar({ collapsed = false, onToggleCollapse, onClose }: SidebarProps) {
   const router = useRouter();
@@ -120,6 +124,30 @@ export default function Sidebar({ collapsed = false, onToggleCollapse, onClose }
 
       {/* Footer */}
       <div className={clsx("mt-auto border-t border-white/5 space-y-1", collapsed ? "p-2" : "p-4")}>
+        <a
+          href={REPO_URL}
+          target="_blank"
+          rel="noreferrer"
+          className="block"
+          title={collapsed ? t("GitHub Repo") : undefined}
+          aria-label={t("GitHub Repo")}
+        >
+          <div
+            className={clsx(
+              "flex items-center gap-3 rounded-xl text-sm font-medium transition-all group text-slate-500 hover:text-white hover:bg-white/5",
+              collapsed ? "justify-center px-2 py-3" : "px-4 py-3",
+            )}
+          >
+            <GitBranch size={18} className="shrink-0" />
+            {!collapsed && (
+              <>
+                <span className="flex-1">{t("GitHub Repo")}</span>
+                <ExternalLink size={14} className="text-slate-600 group-hover:text-slate-300" />
+              </>
+            )}
+          </div>
+        </a>
+
         <a
           href={localizePath("/app/settings")}
           className="block"

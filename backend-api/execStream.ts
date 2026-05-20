@@ -185,12 +185,90 @@ function attachExecStream(server) {
             ws.close();
             return;
           }
+          if (!execResult.stream || typeof execResult.stream.on !== "function") {
+            ws.send(
+              JSON.stringify({
+                type: "error",
+                message: `Exec stream not available for ${backendType} backend`,
+              }),
+            );
+            ws.close();
+            return;
+          }
           ws.send(
             JSON.stringify({
               type: "system",
               message: `Connected to ${agent.name} via ${backendType}`,
             }),
           );
+
+          const backendStream = execResult.stream;
+          const backendStdin = execResult.stdin || null;
+          let inputUnsupportedNotified = false;
+
+          if (backendStream && typeof backendStream.on === "function") {
+            backendStream.on("data", (chunk) => {
+              if (ws.readyState === 1) {
+                ws.send(JSON.stringify({ type: "output", data: chunk.toString("utf8") }));
+              }
+            });
+
+            backendStream.on("end", () => {
+              if (ws.readyState === 1) {
+                ws.send(JSON.stringify({ type: "system", message: "Shell session ended" }));
+                ws.close();
+              }
+            });
+
+            backendStream.on("error", (err) => {
+              if (ws.readyState === 1) {
+                ws.send(
+                  JSON.stringify({
+                    type: "error",
+                    message: `Terminal stream error: ${err.message}`,
+                  }),
+                );
+                ws.close();
+              }
+            });
+          }
+
+          ws.on("message", (raw) => {
+            let msg = null;
+            try {
+              msg = JSON.parse(raw.toString());
+            } catch {
+              msg = { type: "input", data: raw.toString() };
+            }
+
+            if (msg.type === "input" && msg.data) {
+              if (backendStdin && typeof backendStdin.write === "function") {
+                backendStdin.write(msg.data);
+              } else if (!inputUnsupportedNotified && ws.readyState === 1) {
+                inputUnsupportedNotified = true;
+                ws.send(
+                  JSON.stringify({
+                    type: "system",
+                    message: `Interactive input is not supported for ${backendType} terminal sessions`,
+                  }),
+                );
+              }
+            } else if (msg.type === "resize" && msg.cols && msg.rows) {
+              const resize = execResult.exec?.resize || execResult.resize;
+              if (typeof resize === "function") {
+                Promise.resolve(resize({ h: msg.rows, w: msg.cols })).catch(() => {});
+              }
+            }
+          });
+
+          ws.on("close", () => {
+            if (backendStdin && typeof backendStdin.end === "function") {
+              backendStdin.end();
+            }
+            if (backendStream && typeof backendStream.destroy === "function") {
+              backendStream.destroy();
+            }
+          });
         } catch (err) {
           ws.send(JSON.stringify({ type: "error", message: `Exec failed: ${err.message}` }));
           ws.close();

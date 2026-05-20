@@ -293,4 +293,37 @@ describe("containerManager NemoClaw routing", () => {
     expect(logs).toBe("hermes-log-stream");
     expect(exec).toEqual({ exec: "hermes-exec", stream: "hermes-stream" });
   });
+
+  it("keeps Hermes on Kubernetes lifecycle calls on the Kubernetes adapter", async () => {
+    const containerManager = require("../containerManager");
+    const agent = {
+      runtime_family: "hermes",
+      deploy_target: "k8s",
+      backend_type: "k8s",
+      sandbox_profile: "standard",
+      container_id: "hermes-agent-k8s",
+    };
+
+    await containerManager.start(agent);
+    await containerManager.stop(agent);
+    await containerManager.restart(agent);
+    await containerManager.destroy(agent);
+    await containerManager.status(agent);
+    const telemetry = await containerManager.stats(agent);
+    const logs = await containerManager.logs(agent, { tail: 25 });
+    const exec = await containerManager.exec(agent, { tty: true });
+
+    expect(mockK8sStart).toHaveBeenCalledWith("hermes-agent-k8s");
+    expect(mockK8sStop).toHaveBeenCalledWith("hermes-agent-k8s");
+    expect(mockK8sRestart).toHaveBeenCalledWith("hermes-agent-k8s");
+    expect(mockK8sDestroy).toHaveBeenCalledWith("hermes-agent-k8s");
+    expect(mockK8sStatus).toHaveBeenCalledWith("hermes-agent-k8s");
+    expect(mockK8sStats).toHaveBeenCalledWith("hermes-agent-k8s", agent);
+    expect(mockK8sLogs).toHaveBeenCalledWith("hermes-agent-k8s", { tail: 25 });
+    expect(mockK8sExec).toHaveBeenCalledWith("hermes-agent-k8s", { tty: true });
+    expect(mockHermesStart).not.toHaveBeenCalled();
+    expect(telemetry).toEqual(expect.objectContaining({ backend_type: "k8s" }));
+    expect(logs).toBe("k8s-log-stream");
+    expect(exec).toEqual({ exec: "k8s-exec", stream: "k8s-stream" });
+  });
 });

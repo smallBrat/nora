@@ -58,6 +58,8 @@ Deploying a NemoClaw agent follows the same steps as a standard agent, with one 
 
 ## Check NemoClaw status
 
+![NemoClaw tab on the agent detail page — sandbox state and policy summary](/images/guides/nemoclaw/nemoclaw-tab.png)
+
 To verify that a NemoClaw agent is running and that the sandbox is healthy:
 
 1. Open the agent's detail page.
@@ -96,6 +98,8 @@ POST /api/agents/:id/nemoclaw/policy
 ```
 
 ## Review approvals
+
+![NemoClaw terminal — interactive shell with policy gating applied to commands](/images/guides/nemoclaw/nemoclaw-terminal.png)
 
 When the agent attempts an action that your policy flags for review, an approval request is created. You can inspect and act on pending approvals from the dashboard or the API.
 

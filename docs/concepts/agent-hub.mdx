@@ -4,6 +4,8 @@
 
 Agent Hub is Nora's template marketplace. A **listing** captures everything needed to recreate an agent — runtime family, deploy target, sandbox profile, image, environment overrides, integrations, and bootstrap files — and exposes it as a one-click install in any workspace that has access. Operators publish listings from existing agents; consumers install listings into their own workspace.
 
+![Agent Hub — preset and community listings grouped by source](/images/operator/agent-hub-list.png)
+
 ## Listing types
 
 | Source type    | Where it lives                                       | Visibility                                 |
@@ -35,6 +37,8 @@ A listing has one or more versions. Each version captures:
 - A monotonic `versionNumber`.
 
 When a consumer installs a listing, Nora materializes the latest version into a new agent in the consumer's workspace.
+
+![Listing detail — version history, included files, and install affordance](/images/operator/agent-hub-detail.png)
 
 ## Reports and moderation
 

@@ -6,6 +6,8 @@ Nora is the self-hosted AI agent ops platform — an operator-facing control pla
 
 The public repo centers on a single control-plane host. Agent workloads can stay on the local Docker host or be placed onto supported external execution targets — Kubernetes (k3s/k8s), Proxmox, NemoClaw — without changing the operator workflow.
 
+![Operator dashboard — the surface this architecture renders to the user](/images/operator/dashboard.png)
+
 ## System map
 
 ```mermaid theme={null}
@@ -224,6 +226,8 @@ Failed jobs are retained on each queue for inspection. The DLQ surface for deplo
 - Stored secrets — provider keys, integration credentials, OAuth tokens, backup encryption material, SMTP password — are AES-256-GCM encrypted with `ENCRYPTION_KEY`. API keys and Agent Hub installation keys are HMAC-hashed at rest, not encrypted.
 
 ## Deployment topologies
+
+![Fleet view — control plane managing multiple agent placements](/images/operator/fleet.png)
 
 | Topology                            | Ingress owner                                  | Control plane placement | Agent placement                                   | Best fit                                                                       |
 | ----------------------------------- | ---------------------------------------------- | ----------------------- | ------------------------------------------------- | ------------------------------------------------------------------------------ |

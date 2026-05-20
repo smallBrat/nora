@@ -493,7 +493,11 @@ export default function AgentDetail() {
     );
   }
 
-  const executionTargetLabel = formatExecutionTargetLabel(resolveAgentExecutionTarget(agent));
+  const executionTargetLabel = formatExecutionTargetLabel(
+    resolveAgentExecutionTarget(agent),
+    backendConfig,
+    resolveAgentRuntimeFamily(agent),
+  );
   const sandboxProfile = resolveAgentSandboxProfile(agent);
   const sandboxLabel = formatSandboxProfileLabel(sandboxProfile);
   const duplicateActiveExecutionTarget = activeExecutionTargetFromConfig(
@@ -662,6 +666,7 @@ export default function AgentDetail() {
           {activeTab === "overview" && (
             <OverviewTab
               agent={agent}
+              backendConfig={backendConfig}
               actionLoading={actionLoading}
               onDuplicate={openDuplicateDialog}
               onPublish={openPublishDialog}
@@ -672,7 +677,7 @@ export default function AgentDetail() {
             />
           )}
 
-          {activeTab === "metrics" && <MetricsTab agentId={id} />}
+          {activeTab === "metrics" && <MetricsTab agentId={id} backendConfig={backendConfig} />}
 
           {activeTab === "files" && (
             <AgentFilesTab
@@ -749,6 +754,7 @@ export default function AgentDetail() {
           {activeTab === "settings" && (
             <SettingsTab
               agent={agent}
+              backendConfig={backendConfig}
               actionLoading={actionLoading}
               onDelete={handleDelete}
               onDuplicate={openDuplicateDialog}

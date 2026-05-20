@@ -2142,12 +2142,12 @@ describe("POST /agents/deploy", () => {
 
     expect(res.status).toBe(200);
     const insertParams = mockDb.query.mock.calls[0][1];
-    expect(insertParams[8]).toMatch(/^hermes-agent-desk-bot-/);
+    expect(insertParams[8]).toMatch(/^nora-hermes-desk-bot-/);
     expect(mockAddDeploymentJob).toHaveBeenCalledWith(
       expect.objectContaining({
         id: "a-hermes-deploy",
         backend: "docker",
-        container_name: expect.stringMatching(/^hermes-agent-desk-bot-/),
+        container_name: expect.stringMatching(/^nora-hermes-desk-bot-/),
       }),
     );
   });
@@ -2944,12 +2944,12 @@ describe("POST /agents/:id/duplicate", () => {
 
     expect(res.status).toBe(200);
     const insertParams = mockDb.query.mock.calls[1][1];
-    expect(insertParams[8]).toMatch(/^hermes-agent-desk-bot-hermes-/);
+    expect(insertParams[8]).toMatch(/^nora-hermes-desk-bot-hermes-/);
     expect(mockAddDeploymentJob).toHaveBeenCalledWith(
       expect.objectContaining({
         id: "a-duplicate-hermes",
         backend: "docker",
-        container_name: expect.stringMatching(/^hermes-agent-desk-bot-hermes-/),
+        container_name: expect.stringMatching(/^nora-hermes-desk-bot-hermes-/),
       }),
     );
   });
@@ -3932,7 +3932,7 @@ describe("POST /agents/:id/redeploy", () => {
         "openclaw",
         "docker",
         "standard",
-        "oclaw-agent-warning",
+        expect.stringMatching(/^nora-oclaw-warning-agent-/),
         "nora-openclaw-agent:local",
       ],
     );
@@ -3944,7 +3944,7 @@ describe("POST /agents/:id/redeploy", () => {
         backend: "docker",
         sandbox: "standard",
         specs: { vcpu: 2, ram_mb: 2048, disk_gb: 20 },
-        container_name: "oclaw-agent-warning",
+        container_name: expect.stringMatching(/^nora-oclaw-warning-agent-/),
       }),
     );
   });
@@ -3991,7 +3991,7 @@ describe("POST /agents/:id/redeploy", () => {
       "openclaw",
       "k8s",
       "standard",
-      "oclaw-agent-nemo",
+      expect.stringMatching(/^nora-oclaw-nemo-agent-/),
       "node:24-slim",
     ]);
     expect(mockAddDeploymentJob).toHaveBeenCalledWith(
@@ -4000,6 +4000,53 @@ describe("POST /agents/:id/redeploy", () => {
         backend: "k8s",
         sandbox: "standard",
         image: "node:24-slim",
+      }),
+    );
+  });
+
+  it("passes previous Kubernetes runtime refs so redeploy deletes the old resources first", async () => {
+    process.env.ENABLED_BACKENDS = "k8s";
+    process.env.KUBECONFIG = "/tmp/test-kubeconfig";
+
+    mockDb.query
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: "a-k8s-redeploy",
+            name: "K8s Agent",
+            status: "stopped",
+            runtime_family: "openclaw",
+            backend_type: "k8s",
+            deploy_target: "k8s",
+            sandbox_profile: "standard",
+            vcpu: 2,
+            ram_mb: 2048,
+            disk_gb: 20,
+            container_id: "oclaw-agent-k8s-old",
+            container_name: "oclaw-agent-k8s-old",
+            host: "oclaw-agent-k8s-old.openclaw-agents.svc.cluster.local",
+            image: "node:24-slim",
+            user_id: "user-1",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const res = await auth(request(app).post("/agents/a-k8s-redeploy/redeploy"));
+
+    expect(res.status).toBe(200);
+    expect(mockAddDeploymentJob).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "a-k8s-redeploy",
+        backend: "k8s",
+        previous_container_id: "oclaw-agent-k8s-old",
+        previous_container_name: "oclaw-agent-k8s-old",
+        previous_host: "oclaw-agent-k8s-old.openclaw-agents.svc.cluster.local",
+        previous_backend: "k8s",
+        previous_runtime_family: "openclaw",
+        previous_deploy_target: "k8s",
+        previous_sandbox_profile: "standard",
       }),
     );
   });
@@ -4044,7 +4091,7 @@ describe("POST /agents/:id/redeploy", () => {
       "openclaw",
       "k8s",
       "standard",
-      "oclaw-agent-docker",
+      expect.stringMatching(/^nora-oclaw-docker-agent-/),
       "node:24-slim",
     ]);
     expect(mockAddDeploymentJob).toHaveBeenCalledWith(
@@ -4100,7 +4147,7 @@ describe("POST /agents/:id/redeploy", () => {
         "hermes",
         "docker",
         "standard",
-        expect.stringMatching(/^hermes-agent-desk-bot-/),
+        expect.stringMatching(/^nora-hermes-desk-bot-/),
         "nousresearch/hermes-agent:latest",
       ],
     );
@@ -4108,7 +4155,7 @@ describe("POST /agents/:id/redeploy", () => {
       expect.objectContaining({
         id: "a-hermes-redeploy",
         backend: "docker",
-        container_name: expect.stringMatching(/^hermes-agent-desk-bot-/),
+        container_name: expect.stringMatching(/^nora-hermes-desk-bot-/),
         image: "nousresearch/hermes-agent:latest",
       }),
     );

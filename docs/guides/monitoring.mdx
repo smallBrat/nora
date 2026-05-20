@@ -6,6 +6,8 @@ Nora collects runtime metrics, activity events, and cost data for every agent yo
 
 ## Platform metrics overview
 
+![Platform monitoring — agent counts, queue depth, and recent activity at a glance](/images/guides/monitoring/monitoring-overview.png)
+
 The platform-level monitoring endpoint returns aggregate statistics across all agents on your account, including totals for running agents, queued jobs, and recent activity.
 
 ```http theme={null}
@@ -127,6 +129,8 @@ GET /api/agents/:id/metrics?type=cpu&since=2026-04-09T00:00:00Z
 ```
 
 ## Agent cost tracking
+
+![Workspace cost panel — daily provider spend stacked across the past week](/images/guides/monitoring/monitoring-cost.png)
 
 Nora tracks token usage and associated costs for each agent. To view the accumulated cost data for an agent:
 

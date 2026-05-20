@@ -146,7 +146,11 @@ module.exports = {
 
   async destroy(agent) {
     const id = ensureContainerId(agent, "destroy");
-    return backendFor(agent).destroy(id);
+    return backendFor(agent).destroy(id, {
+      agentId: agent.id,
+      host: agent.host || null,
+      runtimeFamily: resolveAgentRuntimeFamily(agent),
+    });
   },
 
   /**

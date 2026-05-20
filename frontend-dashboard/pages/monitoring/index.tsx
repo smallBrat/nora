@@ -83,18 +83,13 @@ function formatTimestamp(value) {
 
 function buildStatusCounts(metrics, agents) {
   return {
-    running:
-      metrics?.activeAgents ?? agents.filter((agent) => agent.status === "running").length,
+    running: metrics?.activeAgents ?? agents.filter((agent) => agent.status === "running").length,
     deploying:
       metrics?.deployingAgents ?? agents.filter((agent) => agent.status === "deploying").length,
-    warning:
-      metrics?.warningAgents ?? agents.filter((agent) => agent.status === "warning").length,
-    error:
-      metrics?.errorAgents ?? agents.filter((agent) => agent.status === "error").length,
-    queued:
-      metrics?.queuedAgents ?? agents.filter((agent) => agent.status === "queued").length,
-    stopped:
-      metrics?.stoppedAgents ?? agents.filter((agent) => agent.status === "stopped").length,
+    warning: metrics?.warningAgents ?? agents.filter((agent) => agent.status === "warning").length,
+    error: metrics?.errorAgents ?? agents.filter((agent) => agent.status === "error").length,
+    queued: metrics?.queuedAgents ?? agents.filter((agent) => agent.status === "queued").length,
+    stopped: metrics?.stoppedAgents ?? agents.filter((agent) => agent.status === "stopped").length,
     total: metrics?.totalAgents ?? agents.length,
   };
 }
@@ -103,18 +98,21 @@ export default function Monitoring() {
   const [metrics, setMetrics] = useState(null);
   const [events, setEvents] = useState([]);
   const [agents, setAgents] = useState([]);
+  const [backendConfig, setBackendConfig] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const loadData = useCallback(async () => {
     try {
-      const [metricsRes, eventsRes, agentsRes] = await Promise.all([
+      const [metricsRes, eventsRes, agentsRes, backendConfigRes] = await Promise.all([
         fetchWithAuth("/api/monitoring/metrics"),
         fetchWithAuth("/api/monitoring/events?limit=20"),
         fetchWithAuth("/api/agents"),
+        fetch("/api/config/backends"),
       ]);
       if (metricsRes.ok) setMetrics(await metricsRes.json());
       if (eventsRes.ok) setEvents(await eventsRes.json());
       if (agentsRes.ok) setAgents(await agentsRes.json());
+      if (backendConfigRes.ok) setBackendConfig(await backendConfigRes.json());
     } catch (err) {
       console.error(err);
     }
@@ -167,17 +165,19 @@ export default function Monitoring() {
     },
   ];
 
-  const statusRows = ["running", "deploying", "warning", "error", "queued", "stopped"].map((key) => {
-    const config = STATUS_CONFIG[key];
-    const count = statusCounts[key];
-    const total = Math.max(statusCounts.total || 0, 1);
-    return {
-      key,
-      ...config,
-      count,
-      percentage: statusCounts.total ? Math.round((count / total) * 100) : 0,
-    };
-  });
+  const statusRows = ["running", "deploying", "warning", "error", "queued", "stopped"].map(
+    (key) => {
+      const config = STATUS_CONFIG[key];
+      const count = statusCounts[key];
+      const total = Math.max(statusCounts.total || 0, 1);
+      return {
+        key,
+        ...config,
+        count,
+        percentage: statusCounts.total ? Math.round((count / total) * 100) : 0,
+      };
+    },
+  );
 
   return (
     <Layout>
@@ -211,7 +211,9 @@ export default function Monitoring() {
         {loading && !metrics && agents.length === 0 ? (
           <div className="h-64 flex flex-col items-center justify-center text-slate-400 gap-4 bg-white border border-slate-200 rounded-[3rem] border-dashed">
             <Loader2 size={40} className="animate-spin text-blue-500" />
-            <span className="text-sm font-bold uppercase tracking-widest">Loading fleet health...</span>
+            <span className="text-sm font-bold uppercase tracking-widest">
+              Loading fleet health...
+            </span>
           </div>
         ) : (
           <>
@@ -248,7 +250,7 @@ export default function Monitoring() {
                                     ? "bg-red-50 text-red-600"
                                     : row.color === "violet"
                                       ? "bg-violet-50 text-violet-600"
-                                      : "bg-slate-100 text-slate-600"
+                                      : "bg-slate-100 text-slate-600",
                             )}
                           >
                             <row.icon size={18} />
@@ -266,10 +268,7 @@ export default function Monitoring() {
                       </div>
                       <div className="w-full bg-slate-100 h-3 rounded-full overflow-hidden">
                         <div
-                          className={clsx(
-                            "h-full rounded-full",
-                            row.dot
-                          )}
+                          className={clsx("h-full rounded-full", row.dot)}
                           style={{ width: `${row.percentage}%` }}
                         />
                       </div>
@@ -291,7 +290,9 @@ export default function Monitoring() {
                     agents.map((agent) => {
                       const config = STATUS_CONFIG[agent.status] || STATUS_CONFIG.stopped;
                       const executionTargetLabel = formatExecutionTargetLabel(
-                        resolveAgentExecutionTarget(agent)
+                        resolveAgentExecutionTarget(agent),
+                        backendConfig,
+                        agent.runtime_family,
                       );
                       const sandboxProfile = resolveAgentSandboxProfile(agent);
                       const sandboxLabel = formatSandboxProfileLabel(sandboxProfile);
@@ -312,7 +313,7 @@ export default function Monitoring() {
                                     ? "bg-red-50 text-red-600"
                                     : config.color === "violet"
                                       ? "bg-violet-50 text-violet-600"
-                                      : "bg-slate-100 text-slate-600"
+                                      : "bg-slate-100 text-slate-600",
                             )}
                           >
                             <config.icon size={18} />
@@ -332,7 +333,7 @@ export default function Monitoring() {
                                 <span
                                   className={clsx(
                                     "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-widest",
-                                    config.pill
+                                    config.pill,
                                   )}
                                 >
                                   <span className={clsx("w-1.5 h-1.5 rounded-full", config.dot)} />
@@ -404,7 +405,7 @@ function StatCard({ title, value, icon: Icon, color }) {
                 ? "bg-amber-50 text-amber-600"
                 : color === "red"
                   ? "bg-red-50 text-red-600"
-                  : "bg-violet-50 text-violet-600"
+                  : "bg-violet-50 text-violet-600",
         )}
       >
         <Icon size={24} />

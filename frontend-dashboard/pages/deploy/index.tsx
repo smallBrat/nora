@@ -1083,7 +1083,7 @@ export default function Deploy() {
                                 </span>
                                 <input
                                   className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-blue-400 focus:bg-white"
-                                  placeholder="e.g. hermes-agent-prod"
+                                  placeholder="e.g. nora-hermes-prod"
                                   value={migrationSource.container}
                                   onChange={(event) =>
                                     setMigrationSource((current) => ({

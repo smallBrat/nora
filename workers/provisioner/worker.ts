@@ -264,14 +264,8 @@ function buildAuthProfilesWriteCommand(authProfiles) {
 }
 
 function buildDefaultModelCommand(defaultProvider = null) {
-  if (!defaultProvider) return null;
-
-  const modelId = defaultProvider.model || PROVIDER_MODEL_DEFAULTS[defaultProvider.provider];
-  if (!modelId) return null;
-
-  // Translate Nora provider id → OpenClaw provider id (Foundry → azure-openai-responses).
-  const openclawProvider = mapNoraProviderIdToOpenClaw(defaultProvider.provider);
-  const fullModel = modelId.includes("/") ? modelId : `${openclawProvider}/${modelId}`;
+  const fullModel = buildDefaultOpenClawModel(defaultProvider);
+  if (!fullModel) return null;
 
   return (
     'OPENCLAW_BIN="${OPENCLAW_CLI_PATH:-/usr/local/bin/openclaw}"; ' +
@@ -281,6 +275,17 @@ function buildDefaultModelCommand(defaultProvider = null) {
       .map((arg) => JSON.stringify(String(arg)))
       .join(" ")}`
   );
+}
+
+function buildDefaultOpenClawModel(defaultProvider = null) {
+  if (!defaultProvider) return null;
+
+  const modelId = defaultProvider.model || PROVIDER_MODEL_DEFAULTS[defaultProvider.provider];
+  if (!modelId) return null;
+
+  // Translate Nora provider id → OpenClaw provider id (Foundry → azure-openai-responses).
+  const openclawProvider = mapNoraProviderIdToOpenClaw(defaultProvider.provider);
+  return modelId.includes("/") ? modelId : `${openclawProvider}/${modelId}`;
 }
 
 function normalizeProviderConfig(config) {
@@ -1073,6 +1078,37 @@ function loadBackend(runtimeFields = {}) {
   return instance;
 }
 
+async function cleanupPreviousK8sRuntime({
+  agentId,
+  jobData = {},
+  fallbackRuntimeFields = {},
+} = {}) {
+  const previousBackend = normalizeBackendName(
+    jobData.previous_backend || jobData.previous_deploy_target || "",
+  );
+  if (previousBackend !== "k8s") return;
+
+  const previousResourceName = jobData.previous_container_id || jobData.previous_container_name;
+  if (!previousResourceName) return;
+
+  const previousRuntimeFields = buildAgentRuntimeFields({
+    runtime_family: jobData.previous_runtime_family || fallbackRuntimeFields.runtime_family,
+    backend_type: "k8s",
+    deploy_target: "k8s",
+    sandbox_profile: jobData.previous_sandbox_profile || fallbackRuntimeFields.sandbox_profile,
+  });
+  const previousProvisioner = loadBackend(previousRuntimeFields);
+
+  console.log(
+    `[provisioner] Destroying previous Kubernetes runtime ${previousResourceName} before redeploying agent ${agentId}`,
+  );
+  await previousProvisioner.destroy(previousResourceName, {
+    agentId,
+    host: jobData.previous_host || null,
+    runtimeFamily: previousRuntimeFields.runtime_family,
+  });
+}
+
 const enabledBackends = getEnabledBackends();
 const DEPLOYMENT_WORKER_CONCURRENCY = parsePositiveInteger(
   process.env.DEPLOYMENT_WORKER_CONCURRENCY,
@@ -1098,7 +1134,7 @@ const worker = new Worker(
     try {
       const agentRowResult = await db.query(
         `SELECT image, template_payload, sandbox_type, backend_type, runtime_family,
-            deploy_target, sandbox_profile
+            deploy_target, sandbox_profile, gateway_token
        FROM agents
       WHERE id = $1`,
         [id],
@@ -1140,9 +1176,16 @@ const worker = new Worker(
         `Processing deployment job ${job.id}: agent=${id} name=${name} backend=${resolvedBackend} (${vcpu}vCPU/${ram_mb}MB/${disk_gb}GB)`,
       );
       await markDeploymentLifecycle(db, id, "deploying");
+      await cleanupPreviousK8sRuntime({
+        agentId: id,
+        jobData: job.data,
+        fallbackRuntimeFields: resolvedRuntimeFields,
+      });
 
       // Fetch user's LLM provider keys from DB for injection into container
       const llmEnvVars = await fetchUserLlmEnvVars(userId);
+      const defaultLlmProvider = await fetchDefaultProvider(userId);
+      const defaultOpenClawModel = buildDefaultOpenClawModel(defaultLlmProvider);
       if (Object.keys(llmEnvVars).length > 0) {
         console.log(
           `[provisioner] Injecting ${Object.keys(llmEnvVars).length} LLM provider key(s) for user ${userId}`,
@@ -1379,6 +1422,9 @@ const worker = new Worker(
       try {
         const abortController = new AbortController();
         let provisionTimeoutHandle = null;
+        if (resolvedBackend === "k8s" && container_name) {
+          containerId = container_name;
+        }
         const createPromise = provisioner.create({
           id,
           name,
@@ -1387,6 +1433,7 @@ const worker = new Worker(
           ram_mb,
           disk_gb,
           container_name,
+          gatewayToken: agentRow.gateway_token || undefined,
           templatePayload,
           runtimeFamily: resolvedRuntimeFields.runtime_family,
           deployTarget: resolvedRuntimeFields.deploy_target,
@@ -1405,6 +1452,9 @@ const worker = new Worker(
                 : NORA_SYNC_INTEGRATIONS_DIR,
             ...(resolvedRuntimeFields.sandbox_profile === "nemoclaw" && model
               ? { NEMOCLAW_MODEL: model }
+              : {}),
+            ...(defaultOpenClawModel && resolvedRuntimeFields.runtime_family === "openclaw"
+              ? { NORA_DEFAULT_OPENCLAW_MODEL: defaultOpenClawModel }
               : {}),
             ...agentSecretEnvVars,
             ...integrationEnvVars,
@@ -1529,7 +1579,7 @@ const worker = new Worker(
                 container_id: containerId,
                 backend_type: resolvedBackend,
                 runtime_family: "hermes",
-                deploy_target: "docker",
+                deploy_target: resolvedRuntimeFields.deploy_target,
                 sandbox_profile: "standard",
                 host,
                 runtime_host: runtimeHost,

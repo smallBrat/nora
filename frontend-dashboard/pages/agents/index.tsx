@@ -84,7 +84,7 @@ function FleetInfoCard({ label, value, mono = false }) {
       <p
         className={clsx(
           "mt-2 text-sm font-bold text-slate-900 min-w-0",
-          mono ? "font-mono text-[11px] break-all" : "leading-5"
+          mono ? "font-mono text-[11px] break-all" : "leading-5",
         )}
       >
         {value}
@@ -95,6 +95,7 @@ function FleetInfoCard({ label, value, mono = false }) {
 
 export default function Agents() {
   const [agents, setAgents] = useState([]);
+  const [backendConfig, setBackendConfig] = useState(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const toast = useToast();
@@ -116,6 +117,10 @@ export default function Agents() {
 
   useEffect(() => {
     loadAgents();
+    fetch("/api/config/backends")
+      .then((res) => (res.ok ? res.json() : null))
+      .then(setBackendConfig)
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -146,7 +151,9 @@ export default function Agents() {
   };
 
   const normalizedSearch = search.trim().toLowerCase();
-  const filteredAgents = agents.filter((agent) => agent.name.toLowerCase().includes(normalizedSearch));
+  const filteredAgents = agents.filter((agent) =>
+    agent.name.toLowerCase().includes(normalizedSearch),
+  );
   const hasAgents = agents.length > 0;
   const hasSearch = normalizedSearch.length > 0;
   const showSearchEmpty = !loading && hasAgents && filteredAgents.length === 0;
@@ -162,11 +169,17 @@ export default function Agents() {
                 <Bot size={28} strokeWidth={2.5} />
               </div>
               <div className="flex flex-col">
-                <h1 className="text-xl sm:text-2xl md:text-3xl font-black text-slate-900 tracking-tight leading-none mb-1">Fleet Management</h1>
+                <h1 className="text-xl sm:text-2xl md:text-3xl font-black text-slate-900 tracking-tight leading-none mb-1">
+                  Fleet Management
+                </h1>
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-[10px] text-slate-400 font-black uppercase tracking-widest opacity-80 leading-none">Nora Control Plane</span>
+                  <span className="text-[10px] text-slate-400 font-black uppercase tracking-widest opacity-80 leading-none">
+                    Nora Control Plane
+                  </span>
                   <div className="w-1 h-1 bg-slate-300 rounded-full"></div>
-                  <span className="text-xs font-bold text-blue-600 leading-none">{agents.length} Agent{agents.length === 1 ? "" : "s"} Configured</span>
+                  <span className="text-xs font-bold text-blue-600 leading-none">
+                    {agents.length} Agent{agents.length === 1 ? "" : "s"} Configured
+                  </span>
                 </div>
               </div>
             </div>
@@ -174,7 +187,10 @@ export default function Agents() {
 
           <div className="flex items-center gap-4 w-full md:w-auto">
             <div className="relative group flex-1 md:flex-initial">
-              <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+              <Search
+                size={18}
+                className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
+              />
               <input
                 className="pl-12 pr-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-900 outline-none w-full md:w-72"
                 placeholder="Filter agents by name..."
@@ -196,20 +212,30 @@ export default function Agents() {
           {loading ? (
             <div className="col-span-full h-96 flex flex-col items-center justify-center text-slate-400 gap-4 bg-white border border-slate-200 rounded-[3rem] border-dashed">
               <Loader2 size={40} className="animate-spin text-blue-500" />
-              <span className="text-sm font-bold uppercase tracking-widest leading-none">Loading Agents...</span>
+              <span className="text-sm font-bold uppercase tracking-widest leading-none">
+                Loading Agents...
+              </span>
             </div>
           ) : showFleetEmpty ? (
             <EmptyFleetState />
           ) : showSearchEmpty ? (
             <SearchEmptyState search={search} onClear={() => setSearch("")} />
           ) : (
-            filteredAgents.map((agent) => <AgentCard key={agent.id} agent={agent} onAction={handleAction} />)
+            filteredAgents.map((agent) => (
+              <AgentCard
+                key={agent.id}
+                agent={agent}
+                backendConfig={backendConfig}
+                onAction={handleAction}
+              />
+            ))
           )}
         </div>
 
         {!loading && hasAgents && hasSearch && filteredAgents.length > 0 && (
           <div className="text-sm text-slate-500">
-            Showing <span className="font-bold text-slate-900">{filteredAgents.length}</span> of <span className="font-bold text-slate-900">{agents.length}</span> agents.
+            Showing <span className="font-bold text-slate-900">{filteredAgents.length}</span> of{" "}
+            <span className="font-bold text-slate-900">{agents.length}</span> agents.
           </div>
         )}
       </div>
@@ -226,25 +252,39 @@ function EmptyFleetState() {
         </div>
         <h3 className="text-2xl font-black text-slate-900">No agents deployed yet</h3>
         <p className="text-sm sm:text-base text-slate-500 leading-relaxed">
-          The clearest first-run path is: add one provider in Settings, deploy one OpenClaw agent, then validate chat, logs, and terminal from the agent detail page.
+          The clearest first-run path is: add one provider in Settings, deploy one OpenClaw agent,
+          then validate chat, logs, and terminal from the agent detail page.
         </p>
       </div>
 
       <div className="mt-8 bg-blue-50 border border-blue-100 rounded-3xl p-6 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
         <div>
-          <p className="text-sm font-black text-blue-700 uppercase tracking-widest mb-1">Recommended order</p>
-          <p className="text-sm text-blue-700/80">Settings → Deploy → Validate. That is the fastest path to a live runtime.</p>
+          <p className="text-sm font-black text-blue-700 uppercase tracking-widest mb-1">
+            Recommended order
+          </p>
+          <p className="text-sm text-blue-700/80">
+            Settings → Deploy → Validate. That is the fastest path to a live runtime.
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <a href="/app/settings" className="inline-flex items-center gap-2 px-4 py-2.5 bg-white border border-blue-200 text-blue-700 rounded-xl text-sm font-bold hover:bg-blue-50 transition-all">
+          <a
+            href="/app/settings"
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-white border border-blue-200 text-blue-700 rounded-xl text-sm font-bold hover:bg-blue-50 transition-all"
+          >
             <ArrowRight size={15} />
             Open Settings
           </a>
-          <a href="/app/getting-started" className="inline-flex items-center gap-2 px-4 py-2.5 bg-white border border-blue-200 text-blue-700 rounded-xl text-sm font-bold hover:bg-blue-50 transition-all">
+          <a
+            href="/app/getting-started"
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-white border border-blue-200 text-blue-700 rounded-xl text-sm font-bold hover:bg-blue-50 transition-all"
+          >
             <ListChecks size={15} />
             Open activation guide
           </a>
-          <a href="/app/deploy" className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold transition-all">
+          <a
+            href="/app/deploy"
+            className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold transition-all"
+          >
             Deploy First Agent
           </a>
         </div>
@@ -261,14 +301,21 @@ function SearchEmptyState({ search, onClear }) {
       </div>
       <h3 className="text-2xl font-black text-slate-900">No agents match “{search}”</h3>
       <p className="text-sm sm:text-base text-slate-500 leading-relaxed mt-3 max-w-xl mx-auto">
-        Clear the filter to see the full fleet, or deploy a new agent if you were expecting a fresh runtime to appear here.
+        Clear the filter to see the full fleet, or deploy a new agent if you were expecting a fresh
+        runtime to appear here.
       </p>
       <div className="mt-6 flex items-center justify-center gap-3 flex-wrap">
-        <button onClick={onClear} className="inline-flex items-center gap-2 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-sm font-bold transition-all">
+        <button
+          onClick={onClear}
+          className="inline-flex items-center gap-2 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-sm font-bold transition-all"
+        >
           <RotateCcw size={15} />
           Clear filter
         </button>
-        <a href="/app/deploy" className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold transition-all">
+        <a
+          href="/app/deploy"
+          className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold transition-all"
+        >
           <Plus size={15} />
           Deploy Agent
         </a>
@@ -277,19 +324,22 @@ function SearchEmptyState({ search, onClear }) {
   );
 }
 
-function AgentCard({ agent, onAction }) {
+function AgentCard({ agent, backendConfig, onAction }) {
   const isActive = agent.status === "running" || agent.status === "warning";
   const powerAction = isActive ? "stop" : "start";
   const powerDisabled = !isActive && !agent.container_id;
-  const runtimePathLabel = formatRuntimePathLabel(agent);
+  const runtimePathLabel = formatRuntimePathLabel(agent, backendConfig);
   const runtimeFamilyLabel = formatRuntimeFamilyLabel(agent.runtime_family);
   const executionTargetLabel = formatExecutionTargetLabel(
-    resolveAgentExecutionTarget(agent)
+    resolveAgentExecutionTarget(agent),
+    backendConfig,
+    agent.runtime_family,
   );
   const sandboxLabel = formatSandboxProfileLabel(resolveAgentSandboxProfile(agent));
   const placementLabel = formatPlacement(agent);
   const resourceSummary = formatResourceSummary(agent);
-  const containerLabel = agent.container_name || agent.container_id || "Pending container assignment";
+  const containerLabel =
+    agent.container_name || agent.container_id || "Pending container assignment";
   const isTransient = agent.status === "queued" || agent.status === "deploying";
 
   return (
@@ -299,13 +349,15 @@ function AgentCard({ agent, onAction }) {
           <div
             className={clsx(
               "w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg",
-              agentTone(agent.status)
+              agentTone(agent.status),
             )}
           >
             {isTransient ? <Loader2 size={24} className="animate-spin" /> : <Bot size={24} />}
           </div>
           <div className="flex flex-col">
-            <h3 className="text-lg font-black text-slate-900 leading-tight mb-1 hover:text-blue-600 transition-colors">{agent.name}</h3>
+            <h3 className="text-lg font-black text-slate-900 leading-tight mb-1 hover:text-blue-600 transition-colors">
+              {agent.name}
+            </h3>
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-[10px] text-slate-400 font-black uppercase tracking-widest leading-none opacity-80">
                 Agent {String(agent.id || "").slice(0, 8)}
@@ -350,7 +402,10 @@ function AgentCard({ agent, onAction }) {
       </div>
 
       <div className="mt-auto p-4 flex items-center gap-2 border-t border-slate-50">
-        <a href={`/app/agents/${agent.id}`} className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-white hover:bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold text-slate-900 transition-all shadow-sm">
+        <a
+          href={`/app/agents/${agent.id}`}
+          className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-white hover:bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold text-slate-900 transition-all shadow-sm"
+        >
           <Terminal size={14} className="text-slate-400" />
           Open Validation View
         </a>
@@ -363,7 +418,7 @@ function AgentCard({ agent, onAction }) {
               ? "bg-slate-100 border-slate-200 text-slate-300 cursor-not-allowed"
               : isActive
                 ? "bg-red-50 border-red-100 text-red-500 hover:bg-red-100"
-                : "bg-emerald-50 border-emerald-100 text-emerald-500 hover:bg-emerald-100"
+                : "bg-emerald-50 border-emerald-100 text-emerald-500 hover:bg-emerald-100",
           )}
           title={
             powerDisabled

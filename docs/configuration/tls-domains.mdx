@@ -35,6 +35,7 @@ By default, Nora listens on `localhost:8080` and is only reachable from the mach
       CORS_ORIGINS=https://app.example.com,https://www.app.example.com
       ```
     </Note>
+
   </Step>
 
   <Step title="Create the nginx configuration file">
@@ -51,6 +52,7 @@ By default, Nora listens on `localhost:8080` and is only reachable from the mach
     ```
 
     This file is volume-mounted into the nginx container at startup using the `NGINX_CONFIG_FILE` value you set above.
+
   </Step>
 
   <Step title="Start the stack">
@@ -61,6 +63,7 @@ By default, Nora listens on `localhost:8080` and is only reachable from the mach
     ```
 
     Nora is now accessible at `http://app.example.com` (port 80 must be open on your host firewall and the DNS A record must point to your server's public IP).
+
   </Step>
 </Steps>
 
@@ -74,10 +77,11 @@ By default, Nora listens on `localhost:8080` and is only reachable from the mach
     dig +short app.example.com
     # Should return your server's public IP
     ```
+
   </Step>
 
   <Step title="Run the TLS setup script">
-    The `infra/setup-tls.sh` script requests a Let's Encrypt certificate, writes a TLS-ready `nginx.public.conf`, and creates a `docker-compose.override.yml` that mounts the certificate files.
+    The `infra/setup-tls.sh` script requests a Let's Encrypt certificate and writes a TLS-ready `nginx.public.conf`. Nora's tracked TLS compose layer is `infra/docker-compose.public-tls.yml`; the setup script also writes a local `docker-compose.override.yml` convenience file so plain `docker compose up` uses the same TLS/prod settings.
 
     ```bash theme={null}
     DOMAIN=app.example.com EMAIL=admin@example.com ./infra/setup-tls.sh
@@ -88,7 +92,8 @@ By default, Nora listens on `localhost:8080` and is only reachable from the mach
     The script produces:
 
     * An updated `nginx.public.conf` with `ssl_certificate` and `ssl_certificate_key` directives
-    * A `docker-compose.override.yml` that mounts the certificate files into the nginx container
+    * A local `docker-compose.override.yml` convenience file generated from `infra/docker-compose.public-tls.yml`
+
   </Step>
 
   <Step title="Update .env for HTTPS">
@@ -104,16 +109,28 @@ By default, Nora listens on `localhost:8080` and is only reachable from the mach
     <Warning>
       `NEXTAUTH_URL` must exactly match the origin your browser uses. If it is set to `http://` but your site loads over `https://`, NextAuth redirect flows will fail.
     </Warning>
+
   </Step>
 
   <Step title="Restart the stack">
-    Bring the stack down and back up to apply the new nginx config and the override file:
+    Bring the stack down and back up to apply the new nginx config. For a standard single-file Compose run, Docker Compose auto-loads the generated `docker-compose.override.yml`:
 
     ```bash theme={null}
     docker compose up -d
     ```
 
+    If you are using explicit Compose overlays, include the tracked TLS layer directly:
+
+    ```bash theme={null}
+    docker compose \
+      -f docker-compose.yml \
+      -f infra/docker-compose.public-tls.yml \
+      -f <your-backend-overlay>.yml \
+      up -d --build
+    ```
+
     Nora is now available at `https://app.example.com` with a valid Let's Encrypt certificate.
+
   </Step>
 </Steps>
 
@@ -127,5 +144,8 @@ Let's Encrypt certificates expire after 90 days. Set up a cron job on your host 
 ```
 
 <Tip>
-  If you prefer to terminate TLS at a load balancer or reverse proxy in front of Nora (for example, AWS ALB or Cloudflare), keep `NEXTAUTH_URL` and `CORS_ORIGINS` set to your `https://` origin but use the plain HTTP nginx config internally. Nora does not need to handle TLS itself when termination happens upstream.
+  If you prefer to terminate TLS at a load balancer or reverse proxy in front of Nora (for example,
+  AWS ALB or Cloudflare), keep `NEXTAUTH_URL` and `CORS_ORIGINS` set to your `https://` origin but
+  use the plain HTTP nginx config internally. Nora does not need to handle TLS itself when
+  termination happens upstream.
 </Tip>

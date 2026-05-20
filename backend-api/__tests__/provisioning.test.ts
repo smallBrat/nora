@@ -11,9 +11,19 @@ const {
 
 const mockReadNamespace = jest.fn();
 const mockCreateNamespace = jest.fn();
+const mockListNamespacedPod = jest.fn();
 const mockCreateNamespacedDeployment = jest.fn();
+const mockReadNamespacedDeployment = jest.fn();
+const mockReplaceNamespacedDeployment = jest.fn();
+const mockDeleteNamespacedDeployment = jest.fn();
 const mockCreateNamespacedService = jest.fn();
 const mockReadNamespacedService = jest.fn();
+const mockDeleteNamespacedService = jest.fn();
+const mockCreateNamespacedConfigMap = jest.fn();
+const mockReadNamespacedConfigMap = jest.fn();
+const mockReplaceNamespacedConfigMap = jest.fn();
+const mockDeleteNamespacedConfigMap = jest.fn();
+const mockGetNamespacedCustomObject = jest.fn();
 
 jest.mock(
   "@kubernetes/client-node",
@@ -26,13 +36,27 @@ jest.mock(
           return {
             readNamespace: mockReadNamespace,
             createNamespace: mockCreateNamespace,
+            listNamespacedPod: mockListNamespacedPod,
             createNamespacedService: mockCreateNamespacedService,
             readNamespacedService: mockReadNamespacedService,
+            deleteNamespacedService: mockDeleteNamespacedService,
+            createNamespacedConfigMap: mockCreateNamespacedConfigMap,
+            readNamespacedConfigMap: mockReadNamespacedConfigMap,
+            replaceNamespacedConfigMap: mockReplaceNamespacedConfigMap,
+            deleteNamespacedConfigMap: mockDeleteNamespacedConfigMap,
           };
         }
         if (api === AppsV1Api) {
           return {
             createNamespacedDeployment: mockCreateNamespacedDeployment,
+            readNamespacedDeployment: mockReadNamespacedDeployment,
+            replaceNamespacedDeployment: mockReplaceNamespacedDeployment,
+            deleteNamespacedDeployment: mockDeleteNamespacedDeployment,
+          };
+        }
+        if (api === CustomObjectsApi) {
+          return {
+            getNamespacedCustomObject: mockGetNamespacedCustomObject,
           };
         }
         throw new Error("unexpected api client");
@@ -41,8 +65,9 @@ jest.mock(
 
     class CoreV1Api {}
     class AppsV1Api {}
+    class CustomObjectsApi {}
 
-    return { KubeConfig, CoreV1Api, AppsV1Api };
+    return { KubeConfig, CoreV1Api, AppsV1Api, CustomObjectsApi };
   },
   { virtual: true },
 );
@@ -51,9 +76,23 @@ describe("provisioning runtime/gateway contracts", () => {
   beforeEach(() => {
     mockReadNamespace.mockReset().mockResolvedValue({});
     mockCreateNamespace.mockReset().mockResolvedValue({});
+    mockListNamespacedPod.mockReset().mockResolvedValue({ body: { items: [] } });
     mockCreateNamespacedDeployment.mockReset().mockResolvedValue({});
+    mockReadNamespacedDeployment.mockReset().mockResolvedValue({
+      body: { metadata: { resourceVersion: "deployment-rv" } },
+    });
+    mockReplaceNamespacedDeployment.mockReset().mockResolvedValue({});
+    mockDeleteNamespacedDeployment.mockReset().mockResolvedValue({});
     mockCreateNamespacedService.mockReset().mockResolvedValue({});
     mockReadNamespacedService.mockReset().mockResolvedValue({});
+    mockDeleteNamespacedService.mockReset().mockResolvedValue({});
+    mockCreateNamespacedConfigMap.mockReset().mockResolvedValue({});
+    mockReadNamespacedConfigMap.mockReset().mockResolvedValue({
+      body: { metadata: { resourceVersion: "configmap-rv" } },
+    });
+    mockReplaceNamespacedConfigMap.mockReset().mockResolvedValue({});
+    mockDeleteNamespacedConfigMap.mockReset().mockResolvedValue({});
+    mockGetNamespacedCustomObject.mockReset().mockResolvedValue({});
     delete process.env.GATEWAY_HOST;
     delete process.env.KUBECONFIG;
     delete process.env.K8S_NAMESPACE;
@@ -216,12 +255,30 @@ describe("provisioning runtime/gateway contracts", () => {
 
     expect(mockCreateNamespacedDeployment).toHaveBeenCalledTimes(1);
     expect(mockCreateNamespacedService).toHaveBeenCalledTimes(1);
+    expect(mockCreateNamespacedConfigMap).toHaveBeenCalledTimes(1);
 
     // v1.x @kubernetes/client-node uses object args; body is nested inside.
     const deployment = mockCreateNamespacedDeployment.mock.calls[0][0].body;
     const service = mockCreateNamespacedService.mock.calls[0][0].body;
+    const configMap = mockCreateNamespacedConfigMap.mock.calls[0][0].body;
     const container = deployment.spec.template.spec.containers[0];
 
+    expect(configMap.data["bootstrap.sh"]).toContain("openclaw@latest");
+    expect(container.command).toEqual(["/bin/sh", "-c"]);
+    expect(container.args).toEqual([". /opt/nora-bootstrap/bootstrap.sh"]);
+    expect(container.volumeMounts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "nora-bootstrap", mountPath: "/opt/nora-bootstrap" }),
+      ]),
+    );
+    expect(deployment.spec.template.spec.volumes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "nora-bootstrap",
+          configMap: expect.objectContaining({ name: "nora-oclaw-nora-qa-123-bootstrap" }),
+        }),
+      ]),
+    );
     expect(container.ports).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ name: "gateway", containerPort: OPENCLAW_GATEWAY_PORT }),
@@ -244,10 +301,10 @@ describe("provisioning runtime/gateway contracts", () => {
     );
     expect(result).toEqual(
       expect.objectContaining({
-        host: "oclaw-agent-123.openclaw-agents.svc.cluster.local",
-        runtimeHost: "oclaw-agent-123.openclaw-agents.svc.cluster.local",
+        host: "nora-oclaw-nora-qa-123.openclaw-agents.svc.cluster.local",
+        runtimeHost: "nora-oclaw-nora-qa-123.openclaw-agents.svc.cluster.local",
         runtimePort: AGENT_RUNTIME_PORT,
-        gatewayHost: "oclaw-agent-123.openclaw-agents.svc.cluster.local",
+        gatewayHost: "nora-oclaw-nora-qa-123.openclaw-agents.svc.cluster.local",
         gatewayPort: OPENCLAW_GATEWAY_PORT,
       }),
     );
@@ -291,7 +348,7 @@ describe("provisioning runtime/gateway contracts", () => {
     );
     expect(result).toEqual(
       expect.objectContaining({
-        host: "oclaw-agent-321.openclaw-agents.svc.cluster.local",
+        host: "nora-oclaw-nodeport-qa-321.openclaw-agents.svc.cluster.local",
         runtimeHost: "nora-kind-control-plane",
         runtimePort: 30909,
         gatewayHost: "nora-kind-control-plane",
@@ -311,7 +368,7 @@ describe("provisioning runtime/gateway contracts", () => {
         body: {
           reason: "Invalid",
           message:
-            'Service "oclaw-agent-654" is invalid: spec.ports[0].nodePort: provided port is already allocated',
+            'Service "nora-oclaw-nodeport-fallback-qa-654" is invalid: spec.ports[0].nodePort: provided port is already allocated',
         },
       })
       .mockResolvedValueOnce({
@@ -364,7 +421,7 @@ describe("provisioning runtime/gateway contracts", () => {
     expect(fallbackService.spec.ports.some((port) => port.nodePort != null)).toBe(false);
     expect(result).toEqual(
       expect.objectContaining({
-        host: "oclaw-agent-654.openclaw-agents.svc.cluster.local",
+        host: "nora-oclaw-nodeport-fallback-qa-654.openclaw-agents.svc.cluster.local",
         runtimeHost: "nora-kind-control-plane",
         runtimePort: 32109,
         gatewayHost: "nora-kind-control-plane",
@@ -426,12 +483,12 @@ describe("provisioning runtime/gateway contracts", () => {
     );
     expect(service.spec.ports.some((port) => port.nodePort != null)).toBe(false);
     expect(mockReadNamespacedService).toHaveBeenCalledWith({
-      name: "oclaw-agent-789",
+      name: "nora-oclaw-loadbalancer-qa-789",
       namespace: "openclaw-agents",
     });
     expect(result).toEqual(
       expect.objectContaining({
-        host: "oclaw-agent-789.openclaw-agents.svc.cluster.local",
+        host: "nora-oclaw-loadbalancer-qa-789.openclaw-agents.svc.cluster.local",
         runtimeHost: "agent-lb.example.elb.amazonaws.com",
         runtimePort: AGENT_RUNTIME_PORT,
         gatewayHost: "agent-lb.example.elb.amazonaws.com",
@@ -469,6 +526,7 @@ describe("provisioning runtime/gateway contracts", () => {
     });
 
     const deployment = mockCreateNamespacedDeployment.mock.calls[0][0].body;
+    const configMap = mockCreateNamespacedConfigMap.mock.calls[0][0].body;
     const container = deployment.spec.template.spec.containers[0];
     const envVars = Object.fromEntries(container.env.map((entry) => [entry.name, entry.value]));
 
@@ -483,7 +541,136 @@ describe("provisioning runtime/gateway contracts", () => {
         NVIDIA_API_KEY: "test-nvidia-key",
       }),
     );
-    expect(container.args.join(" ")).toContain("nemoclaw@latest");
+    expect(container.args).toEqual([". /opt/nora-bootstrap/bootstrap.sh"]);
+    expect(configMap.data["bootstrap.sh"]).toContain("nemoclaw@latest");
+  });
+
+  it("returns cpu and memory telemetry from kubernetes pod metrics", async () => {
+    mockReadNamespacedDeployment.mockResolvedValueOnce({
+      body: {
+        status: { availableReplicas: 1 },
+        spec: {
+          template: {
+            spec: {
+              containers: [
+                {
+                  name: "agent",
+                  resources: {
+                    limits: { cpu: "2000m", memory: "2048Mi" },
+                  },
+                },
+              ],
+            },
+          },
+        },
+      },
+    });
+    mockListNamespacedPod.mockResolvedValueOnce({
+      body: {
+        items: [
+          {
+            metadata: { name: "oclaw-agent-123-pod" },
+            status: {
+              phase: "Running",
+              startTime: "2026-05-20T07:00:00.000Z",
+            },
+          },
+        ],
+      },
+    });
+    mockGetNamespacedCustomObject.mockResolvedValueOnce({
+      body: {
+        timestamp: "2026-05-20T07:30:00.000Z",
+        containers: [
+          {
+            name: "agent",
+            usage: { cpu: "500m", memory: "1024Mi" },
+          },
+        ],
+      },
+    });
+
+    const K8sBackend = require("../../workers/provisioner/backends/k8s");
+    const backend = new K8sBackend();
+    const telemetry = await backend.stats("oclaw-agent-123");
+
+    expect(mockGetNamespacedCustomObject).toHaveBeenCalledWith({
+      group: "metrics.k8s.io",
+      version: "v1beta1",
+      namespace: "openclaw-agents",
+      plural: "pods",
+      name: "oclaw-agent-123-pod",
+    });
+    expect(telemetry).toEqual(
+      expect.objectContaining({
+        backend_type: "k8s",
+        capabilities: {
+          cpu: true,
+          memory: true,
+          network: false,
+          disk: false,
+          pids: false,
+        },
+        current: expect.objectContaining({
+          running: true,
+          recorded_at: "2026-05-20T07:30:00.000Z",
+          cpu_percent: 25,
+          memory_usage_mb: 1024,
+          memory_limit_mb: 2048,
+          memory_percent: 50,
+        }),
+      }),
+    );
+  });
+
+  it("falls back cleanly when kubernetes pod metrics are unavailable", async () => {
+    mockReadNamespacedDeployment.mockResolvedValueOnce({
+      body: {
+        status: { availableReplicas: 1 },
+        spec: {
+          template: {
+            spec: {
+              containers: [{ name: "agent" }],
+            },
+          },
+        },
+      },
+    });
+    mockListNamespacedPod.mockResolvedValueOnce({
+      body: {
+        items: [
+          {
+            metadata: { name: "oclaw-agent-123-pod" },
+            status: { phase: "Running" },
+          },
+        ],
+      },
+    });
+    mockGetNamespacedCustomObject.mockRejectedValueOnce(new Error("metrics API unavailable"));
+
+    const K8sBackend = require("../../workers/provisioner/backends/k8s");
+    const backend = new K8sBackend();
+    const telemetry = await backend.stats("oclaw-agent-123");
+
+    expect(telemetry).toEqual(
+      expect.objectContaining({
+        backend_type: "k8s",
+        capabilities: {
+          cpu: false,
+          memory: false,
+          network: false,
+          disk: false,
+          pids: false,
+        },
+        current: expect.objectContaining({
+          running: true,
+          cpu_percent: null,
+          memory_usage_mb: null,
+          memory_limit_mb: null,
+          memory_percent: null,
+        }),
+      }),
+    );
   });
 
   it("rejects invalid kubernetes service annotations json", () => {
@@ -528,7 +715,55 @@ describe("provisioning runtime/gateway contracts", () => {
         ram_mb: 2048,
         env: { OPENAI_API_KEY: "test-key" },
       }),
-    ).rejects.toThrow("Timed out waiting for K8s LoadBalancer address for oclaw-agent-999");
+    ).rejects.toThrow(
+      "Timed out waiting for K8s LoadBalancer address for nora-oclaw-pending-loadbalancer-qa-999",
+    );
+  });
+
+  it("destroys previous Kubernetes resources in the namespace stored on the old host", async () => {
+    process.env.K8S_NAMESPACE = "nora-openclaw-agents";
+    process.env.K8S_OPENCLAW_NAMESPACE = "nora-openclaw-agents";
+    process.env.K8S_HERMES_NAMESPACE = "nora-hermes-agents";
+    const notFound = Object.assign(new Error("not found"), { statusCode: 404 });
+    const deleteIfLegacyNamespace = jest.fn(({ namespace }) =>
+      namespace === "openclaw-agents" ? Promise.resolve({}) : Promise.reject(notFound),
+    );
+
+    mockDeleteNamespacedDeployment.mockImplementation(deleteIfLegacyNamespace);
+    mockDeleteNamespacedService.mockImplementation(deleteIfLegacyNamespace);
+    mockDeleteNamespacedConfigMap.mockImplementation(deleteIfLegacyNamespace);
+    mockReadNamespacedDeployment.mockRejectedValue(notFound);
+    mockReadNamespacedService.mockRejectedValue(notFound);
+    mockReadNamespacedConfigMap.mockRejectedValue(notFound);
+
+    const K8sBackend = require("../../workers/provisioner/backends/k8s");
+    const backend = new K8sBackend();
+    await backend.destroy("nora-oclaw-legacy-agent", {
+      host: "nora-oclaw-legacy-agent.openclaw-agents.svc.cluster.local",
+      runtimeFamily: "openclaw",
+    });
+
+    expect(mockDeleteNamespacedDeployment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "nora-oclaw-legacy-agent",
+        namespace: "openclaw-agents",
+        propagationPolicy: "Foreground",
+      }),
+    );
+    expect(mockDeleteNamespacedService).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "nora-oclaw-legacy-agent",
+        namespace: "openclaw-agents",
+        propagationPolicy: "Foreground",
+      }),
+    );
+    expect(mockDeleteNamespacedConfigMap).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "nora-oclaw-legacy-agent-bootstrap",
+        namespace: "openclaw-agents",
+        propagationPolicy: "Foreground",
+      }),
+    );
   });
 });
 

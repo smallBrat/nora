@@ -93,13 +93,13 @@ const EXECUTION_TARGET_METADATA = Object.freeze({
   }),
   k8s: Object.freeze({
     id: "k8s",
-    label: "K3s / Kubernetes",
-    shortLabel: "K3s",
+    label: "Kubernetes",
+    shortLabel: "Kubernetes",
     summary:
-      "Run agents as K3s or Kubernetes workloads when Nora should provision into a shared cluster instead of the local Docker host.",
+      "Run agents as Kubernetes workloads when Nora should provision into a shared cluster instead of the local Docker host.",
     detail:
-      "Use K3s by default for the lightweight Kubernetes-compatible path, or switch to upstream and managed Kubernetes by using the k8s backend id.",
-    badges: ["K3s default", "Cluster workload", "Service-backed", "Kube API"],
+      "Use the Kubernetes adapter for K3s, AKS, GKE, EKS, or any conformant cluster reachable through the configured kubeconfig.",
+    badges: ["Cluster workload", "Service-backed", "Kube API"],
   }),
   proxmox: Object.freeze({
     id: "proxmox",
@@ -142,14 +142,16 @@ const NEMOCLAW_MODELS = Object.freeze([
 ]);
 
 function normalizeRuntimeFamilyName(value) {
-  const normalized = String(value || "").trim().toLowerCase();
-  return KNOWN_RUNTIME_FAMILIES.includes(normalized)
-    ? normalized
-    : DEFAULT_RUNTIME_FAMILY;
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase();
+  return KNOWN_RUNTIME_FAMILIES.includes(normalized) ? normalized : DEFAULT_RUNTIME_FAMILY;
 }
 
 function normalizeDeployTargetName(value) {
-  const normalized = String(value || "docker").trim().toLowerCase();
+  const normalized = String(value || "docker")
+    .trim()
+    .toLowerCase();
   if (normalized === "kubernetes" || normalized === "k3s") return "k8s";
   return KNOWN_DEPLOY_TARGETS.includes(normalized) ? normalized : "docker";
 }
@@ -159,21 +161,25 @@ function normalizeBackendName(value) {
 }
 
 function normalizeSandboxProfileName(value) {
-  const normalized = String(value || "").trim().toLowerCase();
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase();
   return KNOWN_SANDBOX_PROFILES.includes(normalized) ? normalized : "standard";
 }
 
 function isKnownRuntimeFamily(value) {
-  const normalized = String(value || "").trim().toLowerCase();
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase();
   return KNOWN_RUNTIME_FAMILIES.includes(normalized);
 }
 
 function isKnownDeployTarget(value) {
-  const normalized = String(value || "").trim().toLowerCase();
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase();
   return (
-    normalized === "kubernetes" ||
-    normalized === "k3s" ||
-    KNOWN_DEPLOY_TARGETS.includes(normalized)
+    normalized === "kubernetes" || normalized === "k3s" || KNOWN_DEPLOY_TARGETS.includes(normalized)
   );
 }
 
@@ -182,7 +188,9 @@ function isKnownBackend(value) {
 }
 
 function isKnownSandboxProfile(value) {
-  const normalized = String(value || "").trim().toLowerCase();
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase();
   return KNOWN_SANDBOX_PROFILES.includes(normalized);
 }
 
@@ -190,8 +198,108 @@ function getRuntimeFamilyMetadata(runtimeFamily) {
   return RUNTIME_FAMILY_METADATA[normalizeRuntimeFamilyName(runtimeFamily)];
 }
 
-function getExecutionTargetMetadata(deployTarget) {
-  return EXECUTION_TARGET_METADATA[normalizeDeployTargetName(deployTarget)];
+const KUBERNETES_PROVIDER_METADATA = Object.freeze({
+  aks: Object.freeze({
+    id: "aks",
+    label: "AKS",
+    fullLabel: "Kubernetes on AKS",
+    summary:
+      "Run agents as workloads on Azure Kubernetes Service through Nora's Kubernetes adapter.",
+    detail:
+      "The Kubernetes adapter is connected to AKS through the mounted kubeconfig and exposes agents through AKS load balancer Services.",
+    badges: ["AKS", "Cluster workload", "LoadBalancer", "Kube API"],
+  }),
+  gke: Object.freeze({
+    id: "gke",
+    label: "GKE",
+    fullLabel: "Kubernetes on GKE",
+    summary:
+      "Run agents as workloads on Google Kubernetes Engine through Nora's Kubernetes adapter.",
+    detail:
+      "The Kubernetes adapter is connected to GKE through the mounted kubeconfig and exposes agents through GKE load balancer Services.",
+    badges: ["GKE", "Cluster workload", "LoadBalancer", "Kube API"],
+  }),
+  eks: Object.freeze({
+    id: "eks",
+    label: "EKS",
+    fullLabel: "Kubernetes on EKS",
+    summary:
+      "Run agents as workloads on Amazon Elastic Kubernetes Service through Nora's Kubernetes adapter.",
+    detail:
+      "The Kubernetes adapter is connected to EKS through the mounted kubeconfig and exposes agents through EKS load balancer Services.",
+    badges: ["EKS", "Cluster workload", "LoadBalancer", "Kube API"],
+  }),
+  k3s: Object.freeze({
+    id: "k3s",
+    label: "K3s",
+    fullLabel: "Kubernetes on K3s",
+    summary:
+      "Run agents as workloads on a lightweight self-hosted K3s cluster through Nora's Kubernetes adapter.",
+    detail:
+      "The Kubernetes adapter is connected to K3s through the mounted kubeconfig and usually exposes agents through NodePort Services.",
+    badges: ["K3s", "Cluster workload", "NodePort", "Kube API"],
+  }),
+  kubernetes: Object.freeze({
+    id: "kubernetes",
+    label: "Kubernetes",
+    fullLabel: "Kubernetes",
+    summary:
+      "Run agents as workloads on the Kubernetes cluster reachable through Nora's configured kubeconfig.",
+    detail:
+      "The Kubernetes adapter provisions Deployments and Services in the configured cluster namespace.",
+    badges: ["Cluster workload", "Service-backed", "Kube API"],
+  }),
+});
+
+function normalizeKubernetesProviderName(value, env = process.env) {
+  const explicit = String(value || env.K8S_PROVIDER || env.KUBERNETES_PROVIDER || "")
+    .trim()
+    .toLowerCase();
+  if (["aks", "azure", "azure-aks"].includes(explicit)) return "aks";
+  if (["gke", "google", "google-gke"].includes(explicit)) return "gke";
+  if (["eks", "aws", "aws-eks"].includes(explicit)) return "eks";
+  if (["k3s", "rancher-k3s"].includes(explicit)) return "k3s";
+  if (["k8s", "kubernetes", "generic"].includes(explicit)) return "kubernetes";
+
+  const enabledBackends = String(env.ENABLED_BACKENDS || "")
+    .split(",")
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean);
+  if (enabledBackends.includes("k3s") && !enabledBackends.includes("k8s")) return "k3s";
+
+  return "kubernetes";
+}
+
+function getKubernetesProviderMetadata(env = process.env) {
+  const providerId = normalizeKubernetesProviderName(null, env);
+  const metadata =
+    KUBERNETES_PROVIDER_METADATA[providerId] || KUBERNETES_PROVIDER_METADATA.kubernetes;
+  const customLabel = String(env.K8S_PROVIDER_LABEL || env.KUBERNETES_PROVIDER_LABEL || "").trim();
+  return customLabel
+    ? {
+        ...metadata,
+        label: customLabel,
+        fullLabel: `Kubernetes on ${customLabel}`,
+      }
+    : metadata;
+}
+
+function getExecutionTargetMetadata(deployTarget, env = process.env) {
+  const normalizedDeployTarget = normalizeDeployTargetName(deployTarget);
+  const metadata = EXECUTION_TARGET_METADATA[normalizedDeployTarget];
+  if (normalizedDeployTarget !== "k8s") return metadata;
+
+  const provider = getKubernetesProviderMetadata(env);
+  return {
+    ...metadata,
+    label: provider.fullLabel,
+    shortLabel: provider.label,
+    summary: provider.summary,
+    detail: provider.detail,
+    badges: provider.badges,
+    providerId: provider.id,
+    providerLabel: provider.label,
+  };
 }
 
 function getSandboxProfileMetadata(sandboxProfile) {
@@ -218,9 +326,9 @@ function selectionTypeForBackend() {
   return "deploy_target";
 }
 
-function getBackendMetadata(backend) {
+function getBackendMetadata(backend, env = process.env) {
   const deployTarget = normalizeDeployTargetName(backend);
-  const metadata = getExecutionTargetMetadata(deployTarget);
+  const metadata = getExecutionTargetMetadata(deployTarget, env);
   return {
     ...metadata,
     id: deployTarget,
@@ -261,6 +369,7 @@ function resolveMaturityTier({ runtimeFamily, deployTarget, sandboxProfile }) {
 
   switch (normalizeDeployTargetName(deployTarget)) {
     case "k8s":
+      return "ga";
     case "proxmox":
       return "beta";
     default:
@@ -308,7 +417,7 @@ function getEnabledRuntimeFamilies(env = process.env) {
 
 function getEnabledSandboxProfiles(env = process.env, options = {}) {
   const runtimeFamily = normalizeRuntimeFamilyName(
-    options.runtimeFamily || getDefaultRuntimeFamily(env)
+    options.runtimeFamily || getDefaultRuntimeFamily(env),
   );
   if (runtimeFamily === "hermes") return ["standard"];
 
@@ -318,7 +427,7 @@ function getEnabledSandboxProfiles(env = process.env, options = {}) {
 
 function executionTargetsForRuntimeFamily(runtimeFamily) {
   return normalizeRuntimeFamilyName(runtimeFamily) === "hermes"
-    ? ["docker", "proxmox"]
+    ? ["docker", "k8s", "proxmox"]
     : [...KNOWN_DEPLOY_TARGETS];
 }
 
@@ -330,7 +439,7 @@ function supportedSandboxProfilesForDeployTarget(runtimeFamily) {
 
 function getEnabledDeployTargets(env = process.env, options = {}) {
   const runtimeFamily = normalizeRuntimeFamilyName(
-    options.runtimeFamily || getDefaultRuntimeFamily(env)
+    options.runtimeFamily || getDefaultRuntimeFamily(env),
   );
   const supportedTargets = new Set(executionTargetsForRuntimeFamily(runtimeFamily));
   return getEnabledBackends(env).filter((target) => supportedTargets.has(target));
@@ -378,29 +487,46 @@ function baseDeployTargetIssue(deployTarget, env = process.env) {
 }
 
 function runtimeSelectionIssue(
-  { runtimeFamily = DEFAULT_RUNTIME_FAMILY, deployTarget = "docker", sandboxProfile = "standard" } = {},
-  env = process.env
+  {
+    runtimeFamily = DEFAULT_RUNTIME_FAMILY,
+    deployTarget = "docker",
+    sandboxProfile = "standard",
+  } = {},
+  env = process.env,
 ) {
   const normalizedRuntimeFamily = normalizeRuntimeFamilyName(runtimeFamily);
   const normalizedDeployTarget = normalizeDeployTargetName(deployTarget);
   const normalizedSandboxProfile = normalizeSandboxProfileName(sandboxProfile);
 
   if (!executionTargetsForRuntimeFamily(normalizedRuntimeFamily).includes(normalizedDeployTarget)) {
-    return `${getRuntimeFamilyMetadata(normalizedRuntimeFamily).label} does not support the ${getExecutionTargetMetadata(normalizedDeployTarget).label} execution target.`;
+    return `${getRuntimeFamilyMetadata(normalizedRuntimeFamily).label} does not support the ${getExecutionTargetMetadata(normalizedDeployTarget, env).label} execution target.`;
   }
 
-  if (!supportedSandboxProfilesForDeployTarget(normalizedRuntimeFamily, normalizedDeployTarget).includes(normalizedSandboxProfile)) {
+  if (
+    !supportedSandboxProfilesForDeployTarget(
+      normalizedRuntimeFamily,
+      normalizedDeployTarget,
+    ).includes(normalizedSandboxProfile)
+  ) {
     return `${getRuntimeFamilyMetadata(normalizedRuntimeFamily).label} does not support the ${sandboxProfileLabel(normalizedSandboxProfile)} sandbox profile.`;
   }
 
   const targetIssue = baseDeployTargetIssue(normalizedDeployTarget, env);
   if (targetIssue) return targetIssue;
 
-  if (normalizedDeployTarget === "proxmox" && normalizedRuntimeFamily === "hermes" && !env.PROXMOX_HERMES_TEMPLATE) {
+  if (
+    normalizedDeployTarget === "proxmox" &&
+    normalizedRuntimeFamily === "hermes" &&
+    !env.PROXMOX_HERMES_TEMPLATE
+  ) {
     return "Hermes on Proxmox requires PROXMOX_HERMES_TEMPLATE.";
   }
 
-  if (normalizedDeployTarget === "proxmox" && normalizedSandboxProfile === "nemoclaw" && !env.PROXMOX_NEMOCLAW_TEMPLATE) {
+  if (
+    normalizedDeployTarget === "proxmox" &&
+    normalizedSandboxProfile === "nemoclaw" &&
+    !env.PROXMOX_NEMOCLAW_TEMPLATE
+  ) {
     return "NemoClaw on Proxmox requires PROXMOX_NEMOCLAW_TEMPLATE.";
   }
 
@@ -412,12 +538,20 @@ function backendConfigIssue(backend, env = process.env) {
 }
 
 function getRuntimeSelectionStatus(selection = {}, env = process.env) {
-  const runtimeFamily = normalizeRuntimeFamilyName(selection.runtimeFamily || selection.runtime_family);
+  const runtimeFamily = normalizeRuntimeFamilyName(
+    selection.runtimeFamily || selection.runtime_family,
+  );
   const deployTarget = normalizeDeployTargetName(
-    selection.deployTarget || selection.deploy_target || selection.backend || selection.backend_type
+    selection.deployTarget ||
+      selection.deploy_target ||
+      selection.backend ||
+      selection.backend_type,
   );
   const sandboxProfile = normalizeSandboxProfileName(
-    selection.sandboxProfile || selection.sandbox_profile || selection.sandbox || selection.sandbox_type
+    selection.sandboxProfile ||
+      selection.sandbox_profile ||
+      selection.sandbox ||
+      selection.sandbox_type,
   );
   const enabled =
     getEnabledRuntimeFamilies(env).includes(runtimeFamily) &&
@@ -436,7 +570,12 @@ function getRuntimeSelectionStatus(selection = {}, env = process.env) {
 }
 
 function firstAvailable(candidates) {
-  return candidates.find((candidate) => candidate.available) || candidates.find((candidate) => candidate.enabled) || candidates[0] || null;
+  return (
+    candidates.find((candidate) => candidate.available) ||
+    candidates.find((candidate) => candidate.enabled) ||
+    candidates[0] ||
+    null
+  );
 }
 
 function getDefaultRuntimeFamily(env = process.env) {
@@ -445,16 +584,16 @@ function getDefaultRuntimeFamily(env = process.env) {
     getEnabledDeployTargets(env, { runtimeFamily }).some((deployTarget) =>
       getEnabledSandboxProfiles(env, { runtimeFamily }).some(
         (sandboxProfile) =>
-          getRuntimeSelectionStatus({ runtimeFamily, deployTarget, sandboxProfile }, env).available
-      )
-    )
+          getRuntimeSelectionStatus({ runtimeFamily, deployTarget, sandboxProfile }, env).available,
+      ),
+    ),
   );
   return available || enabledFamilies[0] || DEFAULT_RUNTIME_FAMILY;
 }
 
 function getDefaultDeployTarget(env = process.env, options = {}) {
   const runtimeFamily = normalizeRuntimeFamilyName(
-    options.runtimeFamily || getDefaultRuntimeFamily(env)
+    options.runtimeFamily || getDefaultRuntimeFamily(env),
   );
   const sandboxProfile =
     options.sandbox === "nemoclaw" || options.sandboxProfile === "nemoclaw"
@@ -462,7 +601,9 @@ function getDefaultDeployTarget(env = process.env, options = {}) {
       : "standard";
   const requested = options.backend ? normalizeDeployTargetName(options.backend) : null;
   const candidates = getEnabledDeployTargets(env, { runtimeFamily })
-    .filter((deployTarget) => executionTargetsForRuntimeFamily(runtimeFamily).includes(deployTarget))
+    .filter((deployTarget) =>
+      executionTargetsForRuntimeFamily(runtimeFamily).includes(deployTarget),
+    )
     .map((deployTarget) => ({
       deployTarget,
       ...getRuntimeSelectionStatus({ runtimeFamily, deployTarget, sandboxProfile }, env),
@@ -475,18 +616,16 @@ function getDefaultDeployTarget(env = process.env, options = {}) {
 
 function getDefaultSandboxProfile(env = process.env, options = {}) {
   const runtimeFamily = normalizeRuntimeFamilyName(
-    options.runtimeFamily || getDefaultRuntimeFamily(env)
+    options.runtimeFamily || getDefaultRuntimeFamily(env),
   );
   const deployTarget = normalizeDeployTargetName(
-    options.deployTarget || getDefaultDeployTarget(env, { runtimeFamily })
+    options.deployTarget || getDefaultDeployTarget(env, { runtimeFamily }),
   );
   const requested =
-    options.sandbox === "nemoclaw" || options.sandboxProfile === "nemoclaw"
-      ? "nemoclaw"
-      : null;
+    options.sandbox === "nemoclaw" || options.sandboxProfile === "nemoclaw" ? "nemoclaw" : null;
   const candidates = getEnabledSandboxProfiles(env, { runtimeFamily })
     .filter((sandboxProfile) =>
-      supportedSandboxProfilesForDeployTarget(runtimeFamily, deployTarget).includes(sandboxProfile)
+      supportedSandboxProfilesForDeployTarget(runtimeFamily, deployTarget).includes(sandboxProfile),
     )
     .map((sandboxProfile) => ({
       sandboxProfile,
@@ -502,17 +641,12 @@ function getDefaultBackend(env = process.env, options = {}) {
   return getDefaultDeployTarget(env, options);
 }
 
-function buildSandboxProfileOption(
-  runtimeFamily,
-  deployTarget,
-  sandboxProfile,
-  env = process.env
-) {
+function buildSandboxProfileOption(runtimeFamily, deployTarget, sandboxProfile, env = process.env) {
   const normalizedRuntimeFamily = normalizeRuntimeFamilyName(runtimeFamily);
   const normalizedDeployTarget = normalizeDeployTargetName(deployTarget);
   const normalizedSandboxProfile = normalizeSandboxProfileName(sandboxProfile);
   const runtimeFamilyMetadata = getRuntimeFamilyMetadata(normalizedRuntimeFamily);
-  const deployTargetMetadata = getExecutionTargetMetadata(normalizedDeployTarget);
+  const deployTargetMetadata = getExecutionTargetMetadata(normalizedDeployTarget, env);
   const sandboxMetadata = getSandboxProfileMetadata(normalizedSandboxProfile);
   const status = getRuntimeSelectionStatus(
     {
@@ -520,14 +654,14 @@ function buildSandboxProfileOption(
       deployTarget: normalizedDeployTarget,
       sandboxProfile: normalizedSandboxProfile,
     },
-    env
+    env,
   );
   const maturityFields = buildMaturityFields(
     resolveMaturityTier({
       runtimeFamily: normalizedRuntimeFamily,
       deployTarget: normalizedDeployTarget,
       sandboxProfile: normalizedSandboxProfile,
-    })
+    }),
   );
   const fullLabel =
     normalizedSandboxProfile === "nemoclaw"
@@ -538,11 +672,13 @@ function buildSandboxProfileOption(
     ...sandboxMetadata,
     ...status,
     isDefault:
-      normalizedDeployTarget === getDefaultDeployTarget(env, { runtimeFamily: normalizedRuntimeFamily }) &&
-      normalizedSandboxProfile === getDefaultSandboxProfile(env, {
-        runtimeFamily: normalizedRuntimeFamily,
-        deployTarget: normalizedDeployTarget,
-      }),
+      normalizedDeployTarget ===
+        getDefaultDeployTarget(env, { runtimeFamily: normalizedRuntimeFamily }) &&
+      normalizedSandboxProfile ===
+        getDefaultSandboxProfile(env, {
+          runtimeFamily: normalizedRuntimeFamily,
+          deployTarget: normalizedDeployTarget,
+        }),
     runtimeFamily: normalizedRuntimeFamily,
     runtimeFamilyLabel: runtimeFamilyMetadata.label,
     deployTarget: normalizedDeployTarget,
@@ -560,34 +696,24 @@ function buildSandboxProfileOption(
         : null,
     sandboxImage:
       normalizedSandboxProfile === "nemoclaw"
-        ? env.NEMOCLAW_SANDBOX_IMAGE ||
-          "ghcr.io/nvidia/openshell-community/sandboxes/openclaw"
+        ? env.NEMOCLAW_SANDBOX_IMAGE || "ghcr.io/nvidia/openshell-community/sandboxes/openclaw"
         : null,
     availableForOnboarding: maturityFields.onboardingVisible && status.available,
     ...maturityFields,
   };
 }
 
-function buildExecutionTargetEntry(
-  runtimeFamily,
-  deployTarget,
-  env = process.env
-) {
+function buildExecutionTargetEntry(runtimeFamily, deployTarget, env = process.env) {
   const normalizedRuntimeFamily = normalizeRuntimeFamilyName(runtimeFamily);
   const normalizedDeployTarget = normalizeDeployTargetName(deployTarget);
-  const metadata = getExecutionTargetMetadata(normalizedDeployTarget);
+  const metadata = getExecutionTargetMetadata(normalizedDeployTarget, env);
   const runtimeFamilyMetadata = getRuntimeFamilyMetadata(normalizedRuntimeFamily);
   const supportedSandboxProfiles = supportedSandboxProfilesForDeployTarget(
     normalizedRuntimeFamily,
-    normalizedDeployTarget
+    normalizedDeployTarget,
   );
   const sandboxProfiles = supportedSandboxProfiles.map((sandboxProfile) =>
-    buildSandboxProfileOption(
-      normalizedRuntimeFamily,
-      normalizedDeployTarget,
-      sandboxProfile,
-      env
-    )
+    buildSandboxProfileOption(normalizedRuntimeFamily, normalizedDeployTarget, sandboxProfile, env),
   );
   const enabledSandboxProfiles = sandboxProfiles
     .filter((option) => option.enabled)
@@ -596,7 +722,7 @@ function buildExecutionTargetEntry(
     .filter((option) => option.available)
     .map((option) => option.id);
   const selectableSandboxProfiles = sandboxProfiles.filter(
-    (option) => option.enabled && option.availableForOnboarding
+    (option) => option.enabled && option.availableForOnboarding,
   );
   const defaultSelection =
     sandboxProfiles.find((option) => option.isDefault) ||
@@ -612,7 +738,7 @@ function buildExecutionTargetEntry(
         runtimeFamily: normalizedRuntimeFamily,
         deployTarget: normalizedDeployTarget,
         sandboxProfile: defaultSelection?.id || "standard",
-      })
+      }),
   );
 
   return {
@@ -622,9 +748,7 @@ function buildExecutionTargetEntry(
     available,
     issue:
       enabled && !available
-        ? defaultSelection?.issue ||
-          sandboxProfiles.find((option) => option.issue)?.issue ||
-          null
+        ? defaultSelection?.issue || sandboxProfiles.find((option) => option.issue)?.issue || null
         : null,
     isDefault:
       normalizedDeployTarget ===
@@ -638,39 +762,36 @@ function buildExecutionTargetEntry(
     supportsSandboxSelection: selectableSandboxProfiles.length > 1,
     sandboxProfiles,
     availableForOnboarding: selectableSandboxProfiles.length > 0,
-    fullLabel:
-      defaultSelection?.fullLabel ||
-      `${runtimeFamilyMetadata.label} + ${metadata.label}`,
+    fullLabel: defaultSelection?.fullLabel || `${runtimeFamilyMetadata.label} + ${metadata.label}`,
     ...maturityFields,
   };
 }
 
 function getExecutionTargetCatalog(env = process.env, options = {}) {
   const runtimeFamily = normalizeRuntimeFamilyName(
-    options.runtimeFamily || getDefaultRuntimeFamily(env)
+    options.runtimeFamily || getDefaultRuntimeFamily(env),
   );
   return executionTargetsForRuntimeFamily(runtimeFamily).map((deployTarget) =>
-    buildExecutionTargetEntry(runtimeFamily, deployTarget, env)
+    buildExecutionTargetEntry(runtimeFamily, deployTarget, env),
   );
 }
 
 function getSandboxProfileCatalog(env = process.env, options = {}) {
   const runtimeFamily = normalizeRuntimeFamilyName(
-    options.runtimeFamily || getDefaultRuntimeFamily(env)
+    options.runtimeFamily || getDefaultRuntimeFamily(env),
   );
   const executionTargets = getExecutionTargetCatalog(env, { runtimeFamily });
   const supportedSandboxProfiles =
     runtimeFamily === "hermes" ? ["standard"] : [...KNOWN_SANDBOX_PROFILES];
 
   return supportedSandboxProfiles.map((sandboxProfile) => {
-    const relatedTargets = executionTargets.filter((target) =>
-      target.enabled &&
-      target.sandboxProfiles.some(
-        (option) => option.id === sandboxProfile && option.enabled
-      )
+    const relatedTargets = executionTargets.filter(
+      (target) =>
+        target.enabled &&
+        target.sandboxProfiles.some((option) => option.id === sandboxProfile && option.enabled),
     );
     const relatedOptions = relatedTargets.flatMap((target) =>
-      target.sandboxProfiles.filter((option) => option.id === sandboxProfile)
+      target.sandboxProfiles.filter((option) => option.id === sandboxProfile),
     );
     const metadata = getSandboxProfileMetadata(sandboxProfile);
     const defaultOption =
@@ -680,7 +801,7 @@ function getSandboxProfileCatalog(env = process.env, options = {}) {
       null;
     const maturityFields = buildMaturityFields(
       defaultOption?.maturityTier ||
-        (sandboxProfile === "nemoclaw" || runtimeFamily === "hermes" ? "experimental" : "ga")
+        (sandboxProfile === "nemoclaw" || runtimeFamily === "hermes" ? "experimental" : "ga"),
     );
 
     return {
@@ -695,17 +816,13 @@ function getSandboxProfileCatalog(env = process.env, options = {}) {
       executionTargets: relatedTargets.map((target) => target.id),
       models: sandboxProfile === "nemoclaw" ? [...NEMOCLAW_MODELS] : [],
       defaultModel:
-        sandboxProfile === "nemoclaw"
-          ? env.NEMOCLAW_DEFAULT_MODEL || NEMOCLAW_MODELS[0]
-          : null,
+        sandboxProfile === "nemoclaw" ? env.NEMOCLAW_DEFAULT_MODEL || NEMOCLAW_MODELS[0] : null,
       sandboxImage:
         sandboxProfile === "nemoclaw"
-          ? env.NEMOCLAW_SANDBOX_IMAGE ||
-            "ghcr.io/nvidia/openshell-community/sandboxes/openclaw"
+          ? env.NEMOCLAW_SANDBOX_IMAGE || "ghcr.io/nvidia/openshell-community/sandboxes/openclaw"
           : null,
       availableForOnboarding:
-        maturityFields.onboardingVisible &&
-        relatedOptions.some((option) => option.available),
+        maturityFields.onboardingVisible && relatedOptions.some((option) => option.available),
       ...maturityFields,
     };
   });
@@ -714,10 +831,10 @@ function getSandboxProfileCatalog(env = process.env, options = {}) {
 function buildCatalogEntry(backendId, env = process.env, options = {}) {
   const deployTarget = normalizeDeployTargetName(backendId);
   const runtimeFamily = normalizeRuntimeFamilyName(
-    options.runtimeFamily || getDefaultRuntimeFamily(env)
+    options.runtimeFamily || getDefaultRuntimeFamily(env),
   );
   const target = buildExecutionTargetEntry(runtimeFamily, deployTarget, env);
-  const metadata = getBackendMetadata(deployTarget);
+  const metadata = getBackendMetadata(deployTarget, env);
   return {
     ...metadata,
     ...target,
@@ -735,10 +852,10 @@ function buildCatalogEntry(backendId, env = process.env, options = {}) {
 
 function getBackendCatalog(env = process.env, options = {}) {
   const runtimeFamily = normalizeRuntimeFamilyName(
-    options.runtimeFamily || getDefaultRuntimeFamily(env)
+    options.runtimeFamily || getDefaultRuntimeFamily(env),
   );
   return KNOWN_DEPLOY_TARGETS.map((backendId) =>
-    buildCatalogEntry(backendId, env, { runtimeFamily })
+    buildCatalogEntry(backendId, env, { runtimeFamily }),
   );
 }
 
@@ -761,10 +878,7 @@ function buildBackendEnablementMessage(backendOrStatus, env = process.env) {
       "ENABLED_BACKENDS=k3s, or use ENABLED_BACKENDS=k8s for upstream and managed Kubernetes."
     );
   }
-  return (
-    `${status.label} is not enabled. Enable it with ` +
-    `ENABLED_BACKENDS=${status.id}.`
-  );
+  return `${status.label} is not enabled. Enable it with ` + `ENABLED_BACKENDS=${status.id}.`;
 }
 
 function getRuntimeCatalog(env = process.env) {
@@ -790,9 +904,7 @@ function getRuntimeCatalog(env = process.env) {
       enabledSandboxProfiles: getEnabledSandboxProfiles(env, { runtimeFamily }),
       executionTargets,
       sandboxProfiles,
-      availableForOnboarding: executionTargets.some(
-        (target) => target.availableForOnboarding
-      ),
+      availableForOnboarding: executionTargets.some((target) => target.availableForOnboarding),
       issue:
         enabled && !available
           ? executionTargets.find((target) => target.issue)?.issue || null

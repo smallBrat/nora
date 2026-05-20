@@ -64,7 +64,11 @@ function formatUptime(seconds) {
   const days = Math.floor(seconds / 86400);
   const hours = Math.floor((seconds % 86400) / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
-  return days > 0 ? `${days}d ${hours}h ${minutes}m` : hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+  return days > 0
+    ? `${days}d ${hours}h ${minutes}m`
+    : hours > 0
+      ? `${hours}h ${minutes}m`
+      : `${minutes}m`;
 }
 
 function formatBytes(mb) {
@@ -196,7 +200,7 @@ async function readJsonOrThrow(url, message) {
   return response.json();
 }
 
-export default function MetricsTab({ agentId }) {
+export default function MetricsTab({ agentId, backendConfig = null }) {
   const [stats, setStats] = useState<any>(null);
   const [meta, setMeta] = useState<any>({
     backend_type: null,
@@ -227,7 +231,10 @@ export default function MetricsTab({ agentId }) {
 
       const [currentData, historyData] = await Promise.all([
         readJsonOrThrow(`/api/agents/${agentId}/stats`, "Cannot fetch current metrics"),
-        readJsonOrThrow(`/api/agents/${agentId}/stats/history?range=${range}`, "Cannot fetch metric history"),
+        readJsonOrThrow(
+          `/api/agents/${agentId}/stats/history?range=${range}`,
+          "Cannot fetch metric history",
+        ),
       ]);
 
       if (cancelled) return;
@@ -236,17 +243,14 @@ export default function MetricsTab({ agentId }) {
       setError(currentData.error || null);
       setMeta({
         backend_type: currentData.backend_type || historyData.backend_type || null,
-        deploy_target:
-          currentData.deploy_target || historyData.deploy_target || null,
-        sandbox_profile:
-          currentData.sandbox_profile || historyData.sandbox_profile || null,
-        sandbox_type:
-          currentData.sandbox_type || historyData.sandbox_type || null,
+        deploy_target: currentData.deploy_target || historyData.deploy_target || null,
+        sandbox_profile: currentData.sandbox_profile || historyData.sandbox_profile || null,
+        sandbox_type: currentData.sandbox_type || historyData.sandbox_type || null,
         capabilities: currentData.capabilities || historyData.capabilities || EMPTY_CAPABILITIES,
       });
       const nextHistory = normalizeHistory(historyData.samples || [], range);
       setHistory((previous) =>
-        resetLoading ? nextHistory : mergeHistorySamples(previous, nextHistory)
+        resetLoading ? nextHistory : mergeHistorySamples(previous, nextHistory),
       );
     }
 
@@ -272,9 +276,7 @@ export default function MetricsTab({ agentId }) {
       const legacy = localStorage.getItem("token");
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const qs = legacy ? `?token=${encodeURIComponent(legacy)}` : "";
-      socket = new WebSocket(
-        `${protocol}//${window.location.host}/api/ws/metrics/${agentId}${qs}`
-      );
+      socket = new WebSocket(`${protocol}//${window.location.host}/api/ws/metrics/${agentId}${qs}`);
 
       socket.onopen = () => {
         if (!cancelled) {
@@ -298,9 +300,7 @@ export default function MetricsTab({ agentId }) {
               sandbox_type: message.payload.sandbox_type || null,
               capabilities: message.payload.capabilities || EMPTY_CAPABILITIES,
             });
-            setHistory((previous) =>
-              appendHistorySample(previous, message.payload.current, range)
-            );
+            setHistory((previous) => appendHistorySample(previous, message.payload.current, range));
             return;
           }
 
@@ -351,16 +351,21 @@ export default function MetricsTab({ agentId }) {
   const capabilities = stats?.capabilities || meta.capabilities || EMPTY_CAPABILITIES;
   const current = stats?.current || {};
   const runtimeMeta = {
+    runtime_family: stats?.runtime_family || meta.runtime_family,
     backend_type: stats?.backend_type || meta.backend_type,
     deploy_target: stats?.deploy_target || meta.deploy_target,
     sandbox_profile: stats?.sandbox_profile || meta.sandbox_profile,
     sandbox_type: stats?.sandbox_type || meta.sandbox_type,
   };
+  const executionTarget = resolveAgentExecutionTarget(runtimeMeta);
   const executionTargetLabel = formatExecutionTargetLabel(
-    resolveAgentExecutionTarget(runtimeMeta)
+    executionTarget,
+    backendConfig,
+    runtimeMeta.runtime_family,
   );
   const sandboxProfile = resolveAgentSandboxProfile(runtimeMeta);
   const sandboxLabel = formatSandboxProfileLabel(sandboxProfile);
+  const showNetworkDiskCharts = executionTarget !== "k8s";
   const liveError = error || stats?.error || null;
   const liveStateLabel = streamState === "connected" ? "Live" : "Offline";
   const liveStateClass =
@@ -418,18 +423,21 @@ export default function MetricsTab({ agentId }) {
           ) : null}
         </div>
         <div className="flex items-center gap-3 text-[10px] text-slate-400 flex-wrap">
-          <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full border font-bold ${liveStateClass}`}>
+          <span
+            className={`inline-flex items-center gap-1 px-2 py-1 rounded-full border font-bold ${liveStateClass}`}
+          >
             <Activity size={10} />
             {liveStateLabel}
           </span>
           <span>
             <Clock size={10} className="inline mr-1" />
-            Uptime: <strong className="text-slate-600">{formatUptime(current.uptime_seconds)}</strong>
+            Uptime:{" "}
+            <strong className="text-slate-600">{formatUptime(current.uptime_seconds)}</strong>
           </span>
           <span>
             PIDs:{" "}
             <strong className="text-slate-600">
-              {capabilities.pids ? current.pids ?? 0 : "Unavailable"}
+              {capabilities.pids ? (current.pids ?? 0) : "Unavailable"}
             </strong>
           </span>
           <span>{history.length} samples</span>
@@ -451,7 +459,11 @@ export default function MetricsTab({ agentId }) {
           title="CPU Usage"
           icon={Cpu}
           available={capabilities.cpu}
-          current={capabilities.cpu && current.cpu_percent != null ? `${current.cpu_percent.toFixed(1)}%` : "Unavailable"}
+          current={
+            capabilities.cpu && current.cpu_percent != null
+              ? `${current.cpu_percent.toFixed(1)}%`
+              : "Unavailable"
+          }
           color="#3b82f6"
           data={history}
           dataKey="cpu_percent"
@@ -473,50 +485,54 @@ export default function MetricsTab({ agentId }) {
           unit="%"
           domain={[0, 100]}
         />
-        <ChartCard
-          title="Network Throughput"
-          icon={Network}
-          available={capabilities.network}
-          current={
-            capabilities.network
-              ? `↓ ${formatRate(current.network_rx_rate_mbps)}  ↑ ${formatRate(current.network_tx_rate_mbps)}`
-              : "Unavailable"
-          }
-          secondary={
-            capabilities.network
-              ? `Totals ↓ ${formatBytes(current.network_rx_mb)}  ↑ ${formatBytes(current.network_tx_mb)}`
-              : null
-          }
-          color="#10b981"
-          secondColor="#f59e0b"
-          data={history}
-          dataKey="network_rx_rate_mbps"
-          secondDataKey="network_tx_rate_mbps"
-          unit=" MB/s"
-          legend={["Received", "Sent"]}
-        />
-        <ChartCard
-          title="Disk Throughput"
-          icon={HardDrive}
-          available={capabilities.disk}
-          current={
-            capabilities.disk
-              ? `Read ${formatRate(current.disk_read_rate_mbps)}  Write ${formatRate(current.disk_write_rate_mbps)}`
-              : "Unavailable"
-          }
-          secondary={
-            capabilities.disk
-              ? `Totals ${formatBytes(current.disk_read_mb)} read  ${formatBytes(current.disk_write_mb)} write`
-              : null
-          }
-          color="#06b6d4"
-          secondColor="#f97316"
-          data={history}
-          dataKey="disk_read_rate_mbps"
-          secondDataKey="disk_write_rate_mbps"
-          unit=" MB/s"
-          legend={["Read", "Write"]}
-        />
+        {showNetworkDiskCharts ? (
+          <>
+            <ChartCard
+              title="Network Throughput"
+              icon={Network}
+              available={capabilities.network}
+              current={
+                capabilities.network
+                  ? `↓ ${formatRate(current.network_rx_rate_mbps)}  ↑ ${formatRate(current.network_tx_rate_mbps)}`
+                  : "Unavailable"
+              }
+              secondary={
+                capabilities.network
+                  ? `Totals ↓ ${formatBytes(current.network_rx_mb)}  ↑ ${formatBytes(current.network_tx_mb)}`
+                  : null
+              }
+              color="#10b981"
+              secondColor="#f59e0b"
+              data={history}
+              dataKey="network_rx_rate_mbps"
+              secondDataKey="network_tx_rate_mbps"
+              unit=" MB/s"
+              legend={["Received", "Sent"]}
+            />
+            <ChartCard
+              title="Disk Throughput"
+              icon={HardDrive}
+              available={capabilities.disk}
+              current={
+                capabilities.disk
+                  ? `Read ${formatRate(current.disk_read_rate_mbps)}  Write ${formatRate(current.disk_write_rate_mbps)}`
+                  : "Unavailable"
+              }
+              secondary={
+                capabilities.disk
+                  ? `Totals ${formatBytes(current.disk_read_mb)} read  ${formatBytes(current.disk_write_mb)} write`
+                  : null
+              }
+              color="#06b6d4"
+              secondColor="#f97316"
+              data={history}
+              dataKey="disk_read_rate_mbps"
+              secondDataKey="disk_write_rate_mbps"
+              unit=" MB/s"
+              legend={["Read", "Write"]}
+            />
+          </>
+        ) : null}
       </div>
 
       {stats?.nemo && <NemoSummaryPanel nemo={stats.nemo} />}
@@ -540,7 +556,7 @@ function ChartCard({
   available,
 }: ChartCardProps) {
   const hasValues = data.some(
-    (entry) => entry[dataKey] != null || (secondDataKey && entry[secondDataKey] != null)
+    (entry) => entry[dataKey] != null || (secondDataKey && entry[secondDataKey] != null),
   );
 
   return (
@@ -635,9 +651,7 @@ function NemoSummaryPanel({ nemo }) {
           icon={Shield}
           label="Policy"
           value={
-            nemo.policyActive
-              ? `${nemo.policyRuleCount ?? 0} rules active`
-              : "Policy inactive"
+            nemo.policyActive ? `${nemo.policyRuleCount ?? 0} rules active` : "Policy inactive"
           }
         />
         <NemoStat

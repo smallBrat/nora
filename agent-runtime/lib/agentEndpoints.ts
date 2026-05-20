@@ -104,6 +104,13 @@ function resolveHermesDashboardAddress(agent) {
   if (!agent) return null;
   if (!runtimeUsesHermesDashboard(agent)) return null;
 
+  if (agent.gateway_host && agent.gateway_port) {
+    return {
+      host: agent.gateway_host,
+      port: normalizePort(agent.gateway_port, HERMES_DASHBOARD_PORT),
+    };
+  }
+
   const host = agent.runtime_host || agent.host || null;
   if (!host) return null;
 
