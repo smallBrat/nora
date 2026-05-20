@@ -21,8 +21,10 @@ GET /agents
 ```
 
 <CodeGroup>
-  ```bash curl theme={null}
-  curl http://localhost:8080/api/agents \ -H "Authorization: Bearer $TOKEN" ```
+```bash curl theme={null}
+curl http://localhost:8080/api/agents \
+  -H "Authorization: Bearer $TOKEN"
+```
 </CodeGroup>
 
 ```json theme={null}
@@ -117,12 +119,12 @@ Returns the newly created agent record.
 </ResponseField>
 
 <CodeGroup>
-  ```bash curl theme={null}
-  curl -X POST http://localhost:8080/api/agents/deploy \
-    -H "Authorization: Bearer $TOKEN" \
-    -H "Content-Type: application/json" \
-    -d '{"name":"My Agent","vcpu":2,"ram_mb":2048,"disk_gb":20}'
-  ```
+```bash curl theme={null}
+curl -X POST http://localhost:8080/api/agents/deploy \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"My Agent","vcpu":2,"ram_mb":2048,"disk_gb":20}'
+```
 </CodeGroup>
 
 ```json theme={null}
@@ -162,9 +164,10 @@ GET /agents/:id
 </ParamField>
 
 <CodeGroup>
-  ```bash curl theme={null}
-  curl http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890 \ -H "Authorization:
-  Bearer $TOKEN" ```
+```bash curl theme={null}
+curl http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890 \
+  -H "Authorization: Bearer $TOKEN"
+```
 </CodeGroup>
 
 ```json theme={null}
@@ -202,9 +205,10 @@ POST /agents/:id/start
 Returns the updated agent record with `status: "running"`.
 
 <CodeGroup>
-  ```bash curl theme={null}
-  curl -X POST http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/start \ -H
-  "Authorization: Bearer $TOKEN" ```
+```bash curl theme={null}
+curl -X POST http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/start \
+  -H "Authorization: Bearer $TOKEN"
+```
 </CodeGroup>
 
 | Status | Condition                               |
@@ -231,9 +235,10 @@ POST /agents/:id/stop
 Returns the updated agent record with `status: "stopped"`.
 
 <CodeGroup>
-  ```bash curl theme={null}
-  curl -X POST http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/stop \ -H
-  "Authorization: Bearer $TOKEN" ```
+```bash curl theme={null}
+curl -X POST http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/stop \
+  -H "Authorization: Bearer $TOKEN"
+```
 </CodeGroup>
 
 ---
@@ -259,9 +264,10 @@ POST /agents/:id/restart
 </ResponseField>
 
 <CodeGroup>
-  ```bash curl theme={null}
-  curl -X POST http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/restart \ -H
-  "Authorization: Bearer $TOKEN" ```
+```bash curl theme={null}
+curl -X POST http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/restart \
+  -H "Authorization: Bearer $TOKEN"
+```
 </CodeGroup>
 
 ```json theme={null}
@@ -298,9 +304,10 @@ POST /agents/:id/redeploy
 </ResponseField>
 
 <CodeGroup>
-  ```bash curl theme={null}
-  curl -X POST http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/redeploy \ -H
-  "Authorization: Bearer $TOKEN" ```
+```bash curl theme={null}
+curl -X POST http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/redeploy \
+  -H "Authorization: Bearer $TOKEN"
+```
 </CodeGroup>
 
 ```json theme={null}
@@ -334,9 +341,10 @@ DELETE /agents/:id
 </ResponseField>
 
 <CodeGroup>
-  ```bash curl theme={null}
-  curl -X DELETE http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890 \ -H
-  "Authorization: Bearer $TOKEN" ```
+```bash curl theme={null}
+curl -X DELETE http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890 \
+  -H "Authorization: Bearer $TOKEN"
+```
 </CodeGroup>
 
 ```json theme={null}
@@ -401,9 +409,10 @@ GET /agents/:id/stats
 </ResponseField>
 
 <CodeGroup>
-  ```bash curl theme={null}
-  curl http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/stats \ -H
-  "Authorization: Bearer $TOKEN" ```
+```bash curl theme={null}
+curl http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/stats \
+  -H "Authorization: Bearer $TOKEN"
+```
 </CodeGroup>
 
 ```json theme={null}
@@ -547,9 +556,10 @@ GET /agents/:id/gateway-url
 </ResponseField>
 
 <CodeGroup>
-  ```bash curl theme={null}
-  curl http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/gateway-url \ -H
-  "Authorization: Bearer $TOKEN" ```
+```bash curl theme={null}
+curl http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/gateway-url \
+  -H "Authorization: Bearer $TOKEN"
+```
 </CodeGroup>
 
 ```json theme={null}

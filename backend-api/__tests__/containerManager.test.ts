@@ -126,7 +126,10 @@ describe("containerManager NemoClaw routing", () => {
     expect(mockStart).toHaveBeenCalledWith("nemo-123");
     expect(mockStop).toHaveBeenCalledWith("nemo-123");
     expect(mockRestart).toHaveBeenCalledWith("nemo-123");
-    expect(mockDestroy).toHaveBeenCalledWith("nemo-123");
+    expect(mockDestroy).toHaveBeenCalledWith(
+      "nemo-123",
+      expect.objectContaining({ host: null, runtimeFamily: "openclaw" }),
+    );
     expect(mockStatus).toHaveBeenCalledWith("nemo-123");
     expect(mockStats).toHaveBeenCalledWith("nemo-123", agent);
     expect(mockLogs).toHaveBeenCalledWith("nemo-123", { tail: 50 });
@@ -172,7 +175,10 @@ describe("containerManager NemoClaw routing", () => {
     expect(mockK8sStart).toHaveBeenCalledWith("oclaw-agent-nemo-k8s");
     expect(mockK8sStop).toHaveBeenCalledWith("oclaw-agent-nemo-k8s");
     expect(mockK8sRestart).toHaveBeenCalledWith("oclaw-agent-nemo-k8s");
-    expect(mockK8sDestroy).toHaveBeenCalledWith("oclaw-agent-nemo-k8s");
+    expect(mockK8sDestroy).toHaveBeenCalledWith(
+      "oclaw-agent-nemo-k8s",
+      expect.objectContaining({ host: null, runtimeFamily: "openclaw" }),
+    );
     expect(mockK8sStatus).toHaveBeenCalledWith("oclaw-agent-nemo-k8s");
     expect(mockK8sStats).toHaveBeenCalledWith("oclaw-agent-nemo-k8s", agent);
     expect(mockK8sLogs).toHaveBeenCalledWith("oclaw-agent-nemo-k8s", { tail: 50 });
@@ -284,7 +290,10 @@ describe("containerManager NemoClaw routing", () => {
     expect(mockHermesStart).toHaveBeenCalledWith("hermes-123");
     expect(mockHermesStop).toHaveBeenCalledWith("hermes-123");
     expect(mockHermesRestart).toHaveBeenCalledWith("hermes-123");
-    expect(mockHermesDestroy).toHaveBeenCalledWith("hermes-123");
+    expect(mockHermesDestroy).toHaveBeenCalledWith(
+      "hermes-123",
+      expect.objectContaining({ host: null, runtimeFamily: "hermes" }),
+    );
     expect(mockHermesStatus).toHaveBeenCalledWith("hermes-123");
     expect(mockHermesStats).toHaveBeenCalledWith("hermes-123", agent);
     expect(mockHermesLogs).toHaveBeenCalledWith("hermes-123", { tail: 25 });
@@ -316,7 +325,10 @@ describe("containerManager NemoClaw routing", () => {
     expect(mockK8sStart).toHaveBeenCalledWith("hermes-agent-k8s");
     expect(mockK8sStop).toHaveBeenCalledWith("hermes-agent-k8s");
     expect(mockK8sRestart).toHaveBeenCalledWith("hermes-agent-k8s");
-    expect(mockK8sDestroy).toHaveBeenCalledWith("hermes-agent-k8s");
+    expect(mockK8sDestroy).toHaveBeenCalledWith(
+      "hermes-agent-k8s",
+      expect.objectContaining({ host: null, runtimeFamily: "hermes" }),
+    );
     expect(mockK8sStatus).toHaveBeenCalledWith("hermes-agent-k8s");
     expect(mockK8sStats).toHaveBeenCalledWith("hermes-agent-k8s", agent);
     expect(mockK8sLogs).toHaveBeenCalledWith("hermes-agent-k8s", { tail: 25 });
