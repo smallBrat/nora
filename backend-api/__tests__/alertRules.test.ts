@@ -14,6 +14,18 @@ process.env.JWT_SECRET = JWT_SECRET;
 const mockDb = { query: jest.fn() };
 jest.mock("../db", () => mockDb);
 
+// Stub the async (DNS-resolving) SSRF check so delivery tests can use
+// non-resolving stub hostnames like `https://hooks/a` without touching the
+// network. The lexical `assertSafeUrl` stays real — the new validation tests
+// below exercise it via the rule-creation path.
+jest.mock("../networkSafety", () => {
+  const actual = jest.requireActual("../networkSafety");
+  return {
+    ...actual,
+    assertSafeUrlAsync: jest.fn(async (rawUrl) => new URL(rawUrl).origin),
+  };
+});
+
 const mockMailerSendMail = jest.fn();
 jest.mock("../mailer", () => ({
   sendMail: mockMailerSendMail,
@@ -85,6 +97,36 @@ describe("validation", () => {
         channels: [{ type: "webhook", url: "ftp://x" }],
       }),
     ).rejects.toThrow(/http\(s\)/);
+  });
+
+  it("rejects webhook pointing at loopback (SSRF guard)", async () => {
+    await expect(
+      alertRules.createRule("ws-1", "u-1", {
+        name: "x",
+        eventPattern: "agent.*",
+        channels: [{ type: "webhook", url: "http://127.0.0.1:6379/" }],
+      }),
+    ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  it("rejects webhook pointing at RFC1918 IP (SSRF guard)", async () => {
+    await expect(
+      alertRules.createRule("ws-1", "u-1", {
+        name: "x",
+        eventPattern: "agent.*",
+        channels: [{ type: "webhook", url: "https://10.0.0.5/hook" }],
+      }),
+    ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  it("rejects webhook pointing at AWS metadata IP (SSRF guard)", async () => {
+    await expect(
+      alertRules.createRule("ws-1", "u-1", {
+        name: "x",
+        eventPattern: "agent.*",
+        channels: [{ type: "webhook", url: "http://169.254.169.254/latest/meta-data/" }],
+      }),
+    ).rejects.toMatchObject({ statusCode: 400 });
   });
 
   it("rejects email channel with empty 'to'", async () => {

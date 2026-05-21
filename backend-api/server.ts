@@ -52,6 +52,7 @@ const {
 
 // ─── JWT Secret ───────────────────────────────────────────────────
 const IS_TEST_ENV = process.env.NODE_ENV === "test" || !!process.env.JEST_WORKER_ID;
+const MIN_JWT_SECRET_LENGTH = 32;
 if (!process.env.JWT_SECRET) {
   if (IS_TEST_ENV) {
     process.env.JWT_SECRET = "secret";
@@ -66,6 +67,15 @@ if (!process.env.JWT_SECRET) {
     );
     process.env.JWT_SECRET = crypto.randomBytes(32).toString("hex");
   }
+} else if (!IS_TEST_ENV && process.env.JWT_SECRET.length < MIN_JWT_SECRET_LENGTH) {
+  // A short JWT_SECRET is brute-forceable offline given any signed token. Fail
+  // closed rather than silently accept a weak production secret. We
+  // deliberately do NOT log the observed length — even a length is a useful
+  // bit for an attacker reading process logs, and CodeQL flags the dataflow.
+  console.error(
+    `FATAL: JWT_SECRET is shorter than the minimum of ${MIN_JWT_SECRET_LENGTH} characters. Generate a stronger one (e.g. node -e "console.log(require('crypto').randomBytes(32).toString('hex'))") and restart.`,
+  );
+  process.exit(1);
 }
 
 // ─── App Setup ────────────────────────────────────────────────────
@@ -101,6 +111,16 @@ function requestProtocol(req) {
     return forwarded[0].split(",")[0].trim();
   }
   return req.protocol;
+}
+
+// Whether to set the Secure flag on session cookies. Defaults to "only when
+// the inbound request was HTTPS" so local-dev over plain HTTP keeps working.
+// Operators running always-on TLS (PaaS, public-domain deployments) should set
+// NORA_FORCE_SECURE_COOKIES=1 so cookies are never emitted over cleartext even
+// if a proxy regression strips `X-Forwarded-Proto`.
+function cookieSecureFlag(req) {
+  if (process.env.NORA_FORCE_SECURE_COOKIES === "1") return true;
+  return requestProtocol(req) === "https";
 }
 
 function getEmbedSessionCookieName(agentId, prefix = EMBED_SESSION_COOKIE_PREFIX) {
@@ -477,7 +497,7 @@ async function resolveEmbedAccess(
     res.cookie(embedCookieName, relayToken, {
       httpOnly: true,
       sameSite: "lax",
-      secure: requestProtocol(req) === "https",
+      secure: cookieSecureFlag(req),
       maxAge: EMBED_SESSION_TTL_MS,
       path: "/",
     });
@@ -863,7 +883,7 @@ async function proxyEmbeddedHermes(req, res) {
         res.cookie(dashboardTokenCookieName, hermesSessionToken, {
           httpOnly: true,
           sameSite: "lax",
-          secure: requestProtocol(req) === "https",
+          secure: cookieSecureFlag(req),
           maxAge: EMBED_SESSION_TTL_MS,
           path: "/",
         });

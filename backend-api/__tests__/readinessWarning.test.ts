@@ -1,5 +1,11 @@
 // @ts-nocheck
-const { shouldPersistReadinessWarning, buildReadinessWarningDetail, buildReadinessWarningMetadata, buildReadinessWarningState, persistReadinessWarning } = require("../../workers/provisioner/readinessWarning");
+const {
+  shouldPersistReadinessWarning,
+  buildReadinessWarningDetail,
+  buildReadinessWarningMetadata,
+  buildReadinessWarningState,
+  persistReadinessWarning,
+} = require("../../workers/provisioner/readinessWarning");
 
 describe("shouldPersistReadinessWarning", () => {
   it("returns true for degraded readiness", () => {
@@ -11,11 +17,13 @@ describe("shouldPersistReadinessWarning", () => {
   });
 
   it("returns false when runtime and gateway are both healthy", () => {
-    expect(shouldPersistReadinessWarning({
-      ok: true,
-      runtime: { ok: true },
-      gateway: { ok: true },
-    })).toBe(false);
+    expect(
+      shouldPersistReadinessWarning({
+        ok: true,
+        runtime: { ok: true },
+        gateway: { ok: true },
+      }),
+    ).toBe(false);
   });
 });
 
@@ -31,7 +39,7 @@ describe("buildReadinessWarningDetail", () => {
     });
 
     expect(detail).toBe(
-      "runtime unavailable at http://agent.internal:9090/health (timeout after 5000ms)"
+      "runtime unavailable at http://agent.internal:9090/health (timeout after 5000ms)",
     );
   });
 
@@ -45,9 +53,7 @@ describe("buildReadinessWarningDetail", () => {
       },
     });
 
-    expect(detail).toBe(
-      "gateway unavailable at http://host.docker.internal:18789/ (502)"
-    );
+    expect(detail).toBe("gateway unavailable at http://host.docker.internal:18789/ (502)");
   });
 
   it("formats combined runtime and gateway readiness warnings", () => {
@@ -65,7 +71,7 @@ describe("buildReadinessWarningDetail", () => {
     });
 
     expect(detail).toBe(
-      "runtime unavailable at http://agent.internal:9090/health (connection refused); gateway unavailable at http://host.docker.internal:19123/ (timeout after 5000ms)"
+      "runtime unavailable at http://agent.internal:9090/health (connection refused); gateway unavailable at http://host.docker.internal:19123/ (timeout after 5000ms)",
     );
   });
 
@@ -85,11 +91,13 @@ describe("buildReadinessWarningMetadata", () => {
       gateway: { ok: true },
     };
 
-    expect(buildReadinessWarningMetadata({
-      agentId: "agent-123",
-      host: "agent.internal",
-      readiness,
-    })).toEqual({
+    expect(
+      buildReadinessWarningMetadata({
+        agentId: "agent-123",
+        host: "agent.internal",
+        readiness,
+      }),
+    ).toEqual({
       agentId: "agent-123",
       host: "agent.internal",
       detail: "runtime unavailable at http://agent.internal:9090/health (timeout after 5000ms)",
@@ -113,21 +121,25 @@ describe("buildReadinessWarningState", () => {
       },
     };
 
-    expect(buildReadinessWarningState({
-      agentId: "agent-123",
-      name: "Nora QA",
-      host: "agent.internal",
-      readiness,
-    })).toEqual({
+    expect(
+      buildReadinessWarningState({
+        agentId: "agent-123",
+        name: "Nora QA",
+        host: "agent.internal",
+        readiness,
+      }),
+    ).toEqual({
       agentStatus: "warning",
       deploymentStatus: "warning",
       event: {
         type: "agent_runtime_warning",
-        message: "Agent \"Nora QA\" deployed with readiness warning: runtime unavailable at http://agent.internal:9090/health (connection refused); gateway unavailable at http://host.docker.internal:19123/ (timeout after 5000ms)",
+        message:
+          'Agent "Nora QA" deployed with readiness warning: runtime unavailable at http://agent.internal:9090/health (connection refused); gateway unavailable at http://host.docker.internal:19123/ (timeout after 5000ms)',
         metadata: {
           agentId: "agent-123",
           host: "agent.internal",
-          detail: "runtime unavailable at http://agent.internal:9090/health (connection refused); gateway unavailable at http://host.docker.internal:19123/ (timeout after 5000ms)",
+          detail:
+            "runtime unavailable at http://agent.internal:9090/health (connection refused); gateway unavailable at http://host.docker.internal:19123/ (timeout after 5000ms)",
           readiness,
         },
       },
@@ -173,33 +185,34 @@ describe("persistReadinessWarning", () => {
       readiness,
     });
 
-    expect(db.query).toHaveBeenNthCalledWith(
-      1,
-      "UPDATE agents SET status = 'warning' WHERE id = $1",
-      ["agent-123"]
-    );
+    expect(db.query).toHaveBeenNthCalledWith(1, "UPDATE agents SET status = $1 WHERE id = $2", [
+      "warning",
+      "agent-123",
+    ]);
     expect(db.query).toHaveBeenNthCalledWith(
       2,
-      "UPDATE deployments SET status = 'warning' WHERE agent_id = $1",
-      ["agent-123"]
+      "UPDATE deployments SET status = $1 WHERE agent_id = $2",
+      ["warning", "agent-123"],
     );
     expect(db.query).toHaveBeenNthCalledWith(
       3,
       "INSERT INTO events(type, message, metadata) VALUES($1, $2, $3)",
       [
         "agent_runtime_warning",
-        "Agent \"Nora QA\" deployed with readiness warning: runtime unavailable at http://agent.internal:9090/health (connection refused)",
+        'Agent "Nora QA" deployed with readiness warning: runtime unavailable at http://agent.internal:9090/health (connection refused)',
         JSON.stringify({
           agentId: "agent-123",
           host: "agent.internal",
           detail: "runtime unavailable at http://agent.internal:9090/health (connection refused)",
           readiness,
         }),
-      ]
+      ],
     );
-    expect(result).toEqual(expect.objectContaining({
-      agentStatus: "warning",
-      deploymentStatus: "warning",
-    }));
+    expect(result).toEqual(
+      expect.objectContaining({
+        agentStatus: "warning",
+        deploymentStatus: "warning",
+      }),
+    );
   });
 });

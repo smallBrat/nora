@@ -374,6 +374,22 @@ async function readTarBufferFiles(buffer, { stripBaseName = "" } = {}) {
           }
 
           if (relativePath) {
+            // Zip-slip guard: reject absolute paths and any entry whose
+            // normalized form escapes the implicit base. Downstream consumers
+            // join `path` onto an agent's filesystem prefix; without this
+            // check a tar entry like `../../etc/passwd` or `/etc/shadow`
+            // would write outside the agent's directory.
+            const isUnsafe =
+              path.isAbsolute(relativePath) ||
+              relativePath.includes("\0") ||
+              path
+                .normalize(relativePath)
+                .split(/[\\/]/)
+                .some((segment) => segment === "..");
+            if (isUnsafe) {
+              reject(new Error(`Refusing tar entry with unsafe path: ${header.name}`));
+              return;
+            }
             files.push({
               path: relativePath,
               contentBase64: Buffer.concat(chunks).toString("base64"),
@@ -496,13 +512,20 @@ async function execSsh(source = {}, command, { timeout = 120000, binary = false 
   }
 
   let keyPath = "";
+  let keyDir = "";
   if (source.privateKey) {
     const fs = require("fs");
     const os = require("os");
-    keyPath = path.join(
-      os.tmpdir(),
-      `nora-ssh-${Date.now()}-${Math.random().toString(16).slice(2)}.pem`,
-    );
+    const crypto = require("crypto");
+    // Use mkdtempSync so the parent directory is created with 0o700 by the
+    // OS (the kernel sets the permission, not us). Then put a randomly-named
+    // file inside it. This closes two risks the old `Math.random()` path had:
+    //   1) predictable filename in a shared tmpdir let a local attacker
+    //      pre-create a symlink at that path and capture the key on write.
+    //   2) limited entropy from Math.random() (~52 bits) made guessing the
+    //      pending name feasible in a race window.
+    keyDir = fs.mkdtempSync(path.join(os.tmpdir(), "nora-ssh-"));
+    keyPath = path.join(keyDir, `${crypto.randomBytes(16).toString("hex")}.pem`);
     fs.writeFileSync(keyPath, String(source.privateKey), { mode: 0o600 });
     args.push("-i", keyPath);
   }
@@ -520,6 +543,13 @@ async function execSsh(source = {}, command, { timeout = 120000, binary = false 
     if (keyPath) {
       try {
         require("fs").unlinkSync(keyPath);
+      } catch {
+        // Best-effort cleanup only.
+      }
+    }
+    if (keyDir) {
+      try {
+        require("fs").rmdirSync(keyDir);
       } catch {
         // Best-effort cleanup only.
       }

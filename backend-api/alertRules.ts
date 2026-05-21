@@ -9,6 +9,7 @@
 
 const { randomUUID } = require("crypto");
 const db = require("./db");
+const { assertSafeUrl, assertSafeUrlAsync } = require("./networkSafety");
 
 const SUPPORTED_CHANNEL_TYPES = new Set(["webhook", "email"]);
 const DELIVERY_TIMEOUT_MS = 5000;
@@ -69,6 +70,17 @@ function normalizeChannels(value) {
       const url = String(entry.url || "").trim();
       if (!/^https?:\/\//i.test(url)) {
         const error = new Error(`channel #${index + 1}: webhook url must start with http(s)://`);
+        error.statusCode = 400;
+        throw error;
+      }
+      // SSRF guard at save time. This is the lexical-only layer (rejects
+      // 127.0.0.1, 169.254.169.254, RFC1918 IP literals, etc.); the delivery
+      // path also runs DNS resolution in deliverWebhook to cover hostnames
+      // that resolve into private space.
+      try {
+        assertSafeUrl(url, `channel #${index + 1}: webhook url`);
+      } catch (urlErr) {
+        const error = new Error(urlErr.message);
         error.statusCode = 400;
         throw error;
       }
@@ -305,6 +317,12 @@ async function deliverEmail(channel, payload) {
 }
 
 async function deliverWebhook(channel, payload) {
+  // Re-validate the URL at delivery time. Rules persist for the lifetime of
+  // the workspace; an attacker who can edit a rule could swap the hostname,
+  // and DNS-rebinding can flip a previously-safe hostname onto a private IP
+  // between save and delivery. assertSafeUrlAsync covers both.
+  await assertSafeUrlAsync(channel.url, "webhook url");
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), DELIVERY_TIMEOUT_MS);
   try {
@@ -317,6 +335,9 @@ async function deliverWebhook(channel, payload) {
       },
       body: JSON.stringify(payload),
       signal: controller.signal,
+      // Refuse to follow redirects — a 30x to http://169.254.169.254/ would
+      // bypass our pre-check otherwise.
+      redirect: "error",
     });
     if (!response.ok) {
       throw new Error(`Webhook returned ${response.status}`);
