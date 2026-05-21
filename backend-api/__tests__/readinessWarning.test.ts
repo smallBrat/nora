@@ -175,13 +175,13 @@ describe("persistReadinessWarning", () => {
 
     expect(db.query).toHaveBeenNthCalledWith(
       1,
-      "UPDATE agents SET status = 'warning' WHERE id = $1",
-      ["agent-123"]
+      "UPDATE agents SET status = $1 WHERE id = $2",
+      ["warning", "agent-123"]
     );
     expect(db.query).toHaveBeenNthCalledWith(
       2,
-      "UPDATE deployments SET status = 'warning' WHERE agent_id = $1",
-      ["agent-123"]
+      "UPDATE deployments SET status = $1 WHERE agent_id = $2",
+      ["warning", "agent-123"]
     );
     expect(db.query).toHaveBeenNthCalledWith(
       3,

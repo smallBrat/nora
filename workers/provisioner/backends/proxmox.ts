@@ -738,7 +738,8 @@ class ProxmoxBackend extends ProvisionerBackend {
   async logs(containerId, opts = {}) {
     const tail = Number.parseInt(opts.tail || "100", 10) || 100;
     const follow = opts.follow !== false ? "-f" : "";
-    const command = `${this.sudoPrefix}${this.pctCommand} exec ${containerId} -- journalctl -u nora-openclaw.service -u nora-hermes.service -n ${tail} ${follow} --no-pager`;
+    const quotedId = shellSingleQuote(String(containerId));
+    const command = `${this.sudoPrefix}${this.pctCommand} exec ${quotedId} -- journalctl -u nora-openclaw.service -u nora-hermes.service -n ${tail} ${follow} --no-pager`;
     return this._sshStream(command);
   }
 

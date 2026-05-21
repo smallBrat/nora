@@ -52,7 +52,13 @@ function extractSessionTokenFromUpgrade(request, searchParams) {
 }
 
 function setAuthCookie(res, token, req) {
-  const isSecure = Boolean(req?.secure) || req?.headers?.["x-forwarded-proto"] === "https";
+  // NORA_FORCE_SECURE_COOKIES=1 forces Secure regardless of inbound scheme,
+  // for operators behind always-on TLS who don't want to rely on
+  // X-Forwarded-Proto being correct on every proxy hop.
+  const isSecure =
+    process.env.NORA_FORCE_SECURE_COOKIES === "1" ||
+    Boolean(req?.secure) ||
+    req?.headers?.["x-forwarded-proto"] === "https";
   res.cookie(AUTH_COOKIE_NAME, token, {
     httpOnly: true,
     secure: isSecure,
@@ -63,7 +69,13 @@ function setAuthCookie(res, token, req) {
 }
 
 function clearAuthCookie(res, req) {
-  const isSecure = Boolean(req?.secure) || req?.headers?.["x-forwarded-proto"] === "https";
+  // NORA_FORCE_SECURE_COOKIES=1 forces Secure regardless of inbound scheme,
+  // for operators behind always-on TLS who don't want to rely on
+  // X-Forwarded-Proto being correct on every proxy hop.
+  const isSecure =
+    process.env.NORA_FORCE_SECURE_COOKIES === "1" ||
+    Boolean(req?.secure) ||
+    req?.headers?.["x-forwarded-proto"] === "https";
   res.clearCookie(AUTH_COOKIE_NAME, {
     httpOnly: true,
     secure: isSecure,
