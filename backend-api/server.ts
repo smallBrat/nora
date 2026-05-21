@@ -67,14 +67,13 @@ if (!process.env.JWT_SECRET) {
     );
     process.env.JWT_SECRET = crypto.randomBytes(32).toString("hex");
   }
-} else if (
-  !IS_TEST_ENV &&
-  process.env.JWT_SECRET.length < MIN_JWT_SECRET_LENGTH
-) {
+} else if (!IS_TEST_ENV && process.env.JWT_SECRET.length < MIN_JWT_SECRET_LENGTH) {
   // A short JWT_SECRET is brute-forceable offline given any signed token. Fail
-  // closed rather than silently accept a weak production secret.
+  // closed rather than silently accept a weak production secret. We
+  // deliberately do NOT log the observed length — even a length is a useful
+  // bit for an attacker reading process logs, and CodeQL flags the dataflow.
   console.error(
-    `FATAL: JWT_SECRET must be at least ${MIN_JWT_SECRET_LENGTH} characters (got ${process.env.JWT_SECRET.length}).`,
+    `FATAL: JWT_SECRET is shorter than the minimum of ${MIN_JWT_SECRET_LENGTH} characters. Generate a stronger one (e.g. node -e "console.log(require('crypto').randomBytes(32).toString('hex'))") and restart.`,
   );
   process.exit(1);
 }

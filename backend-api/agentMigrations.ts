@@ -387,11 +387,7 @@ async function readTarBufferFiles(buffer, { stripBaseName = "" } = {}) {
                 .split(/[\\/]/)
                 .some((segment) => segment === "..");
             if (isUnsafe) {
-              reject(
-                new Error(
-                  `Refusing tar entry with unsafe path: ${header.name}`,
-                ),
-              );
+              reject(new Error(`Refusing tar entry with unsafe path: ${header.name}`));
               return;
             }
             files.push({

@@ -8,17 +8,17 @@ function buildReadinessWarningDetail(readiness) {
 
   if (readiness?.runtime && !readiness.runtime.ok) {
     problems.push(
-      `runtime unavailable at ${readiness.runtime.url} (${readiness.runtime.error || readiness.runtime.status || 'unreachable'})`
+      `runtime unavailable at ${readiness.runtime.url} (${readiness.runtime.error || readiness.runtime.status || "unreachable"})`,
     );
   }
 
   if (readiness?.gateway && !readiness.gateway.ok) {
     problems.push(
-      `gateway unavailable at ${readiness.gateway.url} (${readiness.gateway.error || readiness.gateway.status || 'unreachable'})`
+      `gateway unavailable at ${readiness.gateway.url} (${readiness.gateway.error || readiness.gateway.status || "unreachable"})`,
     );
   }
 
-  return problems.join('; ') || 'readiness checks failed';
+  return problems.join("; ") || "readiness checks failed";
 }
 
 function buildReadinessWarningMetadata({ agentId, host, readiness }) {
@@ -33,10 +33,10 @@ function buildReadinessWarningMetadata({ agentId, host, readiness }) {
 function buildReadinessWarningState({ agentId, name, host, readiness }) {
   const metadata = buildReadinessWarningMetadata({ agentId, host, readiness });
   return {
-    agentStatus: 'warning',
-    deploymentStatus: 'warning',
+    agentStatus: "warning",
+    deploymentStatus: "warning",
     event: {
-      type: 'agent_runtime_warning',
+      type: "agent_runtime_warning",
       message: `Agent "${name}" deployed with readiness warning: ${metadata.detail}`,
       metadata,
     },
@@ -58,12 +58,19 @@ async function persistReadinessWarning(db, { agentId, name, host, readiness }) {
     warningState.deploymentStatus,
     agentId,
   ]);
-  await db.query(
-    "INSERT INTO events(type, message, metadata) VALUES($1, $2, $3)",
-    [warningState.event.type, warningState.event.message, JSON.stringify(warningState.event.metadata)]
-  );
+  await db.query("INSERT INTO events(type, message, metadata) VALUES($1, $2, $3)", [
+    warningState.event.type,
+    warningState.event.message,
+    JSON.stringify(warningState.event.metadata),
+  ]);
 
   return warningState;
 }
 
-module.exports = { shouldPersistReadinessWarning, buildReadinessWarningDetail, buildReadinessWarningMetadata, buildReadinessWarningState, persistReadinessWarning };
+module.exports = {
+  shouldPersistReadinessWarning,
+  buildReadinessWarningDetail,
+  buildReadinessWarningMetadata,
+  buildReadinessWarningState,
+  persistReadinessWarning,
+};
