@@ -5,6 +5,7 @@ const { EventEmitter } = require("events");
 
 const mockDb = { query: jest.fn() };
 const mockRecordMetric = jest.fn().mockResolvedValue();
+const mockRecordTokenUsage = jest.fn().mockResolvedValue();
 const mockGetIntegrationsForSync = jest.fn();
 const mockBuildIntegrationToolCatalogEntries = jest.fn();
 
@@ -105,6 +106,42 @@ class mockFakeWebSocket extends EventEmitter {
     }
 
     if (msg.method === "chat.send") {
+      if (mockFakeWebSocket.streamMode) {
+        return setImmediate(() => {
+          this.emit(
+            "message",
+            Buffer.from(
+              JSON.stringify({
+                id: msg.id,
+                ok: true,
+                result: { runId: "run-1", status: "started" },
+              }),
+            ),
+          );
+          setImmediate(() => {
+            this.emit(
+              "message",
+              Buffer.from(
+                JSON.stringify({
+                  type: "event",
+                  event: "chat",
+                  payload: {
+                    state: "final",
+                    model: "openai/gpt-5.4",
+                    provider: "openai",
+                    message: { role: "assistant" },
+                    usage: {
+                      input_tokens: 1000,
+                      output_tokens: 500,
+                      total_tokens: 1500,
+                    },
+                  },
+                }),
+              ),
+            );
+          });
+        });
+      }
       return setImmediate(() => {
         this.emit(
           "message",
@@ -152,6 +189,7 @@ mockFakeWebSocket.healthMode = "success";
 mockFakeWebSocket.statusMode = "success";
 mockFakeWebSocket.toolsCatalogResult = { tools: [] };
 mockFakeWebSocket.connectParams = [];
+mockFakeWebSocket.streamMode = false;
 
 class mockFakeWebSocketServer {
   on() {}
@@ -161,7 +199,10 @@ class mockFakeWebSocketServer {
 }
 
 jest.mock("../db", () => mockDb);
-jest.mock("../metrics", () => ({ recordMetric: mockRecordMetric }));
+jest.mock("../metrics", () => ({
+  recordMetric: mockRecordMetric,
+  recordTokenUsage: mockRecordTokenUsage,
+}));
 jest.mock("../integrations", () => ({
   getIntegrationsForSync: mockGetIntegrationsForSync,
   buildIntegrationToolCatalogEntries: mockBuildIntegrationToolCatalogEntries,
@@ -181,11 +222,13 @@ describe("gateway proxy control-plane routes", () => {
     jest.resetModules();
     mockDb.query.mockReset();
     mockRecordMetric.mockClear();
+    mockRecordTokenUsage.mockClear();
     global.fetch = jest.fn();
     mockFakeWebSocket.healthMode = "success";
     mockFakeWebSocket.statusMode = "success";
     mockFakeWebSocket.toolsCatalogResult = { tools: [] };
     mockFakeWebSocket.connectParams = [];
+    mockFakeWebSocket.streamMode = false;
     mockGetIntegrationsForSync.mockReset();
     mockBuildIntegrationToolCatalogEntries.mockReset();
 
@@ -232,7 +275,59 @@ describe("gateway proxy control-plane routes", () => {
       }),
     );
     expect(mockRecordMetric).toHaveBeenCalledWith("agent-1", "user-1", "messages_sent", 1);
-    expect(mockRecordMetric).toHaveBeenCalledWith("agent-1", "user-1", "tokens_used", 42);
+    expect(mockRecordTokenUsage).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "agent-1" }),
+      "user-1",
+      expect.objectContaining({ usage: { total_tokens: 42 } }),
+      expect.objectContaining({ source: "openclaw.gateway", sessionId: "main" }),
+    );
+  });
+
+  it("records model token metadata from streaming chat final events", async () => {
+    mockFakeWebSocket.streamMode = true;
+    mockDb.query.mockResolvedValueOnce({
+      rows: [
+        {
+          id: "agent-1",
+          user_id: "user-1",
+          status: "running",
+          host: "10.0.0.10",
+          gateway_token: "gateway-token",
+          gateway_host_port: null,
+        },
+      ],
+    });
+
+    const res = await request(app)
+      .post("/agents/agent-1/gateway/chat")
+      .buffer(true)
+      .parse((stream, callback) => {
+        let body = "";
+        stream.setEncoding("utf8");
+        stream.on("data", (chunk) => {
+          body += chunk;
+        });
+        stream.on("end", () => callback(null, body));
+      })
+      .send({ message: "ping", stream: true });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toContain("[DONE]");
+    expect(mockRecordMetric).toHaveBeenCalledWith("agent-1", "user-1", "messages_sent", 1);
+    expect(mockRecordTokenUsage).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "agent-1" }),
+      "user-1",
+      expect.objectContaining({
+        model: "openai/gpt-5.4",
+        provider: "openai",
+        usage: {
+          input_tokens: 1000,
+          output_tokens: 500,
+          total_tokens: 1500,
+        },
+      }),
+      expect.objectContaining({ source: "openclaw.gateway", sessionId: "main" }),
+    );
   });
 
   it("returns 502 when gateway health and status both fail", async () => {

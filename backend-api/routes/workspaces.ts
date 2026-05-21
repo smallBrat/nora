@@ -8,6 +8,7 @@ const apiKeysRouter = require("./apiKeys");
 const alertRulesRouter = require("./alertRules");
 const workspaceCostRouter = require("./workspaceCost");
 const mailer = require("../mailer");
+const metrics = require("../metrics");
 const {
   buildAuditMetadata,
   buildWorkspaceContext,
@@ -33,6 +34,15 @@ router.use(scopeByMethod("workspaces:read", null));
 // the explicit guard is safer than relying on null-write inheritance.
 router.use("/:id/api-keys", requireSession, apiKeysRouter);
 router.use("/:id/alert-rules", alertRulesRouter);
+
+router.get("/cost", async (req, res) => {
+  try {
+    res.json(await metrics.getAccessibleWorkspaceCosts(req.user.id, metrics.parseCostQuery(req.query)));
+  } catch (e) {
+    res.status(e.statusCode || 500).json({ error: e.message });
+  }
+});
+
 router.use("/:id", workspaceCostRouter);
 
 function logWorkspaceEvent(req, eventType, message, context) {
@@ -106,13 +116,44 @@ router.get("/:id/agents", requireWorkspaceRole("viewer"), async (req, res) => {
   }
 });
 
+router.get("/:id/agent-candidates", requireWorkspaceRole("editor"), async (req, res) => {
+  try {
+    res.json(await workspaces.listAgentCandidates(req.params.id, req.user.id));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 router.post("/:id/agents", requireWorkspaceRole("editor"), async (req, res) => {
   try {
     const { agentId, role } = req.body;
     if (!agentId) return res.status(400).json({ error: "agentId required" });
     const agent = await findOwnedAgent(agentId, req.user.id);
     if (!agent) return res.status(404).json({ error: "Agent not found" });
-    res.json(await workspaces.addAgent(req.params.id, agentId, role, req.user.id));
+    const assignment = await workspaces.addAgent(req.params.id, agentId, role, req.user.id);
+    await logWorkspaceEvent(
+      req,
+      "workspace_agent_assigned",
+      `Agent ${agent.name || agent.id} assigned to workspace ${req.params.id}`,
+      { id: req.params.id, agentId: agent.id, agentName: agent.name },
+    );
+    res.json(assignment);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.delete("/:id/agents/:agentId", requireWorkspaceRole("admin"), async (req, res) => {
+  try {
+    const removed = await workspaces.removeAgent(req.params.id, req.params.agentId);
+    if (!removed) return res.status(404).json({ error: "Workspace agent assignment not found" });
+    await logWorkspaceEvent(
+      req,
+      "workspace_agent_removed",
+      `Agent ${req.params.agentId} removed from workspace ${req.params.id}`,
+      { id: req.params.id, agentId: req.params.agentId },
+    );
+    res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

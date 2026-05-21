@@ -22,6 +22,7 @@ const {
   collectBackgroundTelemetry,
   reconcileBackgroundAgentStatuses,
 } = require("./backgroundTasks");
+const { listKubernetesExecutionTargets } = require("./kubernetesClusters");
 const { STARTER_TEMPLATES } = require("./starterTemplates");
 const { getBootstrapAdminSeedConfig } = require("./bootstrapAdmin");
 const { ensureFirstRegisteredUserIsAdmin } = require("./ensureAdminUser");
@@ -585,15 +586,41 @@ app.get("/health", (req, res) => {
   res.json({ status: "ok" });
 });
 
+function enabledDeployTargetsFromExecutionTargets(executionTargets = []) {
+  const enabled = new Set(getEnabledDeployTargets().filter((target) => target !== "k8s"));
+  for (const target of executionTargets) {
+    if (target?.enabled) {
+      enabled.add(target.deployTarget || String(target.id || "").split(":")[0]);
+    }
+  }
+  return Array.from(enabled).filter(Boolean);
+}
+
+function defaultExecutionTargetFromCatalog(executionTargets = []) {
+  return (
+    executionTargets.find(
+      (target) =>
+        target.isDefault && target.available && String(target.id || "").startsWith("k8s:"),
+    )?.id ||
+    executionTargets.find((target) => target.isDefault && target.available)?.id ||
+    executionTargets.find((target) => target.available)?.id ||
+    executionTargets[0]?.id ||
+    getDefaultDeployTarget()
+  );
+}
+
 app.get("/config/platform", async (_req, res) => {
   try {
+    const kubernetesClusters = await listKubernetesExecutionTargets();
     const defaultRuntimeFamily = getDefaultRuntimeFamily();
-    const runtimeFamilies = getRuntimeCatalog();
+    const runtimeFamilies = getRuntimeCatalog(process.env, { kubernetesClusters });
     const executionTargets = getExecutionTargetCatalog(process.env, {
       runtimeFamily: defaultRuntimeFamily,
+      kubernetesClusters,
     });
     const sandboxProfiles = getSandboxProfileCatalog(process.env, {
       runtimeFamily: defaultRuntimeFamily,
+      kubernetesClusters,
     });
     const [deploymentDefaults, systemBanner, language, release] = await Promise.all([
       getDeploymentDefaults(),
@@ -607,8 +634,9 @@ app.get("/config/platform", async (_req, res) => {
       billingEnabled: billing.BILLING_ENABLED,
       enabledBackends: getEnabledBackends(),
       defaultBackend: getDefaultBackend(),
-      enabledDeployTargets: getEnabledDeployTargets(),
+      enabledDeployTargets: enabledDeployTargetsFromExecutionTargets(executionTargets),
       defaultDeployTarget: getDefaultDeployTarget(),
+      defaultExecutionTarget: defaultExecutionTargetFromCatalog(executionTargets),
       enabledSandboxProfiles: getEnabledSandboxProfiles(),
       defaultSandboxProfile: getDefaultSandboxProfile(),
       runtimeFamilies,
@@ -625,14 +653,17 @@ app.get("/config/platform", async (_req, res) => {
   }
 });
 
-app.get("/config/backends", (_req, res) => {
+app.get("/config/backends", async (_req, res) => {
+  const kubernetesClusters = await listKubernetesExecutionTargets();
   const defaultRuntimeFamily = getDefaultRuntimeFamily();
-  const runtimeFamilies = getRuntimeCatalog();
+  const runtimeFamilies = getRuntimeCatalog(process.env, { kubernetesClusters });
   const executionTargets = getExecutionTargetCatalog(process.env, {
     runtimeFamily: defaultRuntimeFamily,
+    kubernetesClusters,
   });
   const sandboxProfiles = getSandboxProfileCatalog(process.env, {
     runtimeFamily: defaultRuntimeFamily,
+    kubernetesClusters,
   });
   const activeRuntimeFamily =
     runtimeFamilies.find((runtimeFamily) => runtimeFamily.id === defaultRuntimeFamily) ||
@@ -642,16 +673,17 @@ app.get("/config/backends", (_req, res) => {
     runtimeFamily: activeRuntimeFamily,
     runtimeFamilies,
     defaultRuntimeFamily,
-    enabledDeployTargets: getEnabledDeployTargets(),
+    enabledDeployTargets: enabledDeployTargetsFromExecutionTargets(executionTargets),
     defaultDeployTarget: getDefaultDeployTarget(),
+    defaultExecutionTarget: defaultExecutionTargetFromCatalog(executionTargets),
     enabledSandboxProfiles: getEnabledSandboxProfiles(),
     defaultSandboxProfile: getDefaultSandboxProfile(),
     executionTargets,
     sandboxProfiles,
     enabledBackends: getEnabledBackends(),
     defaultBackend: getDefaultBackend(),
-    backends: getBackendCatalog(),
-    legacyBackends: getBackendCatalog(),
+    backends: getBackendCatalog(process.env, { kubernetesClusters }),
+    legacyBackends: getBackendCatalog(process.env, { kubernetesClusters }),
   });
 });
 
@@ -1098,6 +1130,10 @@ async function migrateDB() {
        ALTER TABLE agents ADD COLUMN sandbox_profile VARCHAR(20);
      EXCEPTION WHEN duplicate_column THEN NULL;
      END $$`,
+    `DO $$ BEGIN
+       ALTER TABLE agents ADD COLUMN execution_target_id TEXT;
+     EXCEPTION WHEN duplicate_column THEN NULL;
+     END $$`,
     `UPDATE agents
         SET runtime_family = CASE
           WHEN backend_type = 'hermes' THEN 'hermes'
@@ -1123,8 +1159,16 @@ async function migrateDB() {
     `UPDATE agents
         SET deploy_target = 'k8s'
       WHERE deploy_target IN ('kubernetes', 'k3s')`,
+    `UPDATE agents
+        SET execution_target_id = CASE
+          WHEN deploy_target = 'k8s' THEN 'k8s'
+          WHEN deploy_target IN ('docker', 'proxmox') THEN deploy_target
+          ELSE COALESCE(NULLIF(deploy_target, ''), 'docker')
+        END
+      WHERE execution_target_id IS NULL OR BTRIM(execution_target_id) = ''`,
     `ALTER TABLE agents ALTER COLUMN runtime_family SET DEFAULT 'openclaw'`,
     `ALTER TABLE agents ALTER COLUMN deploy_target SET DEFAULT 'docker'`,
+    `ALTER TABLE agents ALTER COLUMN execution_target_id SET DEFAULT 'docker'`,
     `ALTER TABLE agents ALTER COLUMN sandbox_profile SET DEFAULT 'standard'`,
     `UPDATE agents
         SET backend_type = CASE
@@ -1153,7 +1197,39 @@ async function migrateDB() {
         END`,
     `ALTER TABLE agents ALTER COLUMN runtime_family SET NOT NULL`,
     `ALTER TABLE agents ALTER COLUMN deploy_target SET NOT NULL`,
+    `ALTER TABLE agents ALTER COLUMN execution_target_id SET NOT NULL`,
     `ALTER TABLE agents ALTER COLUMN sandbox_profile SET NOT NULL`,
+    `CREATE TABLE IF NOT EXISTS kubernetes_clusters (
+       id TEXT PRIMARY KEY,
+       label TEXT NOT NULL,
+       provider TEXT NOT NULL DEFAULT 'kubernetes',
+       cluster_name TEXT NOT NULL DEFAULT '',
+       enabled BOOLEAN NOT NULL DEFAULT true,
+       is_default BOOLEAN NOT NULL DEFAULT false,
+       credential_mode TEXT NOT NULL DEFAULT 'mounted_path',
+       kubeconfig_path TEXT NOT NULL DEFAULT '',
+       kubeconfig_encrypted TEXT,
+       kube_context TEXT NOT NULL DEFAULT '',
+       namespace TEXT NOT NULL DEFAULT 'openclaw-agents',
+       openclaw_namespace TEXT NOT NULL DEFAULT '',
+       hermes_namespace TEXT NOT NULL DEFAULT '',
+       exposure_mode TEXT NOT NULL DEFAULT 'cluster-ip',
+       runtime_host TEXT NOT NULL DEFAULT '',
+       runtime_node_port INTEGER,
+       gateway_node_port INTEGER,
+       service_annotations JSONB NOT NULL DEFAULT '{}'::jsonb,
+       load_balancer_source_ranges TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+       load_balancer_class TEXT NOT NULL DEFAULT '',
+       load_balancer_ready_timeout_ms INTEGER NOT NULL DEFAULT 600000,
+       load_balancer_ready_interval_ms INTEGER NOT NULL DEFAULT 5000,
+       last_test_status TEXT,
+       last_test_message TEXT,
+       last_tested_at TIMESTAMPTZ,
+       created_at TIMESTAMPTZ DEFAULT NOW(),
+       updated_at TIMESTAMPTZ DEFAULT NOW()
+     )`,
+    `CREATE INDEX IF NOT EXISTS idx_kubernetes_clusters_enabled
+       ON kubernetes_clusters(enabled, is_default, label)`,
     `DO $$ BEGIN ALTER TABLE agents ADD COLUMN vcpu INTEGER DEFAULT 1; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
     `DO $$ BEGIN ALTER TABLE agents ADD COLUMN ram_mb INTEGER DEFAULT 1024; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
     `DO $$ BEGIN ALTER TABLE agents ADD COLUMN disk_gb INTEGER DEFAULT 10; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
@@ -1257,6 +1333,8 @@ async function migrateDB() {
     `CREATE INDEX IF NOT EXISTS idx_usage_metrics_agent ON usage_metrics(agent_id, recorded_at)`,
     `CREATE INDEX IF NOT EXISTS idx_usage_metrics_user ON usage_metrics(user_id, recorded_at)`,
     `CREATE INDEX IF NOT EXISTS idx_usage_metrics_type ON usage_metrics(metric_type, recorded_at)`,
+    `CREATE INDEX IF NOT EXISTS idx_usage_metrics_token_model ON usage_metrics(metric_type, (metadata->>'model'), recorded_at)`,
+    `CREATE INDEX IF NOT EXISTS idx_usage_metrics_token_source ON usage_metrics(metric_type, (metadata->>'source'), recorded_at)`,
     `DO $$ BEGIN ALTER TABLE users ADD COLUMN avatar TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
     `DO $$ BEGIN ALTER TABLE users ADD COLUMN preferred_locale TEXT; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
     `DO $$ BEGIN ALTER TABLE users ADD COLUMN agent_limit_override INTEGER; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
@@ -1485,6 +1563,28 @@ async function migrateDB() {
     `CREATE INDEX IF NOT EXISTS idx_snapshots_template_key ON snapshots(template_key)`,
     `CREATE INDEX IF NOT EXISTS idx_agent_hub_listings_snapshot_id ON agent_hub_listings(snapshot_id)`,
     // ─── Phase 0: multi-tenant workspace foundation ─────────────────────
+    `CREATE TABLE IF NOT EXISTS workspaces (
+       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+       user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+       name TEXT NOT NULL,
+       created_at TIMESTAMP DEFAULT NOW()
+     )`,
+    `CREATE TABLE IF NOT EXISTS workspace_agents (
+       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+       workspace_id UUID REFERENCES workspaces(id) ON DELETE CASCADE,
+       agent_id UUID REFERENCES agents(id) ON DELETE CASCADE,
+       role TEXT DEFAULT 'member',
+       created_at TIMESTAMP DEFAULT NOW()
+     )`,
+    `DELETE FROM workspace_agents a
+       USING workspace_agents b
+      WHERE a.ctid < b.ctid
+        AND a.workspace_id = b.workspace_id
+        AND a.agent_id = b.agent_id`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_workspace_agents_unique
+       ON workspace_agents(workspace_id, agent_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_workspace_agents_agent
+       ON workspace_agents(agent_id)`,
     `CREATE TABLE IF NOT EXISTS workspace_members (
        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
        workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,

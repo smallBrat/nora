@@ -15,6 +15,7 @@ const mockListNamespacedPod = jest.fn();
 const mockCreateNamespacedDeployment = jest.fn();
 const mockReadNamespacedDeployment = jest.fn();
 const mockReplaceNamespacedDeployment = jest.fn();
+const mockPatchNamespacedDeployment = jest.fn();
 const mockDeleteNamespacedDeployment = jest.fn();
 const mockCreateNamespacedService = jest.fn();
 const mockReadNamespacedService = jest.fn();
@@ -24,6 +25,26 @@ const mockReadNamespacedConfigMap = jest.fn();
 const mockReplaceNamespacedConfigMap = jest.fn();
 const mockDeleteNamespacedConfigMap = jest.fn();
 const mockGetNamespacedCustomObject = jest.fn();
+
+function k8sProfile(overrides = {}) {
+  const namespace = overrides.namespace || "openclaw-agents";
+  return {
+    id: "test-cluster",
+    executionTargetId: "k8s:test-cluster",
+    label: "Test Kubernetes",
+    kubeconfigPath: "/kubeconfigs/test-cluster",
+    namespace,
+    openclawNamespace: overrides.openclawNamespace || namespace,
+    hermesNamespace: overrides.hermesNamespace || namespace,
+    exposureMode: "cluster-ip",
+    serviceAnnotations: {},
+    loadBalancerSourceRanges: [],
+    loadBalancerClass: "",
+    loadBalancerReadyTimeoutMs: 600000,
+    loadBalancerReadyIntervalMs: 5000,
+    ...overrides,
+  };
+}
 
 jest.mock(
   "@kubernetes/client-node",
@@ -51,6 +72,7 @@ jest.mock(
             createNamespacedDeployment: mockCreateNamespacedDeployment,
             readNamespacedDeployment: mockReadNamespacedDeployment,
             replaceNamespacedDeployment: mockReplaceNamespacedDeployment,
+            patchNamespacedDeployment: mockPatchNamespacedDeployment,
             deleteNamespacedDeployment: mockDeleteNamespacedDeployment,
           };
         }
@@ -82,6 +104,7 @@ describe("provisioning runtime/gateway contracts", () => {
       body: { metadata: { resourceVersion: "deployment-rv" } },
     });
     mockReplaceNamespacedDeployment.mockReset().mockResolvedValue({});
+    mockPatchNamespacedDeployment.mockReset().mockResolvedValue({});
     mockDeleteNamespacedDeployment.mockReset().mockResolvedValue({});
     mockCreateNamespacedService.mockReset().mockResolvedValue({});
     mockReadNamespacedService.mockReset().mockResolvedValue({});
@@ -94,17 +117,6 @@ describe("provisioning runtime/gateway contracts", () => {
     mockDeleteNamespacedConfigMap.mockReset().mockResolvedValue({});
     mockGetNamespacedCustomObject.mockReset().mockResolvedValue({});
     delete process.env.GATEWAY_HOST;
-    delete process.env.KUBECONFIG;
-    delete process.env.K8S_NAMESPACE;
-    delete process.env.K8S_EXPOSURE_MODE;
-    delete process.env.K8S_RUNTIME_NODE_PORT;
-    delete process.env.K8S_GATEWAY_NODE_PORT;
-    delete process.env.K8S_RUNTIME_HOST;
-    delete process.env.K8S_SERVICE_ANNOTATIONS_JSON;
-    delete process.env.K8S_LOAD_BALANCER_SOURCE_RANGES;
-    delete process.env.K8S_LOAD_BALANCER_CLASS;
-    delete process.env.K8S_LOAD_BALANCER_READY_TIMEOUT_MS;
-    delete process.env.K8S_LOAD_BALANCER_READY_INTERVAL_MS;
     delete process.env.NVIDIA_API_KEY;
   });
 
@@ -243,7 +255,7 @@ describe("provisioning runtime/gateway contracts", () => {
 
   it("publishes both runtime and gateway ports for kubernetes agents", async () => {
     const K8sBackend = require("../../workers/provisioner/backends/k8s");
-    const backend = new K8sBackend();
+    const backend = new K8sBackend(k8sProfile());
 
     const result = await backend.create({
       id: "123",
@@ -311,10 +323,6 @@ describe("provisioning runtime/gateway contracts", () => {
   });
 
   it("returns node-port endpoints for docker-hosted kind verification", async () => {
-    process.env.K8S_EXPOSURE_MODE = "node-port";
-    process.env.K8S_RUNTIME_NODE_PORT = "30909";
-    process.env.K8S_GATEWAY_NODE_PORT = "31879";
-    process.env.K8S_RUNTIME_HOST = "nora-kind-control-plane";
     mockCreateNamespacedService.mockResolvedValueOnce({
       body: {
         spec: {
@@ -327,7 +335,14 @@ describe("provisioning runtime/gateway contracts", () => {
     });
 
     const K8sBackend = require("../../workers/provisioner/backends/k8s");
-    const backend = new K8sBackend();
+    const backend = new K8sBackend(
+      k8sProfile({
+        exposureMode: "node-port",
+        runtimeNodePort: 30909,
+        gatewayNodePort: 31879,
+        runtimeHost: "nora-kind-control-plane",
+      }),
+    );
 
     const result = await backend.create({
       id: "321",
@@ -358,10 +373,6 @@ describe("provisioning runtime/gateway contracts", () => {
   });
 
   it("falls back to dynamic node ports when fixed node ports are already allocated", async () => {
-    process.env.K8S_EXPOSURE_MODE = "node-port";
-    process.env.K8S_RUNTIME_NODE_PORT = "30909";
-    process.env.K8S_GATEWAY_NODE_PORT = "31879";
-    process.env.K8S_RUNTIME_HOST = "nora-kind-control-plane";
     mockCreateNamespacedService
       .mockRejectedValueOnce({
         statusCode: 422,
@@ -383,7 +394,14 @@ describe("provisioning runtime/gateway contracts", () => {
       });
 
     const K8sBackend = require("../../workers/provisioner/backends/k8s");
-    const backend = new K8sBackend();
+    const backend = new K8sBackend(
+      k8sProfile({
+        exposureMode: "node-port",
+        runtimeNodePort: 30909,
+        gatewayNodePort: 31879,
+        runtimeHost: "nora-kind-control-plane",
+      }),
+    );
 
     const result = await backend.create({
       id: "654",
@@ -431,13 +449,6 @@ describe("provisioning runtime/gateway contracts", () => {
   });
 
   it("returns load-balancer endpoints for cloud kubernetes services", async () => {
-    process.env.K8S_EXPOSURE_MODE = "load-balancer";
-    process.env.K8S_SERVICE_ANNOTATIONS_JSON =
-      '{"service.beta.kubernetes.io/aws-load-balancer-scheme":"internal"}';
-    process.env.K8S_LOAD_BALANCER_SOURCE_RANGES = "203.0.113.10/32, 198.51.100.0/24";
-    process.env.K8S_LOAD_BALANCER_CLASS = "eks.amazonaws.com/nlb";
-    process.env.K8S_LOAD_BALANCER_READY_TIMEOUT_MS = "50";
-    process.env.K8S_LOAD_BALANCER_READY_INTERVAL_MS = "1";
     mockCreateNamespacedService.mockResolvedValueOnce({
       body: {
         spec: {
@@ -459,7 +470,18 @@ describe("provisioning runtime/gateway contracts", () => {
     });
 
     const K8sBackend = require("../../workers/provisioner/backends/k8s");
-    const backend = new K8sBackend();
+    const backend = new K8sBackend(
+      k8sProfile({
+        exposureMode: "load-balancer",
+        serviceAnnotations: {
+          "service.beta.kubernetes.io/aws-load-balancer-scheme": "internal",
+        },
+        loadBalancerSourceRanges: ["203.0.113.10/32", "198.51.100.0/24"],
+        loadBalancerClass: "eks.amazonaws.com/nlb",
+        loadBalancerReadyTimeoutMs: 50,
+        loadBalancerReadyIntervalMs: 1,
+      }),
+    );
 
     const result = await backend.create({
       id: "789",
@@ -498,9 +520,6 @@ describe("provisioning runtime/gateway contracts", () => {
   });
 
   it("deploys NemoClaw through the kubernetes adapter when selected as a sandbox", async () => {
-    process.env.K8S_EXPOSURE_MODE = "load-balancer";
-    process.env.K8S_LOAD_BALANCER_READY_TIMEOUT_MS = "50";
-    process.env.K8S_LOAD_BALANCER_READY_INTERVAL_MS = "1";
     process.env.NVIDIA_API_KEY = "test-nvidia-key";
     mockCreateNamespacedService.mockResolvedValueOnce({
       body: {
@@ -513,7 +532,13 @@ describe("provisioning runtime/gateway contracts", () => {
     });
 
     const K8sBackend = require("../../workers/provisioner/backends/k8s");
-    const backend = new K8sBackend();
+    const backend = new K8sBackend(
+      k8sProfile({
+        exposureMode: "load-balancer",
+        loadBalancerReadyTimeoutMs: 50,
+        loadBalancerReadyIntervalMs: 1,
+      }),
+    );
 
     await backend.create({
       id: "nemo",
@@ -591,7 +616,7 @@ describe("provisioning runtime/gateway contracts", () => {
     });
 
     const K8sBackend = require("../../workers/provisioner/backends/k8s");
-    const backend = new K8sBackend();
+    const backend = new K8sBackend(k8sProfile());
     const telemetry = await backend.stats("oclaw-agent-123");
 
     expect(mockGetNamespacedCustomObject).toHaveBeenCalledWith({
@@ -649,7 +674,7 @@ describe("provisioning runtime/gateway contracts", () => {
     mockGetNamespacedCustomObject.mockRejectedValueOnce(new Error("metrics API unavailable"));
 
     const K8sBackend = require("../../workers/provisioner/backends/k8s");
-    const backend = new K8sBackend();
+    const backend = new K8sBackend(k8sProfile());
     const telemetry = await backend.stats("oclaw-agent-123");
 
     expect(telemetry).toEqual(
@@ -674,17 +699,14 @@ describe("provisioning runtime/gateway contracts", () => {
   });
 
   it("rejects invalid kubernetes service annotations json", () => {
-    process.env.K8S_SERVICE_ANNOTATIONS_JSON = "[]";
-
     const K8sBackend = require("../../workers/provisioner/backends/k8s");
 
-    expect(() => new K8sBackend()).toThrow("K8S_SERVICE_ANNOTATIONS_JSON must be a JSON object");
+    expect(() => new K8sBackend(k8sProfile({ serviceAnnotations: "[]" }))).toThrow(
+      "Kubernetes service annotations must be a JSON object",
+    );
   });
 
   it("times out when a cloud load balancer address is not assigned", async () => {
-    process.env.K8S_EXPOSURE_MODE = "load-balancer";
-    process.env.K8S_LOAD_BALANCER_READY_TIMEOUT_MS = "2";
-    process.env.K8S_LOAD_BALANCER_READY_INTERVAL_MS = "1";
     mockCreateNamespacedService.mockResolvedValueOnce({
       body: {
         status: {
@@ -705,7 +727,13 @@ describe("provisioning runtime/gateway contracts", () => {
     });
 
     const K8sBackend = require("../../workers/provisioner/backends/k8s");
-    const backend = new K8sBackend();
+    const backend = new K8sBackend(
+      k8sProfile({
+        exposureMode: "load-balancer",
+        loadBalancerReadyTimeoutMs: 2,
+        loadBalancerReadyIntervalMs: 1,
+      }),
+    );
 
     await expect(
       backend.create({
@@ -721,9 +749,6 @@ describe("provisioning runtime/gateway contracts", () => {
   });
 
   it("destroys previous Kubernetes resources in the namespace stored on the old host", async () => {
-    process.env.K8S_NAMESPACE = "nora-openclaw-agents";
-    process.env.K8S_OPENCLAW_NAMESPACE = "nora-openclaw-agents";
-    process.env.K8S_HERMES_NAMESPACE = "nora-hermes-agents";
     const notFound = Object.assign(new Error("not found"), { statusCode: 404 });
     const deleteIfLegacyNamespace = jest.fn(({ namespace }) =>
       namespace === "openclaw-agents" ? Promise.resolve({}) : Promise.reject(notFound),
@@ -737,7 +762,13 @@ describe("provisioning runtime/gateway contracts", () => {
     mockReadNamespacedConfigMap.mockRejectedValue(notFound);
 
     const K8sBackend = require("../../workers/provisioner/backends/k8s");
-    const backend = new K8sBackend();
+    const backend = new K8sBackend(
+      k8sProfile({
+        namespace: "nora-openclaw-agents",
+        openclawNamespace: "nora-openclaw-agents",
+        hermesNamespace: "nora-hermes-agents",
+      }),
+    );
     await backend.destroy("nora-oclaw-legacy-agent", {
       host: "nora-oclaw-legacy-agent.openclaw-agents.svc.cluster.local",
       runtimeFamily: "openclaw",
@@ -762,6 +793,94 @@ describe("provisioning runtime/gateway contracts", () => {
         name: "nora-oclaw-legacy-agent-bootstrap",
         namespace: "openclaw-agents",
         propagationPolicy: "Foreground",
+      }),
+    );
+  });
+
+  it("stops Kubernetes deployments in the namespace stored on the agent host", async () => {
+    const notFound = Object.assign(new Error("not found"), { statusCode: 404 });
+    mockPatchNamespacedDeployment.mockImplementation(({ namespace }) =>
+      namespace === "legacy-openclaw" ? Promise.resolve({}) : Promise.reject(notFound),
+    );
+    mockReadNamespacedDeployment.mockResolvedValue({
+      body: {
+        spec: { replicas: 0 },
+        status: { replicas: 0, readyReplicas: 0, availableReplicas: 0, updatedReplicas: 0 },
+      },
+    });
+
+    const K8sBackend = require("../../workers/provisioner/backends/k8s");
+    const backend = new K8sBackend(
+      k8sProfile({
+        namespace: "nora-openclaw-agents",
+        openclawNamespace: "nora-openclaw-agents",
+        hermesNamespace: "nora-hermes-agents",
+      }),
+    );
+
+    await backend.stop("nora-oclaw-legacy-agent", {
+      host: "nora-oclaw-legacy-agent.legacy-openclaw.svc.cluster.local",
+      runtimeFamily: "openclaw",
+    });
+
+    expect(mockPatchNamespacedDeployment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "nora-oclaw-legacy-agent",
+        namespace: "legacy-openclaw",
+        body: [{ op: "replace", path: "/spec/replicas", value: 0 }],
+      }),
+    );
+  });
+
+  it("reports Kubernetes pod replicas from the namespace stored on the agent host", async () => {
+    const notFound = Object.assign(new Error("not found"), { statusCode: 404 });
+    mockReadNamespacedDeployment.mockImplementation(({ namespace }) =>
+      namespace === "legacy-openclaw"
+        ? Promise.resolve({
+            body: {
+              spec: { replicas: 3 },
+              status: {
+                replicas: 3,
+                readyReplicas: 2,
+                availableReplicas: 2,
+                updatedReplicas: 3,
+              },
+            },
+          })
+        : Promise.reject(notFound),
+    );
+
+    const K8sBackend = require("../../workers/provisioner/backends/k8s");
+    const backend = new K8sBackend(
+      k8sProfile({
+        namespace: "nora-openclaw-agents",
+        openclawNamespace: "nora-openclaw-agents",
+        hermesNamespace: "nora-hermes-agents",
+      }),
+    );
+
+    const status = await backend.status("nora-oclaw-legacy-agent", {
+      host: "nora-oclaw-legacy-agent.legacy-openclaw.svc.cluster.local",
+      runtimeFamily: "openclaw",
+    });
+
+    expect(status).toEqual({
+      running: true,
+      uptime: null,
+      cpu: null,
+      memory: null,
+      replicas: {
+        specReplicas: 3,
+        replicas: 3,
+        readyReplicas: 2,
+        availableReplicas: 2,
+        updatedReplicas: 3,
+      },
+    });
+    expect(mockReadNamespacedDeployment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "nora-oclaw-legacy-agent",
+        namespace: "legacy-openclaw",
       }),
     );
   });

@@ -242,11 +242,13 @@ GET /agents/:id/metrics/summary
 
 ## Agent cost
 
-Return cost data for a specific agent. Costs are computed from token usage and any other billable resource consumption.
+Return estimated token-cost data for a specific agent. Token usage is grouped by model when runtime responses include model metadata; older rows without metadata appear as `Unknown model`.
 
 ```
-GET /agents/:id/cost
+GET /agents/:id/cost?period_days=30
 ```
+
+Use `period_start` and `period_end` instead of `period_days` for a custom UTC date window.
 
 ### Path parameters
 
@@ -256,20 +258,22 @@ GET /agents/:id/cost
 
 ### Response
 
-<ResponseField name="agent_id" type="string">Agent UUID.</ResponseField>
-<ResponseField name="total_cost_usd" type="number">Total estimated cost in USD.</ResponseField>
+<ResponseField name="token_cost" type="number">Estimated token cost in USD.</ResponseField>
+<ResponseField name="total_cost" type="number">Total estimated token cost in USD.</ResponseField>
+<ResponseField name="input_tokens" type="number">Input or prompt tokens recorded in the period.</ResponseField>
+<ResponseField name="output_tokens" type="number">Output or completion tokens recorded in the period.</ResponseField>
+<ResponseField name="total_tokens" type="number">Total tokens recorded in the period.</ResponseField>
 
-<ResponseField name="breakdown" type="object">
-  Cost breakdown by resource type.
+<ResponseField name="cost_details" type="object">
+  Token pricing details.
 
   <Expandable title="properties">
-    <ResponseField name="tokens_usd" type="number">Estimated cost from LLM token usage.</ResponseField>
-    <ResponseField name="compute_usd" type="number">Estimated cost from compute time.</ResponseField>
+    <ResponseField name="tokens" type="object">Fallback token rate and per-model token usage rows.</ResponseField>
   </Expandable>
 </ResponseField>
 
-<ResponseField name="period_start" type="string">Start of the billing period (ISO 8601).</ResponseField>
-<ResponseField name="period_end" type="string">End of the billing period (ISO 8601).</ResponseField>
+<ResponseField name="periodStart" type="string">Start of the reporting period (ISO 8601).</ResponseField>
+<ResponseField name="periodEnd" type="string">End of the reporting period (ISO 8601).</ResponseField>
 
 <CodeGroup>
   ```bash curl theme={null}
@@ -280,14 +284,29 @@ GET /agents/:id/cost
 
 ```json theme={null}
 {
-  "agent_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-  "total_cost_usd": 0.87,
-  "breakdown": {
-    "tokens_usd": 0.62,
-    "compute_usd": 0.25
+  "token_cost": 0.62,
+  "total_cost": 0.62,
+  "input_tokens": 120000,
+  "output_tokens": 42000,
+  "total_tokens": 162000,
+  "cost_details": {
+    "tokens": {
+      "fallback_per_1k": 0.002,
+      "models": [
+        {
+          "model": "openai/gpt-5.4",
+          "provider": "openai",
+          "input_tokens": 120000,
+          "output_tokens": 42000,
+          "total_tokens": 162000,
+          "rate_source": "model",
+          "token_cost": 0.62
+        }
+      ]
+    }
   },
-  "period_start": "2025-03-01T00:00:00.000Z",
-  "period_end": "2025-03-31T23:59:59.000Z"
+  "periodStart": "2025-03-01T00:00:00.000Z",
+  "periodEnd": "2025-03-31T23:59:59.000Z"
 }
 ```
 

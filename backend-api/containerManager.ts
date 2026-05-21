@@ -9,19 +9,20 @@
  * instantiate lightweight backend instances here purely for lifecycle
  * operations (not for create — that goes through BullMQ).
  *
- * Invariant: adapters are never called with a null/empty container_id. The
- * `ensureContainerId` guard throws NoContainerError (409) at this seam so we
- * never reach Docker/K8s with a missing id. Without this, dockerode stringifies
- * `null` into its URL and the daemon returns a confusing
- * `(HTTP code 404) No such container: null` which then bubbles to the UI.
+ * Invariant: Docker-style adapters are never called with a null/empty
+ * container_id. Kubernetes deployments can be addressed by their stable
+ * container_name when a control-plane row lost container_id, so those lifecycle
+ * operations use the same deployment-name fallback as destroy().
  */
 
 const path = require("path");
 const {
   resolveAgentBackendType,
+  resolveAgentExecutionTargetId,
   resolveAgentRuntimeFamily,
   resolveAgentSandboxProfile,
 } = require("./agentRuntimeFields");
+const { getKubernetesClusterProfile } = require("./kubernetesClusters");
 
 // Lazy-load backends so missing optional deps (e.g. @kubernetes/client-node)
 // don't crash the API server when only Docker is used.
@@ -48,6 +49,70 @@ function ensureContainerId(agent, operation) {
   return id;
 }
 
+function hasText(value) {
+  return typeof value === "string" ? value.trim().length > 0 : value != null;
+}
+
+function safeK8sName(name, fallback) {
+  return (
+    String(name || fallback || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 63) || fallback
+  );
+}
+
+function defaultK8sDeployName(agent = {}) {
+  const runtimeFamily = resolveAgentRuntimeFamily(agent);
+  const prefix = runtimeFamily === "hermes" ? "nora-hermes" : "nora-oclaw";
+  return safeK8sName(
+    `${prefix}-${agent.name || "agent"}-${agent.id || ""}`,
+    `${prefix}-${agent.id || "agent"}`,
+  );
+}
+
+function isKubernetesAgent(agent = {}) {
+  return resolveAgentBackendType(agent) === "k8s";
+}
+
+function resolveKubernetesRuntimeId(agent, operation) {
+  if (!isKubernetesAgent(agent)) {
+    return ensureContainerId(agent, operation);
+  }
+
+  if (hasText(agent?.container_id)) return String(agent.container_id);
+  if (hasText(agent?.container_name)) return String(agent.container_name).trim();
+  return defaultK8sDeployName(agent);
+}
+
+function lifecycleOptions(agent = {}) {
+  return {
+    agentId: agent.id,
+    host: agent.host || null,
+    runtimeFamily: resolveAgentRuntimeFamily(agent),
+  };
+}
+
+function canMutate(agent = {}) {
+  if (hasText(agent.container_id)) return true;
+  if (!isKubernetesAgent(agent)) return false;
+  return hasText(agent.container_name) || hasText(agent.name) || hasText(agent.id);
+}
+
+function resolveDestroyContainerId(agent) {
+  if (!isKubernetesAgent(agent)) {
+    return ensureContainerId(agent, "destroy");
+  }
+
+  return resolveKubernetesRuntimeId(agent, "destroy");
+}
+
+function canDestroy(agent = {}) {
+  return canMutate(agent);
+}
+
 /**
  * Resolve the path to a backend module.
  * In Docker: backends are mounted at /app/backends/ via docker-compose.
@@ -64,8 +129,12 @@ function resolveBackendPath(name) {
   }
 }
 
-function getBackendInstance(type) {
-  if (backendCache[type]) return backendCache[type];
+async function getBackendInstance(type, agent = {}) {
+  const cacheKey =
+    type === "k8s" || type === "k3s" || type === "kubernetes"
+      ? resolveAgentExecutionTargetId(agent)
+      : type;
+  if (backendCache[cacheKey]) return backendCache[cacheKey];
 
   switch (type) {
     case "docker": {
@@ -88,18 +157,23 @@ function getBackendInstance(type) {
       backendCache[type] = new ProxmoxBackend();
       break;
     }
-    case "k8s":
-    case "k3s":
-    case "kubernetes": {
+    case "k8s": {
       const K8sBackend = require(resolveBackendPath("k8s"));
-      backendCache[type] = new K8sBackend();
+      const executionTargetId = resolveAgentExecutionTargetId(agent);
+      const profile = await getKubernetesClusterProfile(executionTargetId);
+      if (!profile) {
+        throw new Error(
+          "Kubernetes lifecycle operations require an Admin-registered cluster execution target.",
+        );
+      }
+      backendCache[cacheKey] = new K8sBackend(profile);
       break;
     }
     default:
       throw new Error(`Unknown backend type: ${type}`);
   }
 
-  return backendCache[type];
+  return backendCache[cacheKey];
 }
 
 /**
@@ -107,17 +181,17 @@ function getBackendInstance(type) {
  * @param {{ backend_type?: string, deploy_target?: string, sandbox_profile?: string }} agent
  * @returns {import('../workers/provisioner/backends/interface')}
  */
-function backendFor(agent) {
+async function backendFor(agent) {
   const type = resolveAgentBackendType(agent);
   if (type === "docker") {
     if (resolveAgentRuntimeFamily(agent) === "hermes") {
-      return getBackendInstance("docker:hermes");
+      return getBackendInstance("docker:hermes", agent);
     }
     if (resolveAgentSandboxProfile(agent) === "nemoclaw") {
-      return getBackendInstance("docker:nemoclaw");
+      return getBackendInstance("docker:nemoclaw", agent);
     }
   }
-  return getBackendInstance(type);
+  return getBackendInstance(type, agent);
 }
 
 // ── Public API ──────────────────────────────────────────
@@ -130,23 +204,26 @@ module.exports = {
    * @param {{ backend_type?: string, deploy_target?: string, sandbox_profile?: string, container_id: string }} agent
    */
   async start(agent) {
-    const id = ensureContainerId(agent, "start");
-    return backendFor(agent).start(id);
+    const id = resolveKubernetesRuntimeId(agent, "start");
+    const backend = await backendFor(agent);
+    return isKubernetesAgent(agent) ? backend.start(id, lifecycleOptions(agent)) : backend.start(id);
   },
 
   async stop(agent) {
-    const id = ensureContainerId(agent, "stop");
-    return backendFor(agent).stop(id);
+    const id = resolveKubernetesRuntimeId(agent, "stop");
+    const backend = await backendFor(agent);
+    return isKubernetesAgent(agent) ? backend.stop(id, lifecycleOptions(agent)) : backend.stop(id);
   },
 
   async restart(agent) {
-    const id = ensureContainerId(agent, "restart");
-    return backendFor(agent).restart(id);
+    const id = resolveKubernetesRuntimeId(agent, "restart");
+    const backend = await backendFor(agent);
+    return isKubernetesAgent(agent) ? backend.restart(id, lifecycleOptions(agent)) : backend.restart(id);
   },
 
   async destroy(agent) {
-    const id = ensureContainerId(agent, "destroy");
-    return backendFor(agent).destroy(id, {
+    const id = resolveDestroyContainerId(agent);
+    return (await backendFor(agent)).destroy(id, {
       agentId: agent.id,
       host: agent.host || null,
       runtimeFamily: resolveAgentRuntimeFamily(agent),
@@ -160,17 +237,19 @@ module.exports = {
    * container without scattering try/catch everywhere.
    */
   async status(agent) {
-    const id = agent?.container_id;
+    const kubernetes = isKubernetesAgent(agent);
+    const id = kubernetes ? resolveKubernetesRuntimeId(agent, "inspect") : agent?.container_id;
     if (typeof id !== "string" || id.length === 0) {
       return { running: false, uptime: 0, cpu: null, memory: null };
     }
-    return backendFor(agent).status(id);
+    const backend = await backendFor(agent);
+    return kubernetes ? backend.status(id, lifecycleOptions(agent)) : backend.status(id);
   },
 
   async stats(agent) {
     const id = agent?.container_id;
     if (typeof id !== "string" || id.length === 0) return null;
-    const backend = backendFor(agent);
+    const backend = await backendFor(agent);
     if (typeof backend.stats === "function") {
       return backend.stats(id, agent);
     }
@@ -183,7 +262,7 @@ module.exports = {
    */
   async logs(agent, opts = {}) {
     const id = ensureContainerId(agent, "stream logs");
-    const backend = backendFor(agent);
+    const backend = await backendFor(agent);
     if (typeof backend.logs === "function") {
       return backend.logs(id, opts);
     }
@@ -196,7 +275,7 @@ module.exports = {
    */
   async exec(agent, opts = {}) {
     const id = ensureContainerId(agent, "exec");
-    const backend = backendFor(agent);
+    const backend = await backendFor(agent);
     if (typeof backend.exec === "function") {
       return backend.exec(id, opts);
     }
@@ -205,4 +284,7 @@ module.exports = {
 
   /** Expose the raw backend instance for advanced operations */
   backendFor,
+  canMutate,
+  canDestroy,
+  isKubernetesAgent,
 };

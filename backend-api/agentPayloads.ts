@@ -6,7 +6,11 @@ const channels = require("./channels");
 const { runtimeUrlForAgent } = require("../agent-runtime/lib/agentEndpoints");
 const { NORA_INTEGRATIONS_CONTEXT_FILE } = require("../agent-runtime/lib/runtimeBootstrap");
 const { NORA_INTEGRATIONS_SKILL_FILE } = require("../agent-runtime/lib/integrationTools");
-const { isKnownBackend, normalizeBackendName } = require("../agent-runtime/lib/backendCatalog");
+const {
+  isKnownBackend,
+  normalizeBackendName,
+  normalizeExecutionTargetId,
+} = require("../agent-runtime/lib/backendCatalog");
 const { buildAgentRuntimeFields } = require("./agentRuntimeFields");
 
 const CLONE_MODES = new Set(["files_only", "files_plus_memory", "full_clone"]);
@@ -687,6 +691,10 @@ function extractTemplateDefaultsFromSnapshot(snapshot) {
   const defaults = config.defaults && typeof config.defaults === "object" ? config.defaults : {};
   const requestedBackend = defaults.deploy_target || defaults.deployTarget || defaults.backend;
   const backend = isKnownBackend(requestedBackend) ? normalizeBackendName(requestedBackend) : null;
+  const executionTargetId =
+    normalizeExecutionTargetId(defaults.execution_target_id || defaults.executionTargetId) ||
+    normalizeExecutionTargetId(requestedBackend) ||
+    backend;
   const sandbox =
     String(defaults.sandbox_profile || defaults.sandboxProfile || defaults.sandbox || "")
       .trim()
@@ -696,6 +704,7 @@ function extractTemplateDefaultsFromSnapshot(snapshot) {
 
   return {
     backend,
+    executionTargetId,
     sandbox,
     vcpu: Number.parseInt(defaults.vcpu, 10) || 2,
     ram_mb: Number.parseInt(defaults.ram_mb, 10) || 2048,

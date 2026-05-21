@@ -148,6 +148,11 @@ describe("API key endpoints (HTTP)", () => {
   jest.mock("../workspaces", () => ({
     listWorkspaces: jest.fn().mockResolvedValue([]),
     createWorkspace: jest.fn(),
+    addAgent: jest.fn(),
+    getWorkspaceAgents: jest.fn().mockResolvedValue([]),
+    listAgentCandidates: jest.fn().mockResolvedValue([]),
+    removeAgent: jest.fn(),
+    listAccessibleAgents: jest.fn().mockResolvedValue([]),
   }));
   jest.mock("../workspaceMembers", () => ({
     listMembers: jest.fn().mockResolvedValue([]),
@@ -161,10 +166,13 @@ describe("API key endpoints (HTTP)", () => {
     PROVIDERS: [],
   }));
   jest.mock("../metrics", () => ({
+    parseCostQuery: jest.fn((query = {}) => ({ periodDays: Number(query.period_days) || 30 })),
     recordApiMetric: jest.fn(),
     getAgentSummary: jest.fn().mockResolvedValue({}),
     getAgentMetrics: jest.fn().mockResolvedValue([]),
     getAgentCost: jest.fn().mockResolvedValue(null),
+    getWorkspaceCost: jest.fn().mockResolvedValue({ totalUsd: 0, perAgent: [] }),
+    getAccessibleWorkspaceCosts: jest.fn().mockResolvedValue({ workspaces: [], uniqueFleetTotalUsd: 0 }),
   }));
 
   const app = require("../server");

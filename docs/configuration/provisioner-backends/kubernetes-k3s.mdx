@@ -2,7 +2,7 @@
 
 > Run Nora agents on a lightweight self-hosted K3s cluster using Nora's Kubernetes adapter.
 
-K3s is the recommended self-hosted Kubernetes path when you want cluster scheduling without using a managed cloud provider. Nora still uses the same Kubernetes adapter underneath; the `k3s` backend id exists so operators can distinguish lightweight self-hosted clusters from cloud `k8s` deployments in configuration and the deploy flow.
+K3s is the recommended self-hosted Kubernetes path when you want cluster scheduling without using a managed cloud provider. Nora still uses the same Kubernetes adapter underneath; the Admin cluster registry stores the provider label so operators can distinguish lightweight self-hosted clusters from cloud deployments in the deploy flow.
 
 ## When to use K3s
 
@@ -12,7 +12,7 @@ Use AKS, GKE, EKS, or another cloud `k8s` target when you want managed control-p
 
 |                      | K3s                                       | Cloud Kubernetes (`k8s`)                            |
 | -------------------- | ----------------------------------------- | --------------------------------------------------- |
-| **Backend id**       | `k3s`                                     | `k8s`                                               |
+| **Provider label**   | `K3s`                                     | `AKS`, `GKE`, `EKS`, or `Kubernetes`                |
 | **Operator model**   | You own the cluster host and upgrades     | Cloud provider manages the Kubernetes control plane |
 | **Typical exposure** | `node-port` from Compose to the K3s node  | `load-balancer` with provider-managed Services      |
 | **Best for**         | Self-hosted, edge, lab, and private infra | Production cloud clusters and managed networking    |
@@ -51,29 +51,47 @@ kubectl --kubeconfig ./.secrets/k3s-kubeconfig get nodes
 
 ### 4. Configure Nora
 
-Set the K3s helper variables in `.env`:
+Set the generic Kubernetes mount variable in `.env`:
 
 ```bash theme={null}
-K3S_KUBECONFIG_PATH=./.secrets/k3s-kubeconfig
-K3S_ENABLED_BACKENDS=k3s
-K3S_K8S_NAMESPACE=openclaw-agents
-K3S_K8S_EXPOSURE_MODE=node-port
-K3S_K8S_RUNTIME_HOST=host.docker.internal
+mkdir -p ./.secrets/kubeconfigs
+cp ./.secrets/k3s-kubeconfig ./.secrets/kubeconfigs/k3s-local
+NORA_KUBECONFIGS_DIR=./.secrets/kubeconfigs
 ```
 
 Use `host.docker.internal` when K3s and Nora's Docker Compose stack run on the same host. Use the K3s node IP or DNS name when Nora runs on a different host.
 
-Leave `K3S_K8S_RUNTIME_NODE_PORT` and `K3S_K8S_GATEWAY_NODE_PORT` empty unless you need fixed ports for a single-agent test. Empty values let Kubernetes allocate NodePorts per agent and avoid port conflicts.
+For multiple K3s or mixed Kubernetes clusters, put the kubeconfig under `NORA_KUBECONFIGS_DIR` instead and use an Admin path such as `/kubeconfigs/k3s-local`.
 
 ### 5. Start the stack
 
 ```bash theme={null}
-docker compose -f docker-compose.yml -f docker-compose.k3s.yml up -d --build
+docker compose -f docker-compose.yml -f docker-compose.kubernetes.yml up -d --build
 ```
 
-### 6. Deploy a test agent
+### 6. Register this cluster in Admin
 
-Open the dashboard at `http://127.0.0.1:8080`, sign in, and create an agent with **Backend = Kubernetes on K3s**.
+Open **Admin -> Kubernetes**, click **Add cluster**, and use these values:
+
+| Field               | Value                                                                                                |
+| ------------------- | ---------------------------------------------------------------------------------------------------- |
+| Cluster id          | `k3s-local`                                                                                          |
+| Label               | `K3s Local`                                                                                          |
+| Provider            | `K3s`                                                                                                |
+| Actual cluster name | Your K3s server or cluster name                                                                      |
+| Credential mode     | `Mounted kubeconfig path`                                                                            |
+| Kubeconfig path     | `/kubeconfigs/k3s-local`                                                                             |
+| Fallback namespace  | `openclaw-agents`                                                                                    |
+| OpenClaw namespace  | `openclaw-agents`                                                                                    |
+| Hermes namespace    | `openclaw-agents`                                                                                    |
+| Exposure mode       | `NodePort`                                                                                           |
+| Runtime host        | `host.docker.internal` when Nora and K3s run on the same host; otherwise the K3s node IP or DNS name |
+
+Do not put `./.secrets/k3s-kubeconfig` in the Admin Kubeconfig path when Nora runs in Docker Compose. That is the host-side path; the containers see files from `NORA_KUBECONFIGS_DIR` under `/kubeconfigs`.
+
+### 7. Deploy a test agent
+
+Open the dashboard at `http://127.0.0.1:8080`, sign in, and create an agent with the K3s cluster label you registered.
 
 <Frame caption="Nora deploy wizard — Backend dropdown showing Kubernetes on K3s">
   ![Deploy wizard backend
@@ -91,7 +109,7 @@ Open the dashboard at `http://127.0.0.1:8080`, sign in, and create an agent with
 
 ## Exposure modes
 
-For the standard Compose-hosted control plane, use `node-port`. Nora stores the allocated NodePorts for each agent and reaches them through `K3S_K8S_RUNTIME_HOST`.
+For the standard Compose-hosted control plane, set the Admin exposure mode to `node-port`. Nora stores the allocated NodePorts for each agent and reaches them through the Admin **Runtime host** value.
 
 Use `cluster-ip` only when the Nora control plane itself runs inside the same K3s cluster or otherwise has an in-cluster route to Service DNS names.
 
@@ -108,10 +126,10 @@ kubectl --kubeconfig ./.secrets/k3s-kubeconfig -n openclaw-agents get deploy,svc
 Check Nora worker logs:
 
 ```bash theme={null}
-docker compose -f docker-compose.yml -f docker-compose.k3s.yml logs worker-provisioner
+docker compose -f docker-compose.yml -f docker-compose.kubernetes.yml logs worker-provisioner
 ```
 
-If an agent reaches `running` but the gateway is unreachable, confirm that `K3S_K8S_RUNTIME_HOST` points to an address the Compose containers can reach and that your firewall allows the allocated NodePort range.
+If an agent reaches `running` but the gateway is unreachable, confirm that the Admin **Runtime host** points to an address the Compose containers can reach and that your firewall allows the allocated NodePort range.
 
 <Frame caption="Logs tab — worker-provisioner output during a successful K3s deploy">
   ![Agent logs K8s](/images/provisioner-backends/k8s/_nora/nora-agent-logs-k8s.png)
@@ -126,7 +144,7 @@ cd e2e
 KUBECONFIG_PATH=$PWD/../.secrets/k3s-kubeconfig npm run smoke:k8s-k3s
 ```
 
-The script brings up the Compose stack with `docker-compose.k3s.yml`, deploys an agent, verifies Kubernetes objects, and exercises stop/start/restart. It exits non-zero on any failure. Set `KEEP_ENV=true` to leave the stack running for inspection.
+The script brings up the Compose stack with `docker-compose.kubernetes.yml`, registers the K3s cluster in Admin, deploys an agent, verifies Kubernetes objects, and exercises stop/start/restart. It exits non-zero on any failure. Set `KEEP_ENV=true` to leave the stack running for inspection.
 
 ## Promote to production
 
@@ -150,7 +168,7 @@ sudo ./infra/setup-tls.sh <your-domain>
 ### 2. Stop the smoke-mode stack
 
 ```bash theme={null}
-docker compose -f docker-compose.yml -f docker-compose.k3s.yml down
+docker compose -f docker-compose.yml -f docker-compose.kubernetes.yml down
 ```
 
 ### 3. Start the prod-mode stack
@@ -161,7 +179,7 @@ Use the tracked TLS compose layer, then layer the K3s backend overlay on top:
 docker compose \
   -f docker-compose.yml \
   -f infra/docker-compose.public-tls.yml \
-  -f docker-compose.k3s.yml \
+  -f docker-compose.kubernetes.yml \
   up -d --build
 ```
 

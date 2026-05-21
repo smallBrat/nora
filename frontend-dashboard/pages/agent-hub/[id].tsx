@@ -223,6 +223,7 @@ export default function AgentHubTemplateDetail() {
           name: trimmedName,
           runtime_family: runtimeFamilyFromConfig(backendConfig)?.id || "openclaw",
           deploy_target: installExecutionTarget,
+          execution_target_id: installExecutionTarget,
           sandbox_profile: installSandboxProfile || "standard",
         }),
       });

@@ -69,12 +69,18 @@ const mockDockerPull = jest.fn();
 const mockDockerFollowProgress = jest.fn();
 const mockDockerCreateContainer = jest.fn();
 const mockDockerContainerStart = jest.fn();
+const mockAssertKubernetesExecutionTargetAvailable = jest.fn().mockResolvedValue();
 
 jest.mock("../db", () => mockDb);
 jest.mock("../redisQueue", () => ({
   addDeploymentJob: mockAddDeploymentJob,
   getDLQJobs: mockGetDLQJobs,
   retryDLQJob: mockRetryDLQJob,
+}));
+jest.mock("../kubernetesClusters", () => ({
+  assertKubernetesExecutionTargetAvailable: mockAssertKubernetesExecutionTargetAvailable,
+  listKubernetesExecutionTargets: jest.fn().mockResolvedValue([]),
+  listKubernetesClusters: jest.fn().mockResolvedValue([]),
 }));
 jest.mock("../scheduler", () => ({
   selectNode: jest.fn().mockResolvedValue({ name: "worker-01" }),
@@ -84,6 +90,16 @@ jest.mock("../containerManager", () => ({
   stop: jest.fn().mockResolvedValue({}),
   restart: jest.fn().mockResolvedValue({}),
   destroy: jest.fn().mockResolvedValue({}),
+  canMutate: jest.fn(
+    (agent) =>
+      Boolean(agent?.container_id) ||
+      ((agent?.backend_type === "k8s" || agent?.deploy_target === "k8s") &&
+        Boolean(agent?.container_name || agent?.name || agent?.id)),
+  ),
+  canDestroy: jest.fn((agent) => Boolean(agent?.container_id || agent?.container_name)),
+  isKubernetesAgent: jest.fn(
+    (agent) => agent?.backend_type === "k8s" || agent?.deploy_target === "k8s",
+  ),
   status: jest.fn().mockResolvedValue({ running: true }),
   stats: jest.fn(),
 }));
@@ -135,6 +151,9 @@ jest.mock("../workspaces", () => ({
   createWorkspace: jest.fn(),
   addAgent: jest.fn(),
   getWorkspaceAgents: jest.fn().mockResolvedValue([]),
+  listAgentCandidates: jest.fn().mockResolvedValue([]),
+  removeAgent: jest.fn(),
+  listAccessibleAgents: jest.fn().mockResolvedValue([]),
 }));
 jest.mock("../integrations", () => ({
   listIntegrations: jest.fn().mockResolvedValue([]),
@@ -210,9 +229,12 @@ jest.mock("../channels", () => ({
   handleInboundWebhook: jest.fn(),
 }));
 jest.mock("../metrics", () => ({
+  parseCostQuery: jest.fn((query = {}) => ({ periodDays: Number(query.period_days) || 30 })),
   getAgentMetrics: jest.fn().mockResolvedValue([]),
   getAgentSummary: jest.fn().mockResolvedValue({}),
   getAgentCost: jest.fn().mockResolvedValue(null),
+  getWorkspaceCost: jest.fn().mockResolvedValue({ totalUsd: 0, perAgent: [] }),
+  getAccessibleWorkspaceCosts: jest.fn().mockResolvedValue({ workspaces: [], uniqueFleetTotalUsd: 0 }),
   recordApiMetric: jest.fn(),
 }));
 jest.mock("../agentTelemetry", () => ({
@@ -1522,6 +1544,42 @@ describe("admin routes", () => {
     expect(res.body.samples).toHaveLength(1);
   });
 
+  it("stops a Kubernetes deployment by container_name from admin when container_id is missing", async () => {
+    const containerManager = require("../containerManager");
+    mockDb.query
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: "agent-k8s-stop",
+            user_id: "user-k8s",
+            name: "K8s Stop",
+            status: "running",
+            runtime_family: "openclaw",
+            backend_type: "k8s",
+            deploy_target: "k8s",
+            execution_target_id: "k8s:test-cluster",
+            sandbox_profile: "standard",
+            container_id: null,
+            container_name: "nora-oclaw-admin-k8s-stop",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        rows: [{ id: "agent-k8s-stop", status: "stopped" }],
+      });
+
+    const res = await withToken(request(app).post("/admin/agents/agent-k8s-stop/stop"), adminToken);
+
+    expect(res.status).toBe(200);
+    expect(containerManager.stop).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "agent-k8s-stop",
+        container_name: "nora-oclaw-admin-k8s-stop",
+      }),
+    );
+    expect(res.body).toEqual(expect.objectContaining({ status: "stopped" }));
+  });
+
   it("requeues an agent redeploy with the owning user id", async () => {
     const monitoring = require("../monitoring");
     mockDb.query
@@ -1637,6 +1695,7 @@ describe("admin routes", () => {
       "nemoclaw",
       "openclaw",
       "docker",
+      "docker",
       "nemoclaw",
       "standard-agent",
       "ghcr.io/nvidia/openshell-community/sandboxes/openclaw",
@@ -1646,6 +1705,7 @@ describe("admin routes", () => {
         id: "agent-3",
         userId: "user-3",
         backend: "docker",
+        execution_target_id: "docker",
         sandbox: "nemoclaw",
         image: "ghcr.io/nvidia/openshell-community/sandboxes/openclaw",
       }),
@@ -1653,8 +1713,7 @@ describe("admin routes", () => {
   });
 
   it("recomputes the default image when admin redeploy switches execution targets", async () => {
-    process.env.ENABLED_BACKENDS = "docker,k8s";
-    process.env.KUBECONFIG = "/tmp/test-kubeconfig";
+    process.env.ENABLED_BACKENDS = "docker";
 
     mockDb.query
       .mockResolvedValueOnce({
@@ -1680,18 +1739,19 @@ describe("admin routes", () => {
 
     const res = await withToken(
       request(app).post("/admin/agents/agent-4/redeploy").send({
-        deploy_target: "k8s",
+        deploy_target: "k8s:test-cluster",
       }),
       adminToken,
     );
 
     expect(res.status).toBe(200);
-    expect(mockDb.query).toHaveBeenNthCalledWith(2, expect.stringContaining("image = $8"), [
+    expect(mockDb.query).toHaveBeenNthCalledWith(2, expect.stringContaining("image = $9"), [
       "agent-4",
       "k8s",
       "standard",
       "openclaw",
       "k8s",
+      "k8s:test-cluster",
       "standard",
       "docker-agent",
       "node:24-slim",
@@ -1701,8 +1761,61 @@ describe("admin routes", () => {
         id: "agent-4",
         userId: "user-4",
         backend: "k8s",
+        execution_target_id: "k8s:test-cluster",
         sandbox: "standard",
         image: "node:24-slim",
+      }),
+    );
+  });
+
+  it("passes previous Kubernetes runtime refs for admin redeploy cleanup", async () => {
+    process.env.ENABLED_BACKENDS = "docker";
+
+    mockDb.query
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: "agent-k8s-admin",
+            user_id: "user-k8s",
+            name: "Admin K8s Agent",
+            status: "stopped",
+            runtime_family: "openclaw",
+            backend_type: "k8s",
+            deploy_target: "k8s",
+            execution_target_id: "k8s:test-cluster",
+            sandbox_profile: "standard",
+            vcpu: 2,
+            ram_mb: 2048,
+            disk_gb: 20,
+            container_id: "nora-oclaw-admin-k8s-old",
+            container_name: "nora-oclaw-admin-k8s-old",
+            host: "nora-oclaw-admin-k8s-old.openclaw-agents.svc.cluster.local",
+            image: "node:24-slim",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const res = await withToken(
+      request(app).post("/admin/agents/agent-k8s-admin/redeploy"),
+      adminToken,
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockAddDeploymentJob).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "agent-k8s-admin",
+        userId: "user-k8s",
+        backend: "k8s",
+        previous_container_id: "nora-oclaw-admin-k8s-old",
+        previous_container_name: "nora-oclaw-admin-k8s-old",
+        previous_host: "nora-oclaw-admin-k8s-old.openclaw-agents.svc.cluster.local",
+        previous_backend: "k8s",
+        previous_runtime_family: "openclaw",
+        previous_deploy_target: "k8s",
+        previous_execution_target_id: "k8s:test-cluster",
+        previous_sandbox_profile: "standard",
       }),
     );
   });
@@ -1757,6 +1870,41 @@ describe("admin routes", () => {
       expect.objectContaining({ id: "agent-9" }),
     );
     expect(res.body).toEqual({ success: true });
+  });
+
+  it("destroys Kubernetes resources by container_name before admin agent deletion", async () => {
+    const containerManager = require("../containerManager");
+    mockDb.query
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: "agent-k8s-delete",
+            user_id: "user-k8s",
+            name: "K8s Delete",
+            runtime_family: "openclaw",
+            backend_type: "k8s",
+            deploy_target: "k8s",
+            execution_target_id: "k8s:test-cluster",
+            sandbox_profile: "standard",
+            container_id: null,
+            container_name: "nora-oclaw-k8s-delete",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const res = await withToken(request(app).delete("/admin/agents/agent-k8s-delete"), adminToken);
+
+    expect(res.status).toBe(200);
+    expect(containerManager.destroy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "agent-k8s-delete",
+        container_name: "nora-oclaw-k8s-delete",
+      }),
+    );
+    expect(mockDb.query).toHaveBeenLastCalledWith("DELETE FROM agents WHERE id = $1", [
+      "agent-k8s-delete",
+    ]);
   });
 
   it("returns paginated audit results with date and type filters", async () => {

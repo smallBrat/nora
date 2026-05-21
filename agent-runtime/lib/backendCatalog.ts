@@ -152,12 +152,32 @@ function normalizeDeployTargetName(value) {
   const normalized = String(value || "docker")
     .trim()
     .toLowerCase();
-  if (normalized === "kubernetes" || normalized === "k3s") return "k8s";
+  if (normalized.startsWith("k8s:")) return "k8s";
   return KNOWN_DEPLOY_TARGETS.includes(normalized) ? normalized : "docker";
 }
 
 function normalizeBackendName(value) {
   return normalizeDeployTargetName(value);
+}
+
+function normalizeExecutionTargetId(value) {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase();
+  if (!normalized) return null;
+  if (normalized.startsWith("k8s:")) {
+    const clusterId = normalized
+      .slice(4)
+      .replace(/[^a-z0-9-]+/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "");
+    return clusterId ? `k8s:${clusterId}` : "k8s";
+  }
+  return KNOWN_DEPLOY_TARGETS.includes(normalized) ? normalized : null;
+}
+
+function deployTargetFromExecutionTargetId(value) {
+  return normalizeDeployTargetName(normalizeExecutionTargetId(value) || value);
 }
 
 function normalizeSandboxProfileName(value) {
@@ -179,7 +199,8 @@ function isKnownDeployTarget(value) {
     .trim()
     .toLowerCase();
   return (
-    normalized === "kubernetes" || normalized === "k3s" || KNOWN_DEPLOY_TARGETS.includes(normalized)
+    normalized.startsWith("k8s:") ||
+    KNOWN_DEPLOY_TARGETS.includes(normalized)
   );
 }
 
@@ -251,8 +272,8 @@ const KUBERNETES_PROVIDER_METADATA = Object.freeze({
   }),
 });
 
-function normalizeKubernetesProviderName(value, env = process.env) {
-  const explicit = String(value || env.K8S_PROVIDER || env.KUBERNETES_PROVIDER || "")
+function normalizeKubernetesProviderName(value) {
+  const explicit = String(value || "")
     .trim()
     .toLowerCase();
   if (["aks", "azure", "azure-aks"].includes(explicit)) return "aks";
@@ -261,20 +282,17 @@ function normalizeKubernetesProviderName(value, env = process.env) {
   if (["k3s", "rancher-k3s"].includes(explicit)) return "k3s";
   if (["k8s", "kubernetes", "generic"].includes(explicit)) return "kubernetes";
 
-  const enabledBackends = String(env.ENABLED_BACKENDS || "")
-    .split(",")
-    .map((entry) => entry.trim().toLowerCase())
-    .filter(Boolean);
-  if (enabledBackends.includes("k3s") && !enabledBackends.includes("k8s")) return "k3s";
-
   return "kubernetes";
 }
 
-function getKubernetesProviderMetadata(env = process.env) {
-  const providerId = normalizeKubernetesProviderName(null, env);
+function getKubernetesProviderMetadata(options = {}) {
+  const providerId = normalizeKubernetesProviderName(
+    typeof options === "string" ? options : options.provider || options.providerId,
+  );
   const metadata =
     KUBERNETES_PROVIDER_METADATA[providerId] || KUBERNETES_PROVIDER_METADATA.kubernetes;
-  const customLabel = String(env.K8S_PROVIDER_LABEL || env.KUBERNETES_PROVIDER_LABEL || "").trim();
+  const customLabel =
+    typeof options === "object" ? String(options.providerLabel || "").trim() : "";
   return customLabel
     ? {
         ...metadata,
@@ -365,9 +383,14 @@ function buildMaturityFields(maturityTier) {
 
 function resolveMaturityTier({ runtimeFamily, deployTarget, sandboxProfile }) {
   if (normalizeSandboxProfileName(sandboxProfile) === "nemoclaw") return "experimental";
-  if (normalizeRuntimeFamilyName(runtimeFamily) === "hermes") return "experimental";
+  const normalizedRuntimeFamily = normalizeRuntimeFamilyName(runtimeFamily);
+  const normalizedDeployTarget = normalizeDeployTargetName(deployTarget);
 
-  switch (normalizeDeployTargetName(deployTarget)) {
+  if (normalizedRuntimeFamily === "hermes" && normalizedDeployTarget === "proxmox") {
+    return "beta";
+  }
+
+  switch (normalizedDeployTarget) {
     case "k8s":
       return "ga";
     case "proxmox":
@@ -394,7 +417,11 @@ function parseList(rawValue, isKnown, normalize) {
 }
 
 function parseEnabledBackendList(rawValue) {
-  return parseList(rawValue, isKnownDeployTarget, normalizeDeployTargetName);
+  return parseList(
+    rawValue,
+    (value) => ["docker", "proxmox"].includes(String(value || "").trim().toLowerCase()),
+    normalizeDeployTargetName,
+  );
 }
 
 function parseEnabledRuntimeFamilyList(rawValue) {
@@ -456,11 +483,17 @@ function isProxmoxApiTokenId(value) {
   return Boolean(userPart && tokenName && rest.length === 0);
 }
 
-function baseDeployTargetIssue(deployTarget, env = process.env) {
+function baseDeployTargetIssue(deployTarget, env = process.env, selection = {}) {
   switch (normalizeDeployTargetName(deployTarget)) {
     case "k8s":
-      if (env.KUBECONFIG || env.KUBERNETES_SERVICE_HOST) return null;
-      return "Kubernetes execution target requires KUBECONFIG or in-cluster Kubernetes environment variables.";
+      if (
+        normalizeExecutionTargetId(
+          selection.executionTargetId || selection.execution_target_id,
+        )?.startsWith("k8s:")
+      ) {
+        return null;
+      }
+      return "Kubernetes execution target requires an Admin-registered cluster such as k8s:aks-eastus2.";
     case "proxmox":
       if (!env.PROXMOX_API_URL || !env.PROXMOX_TOKEN_ID || !env.PROXMOX_TOKEN_SECRET) {
         return "Proxmox execution target requires PROXMOX_API_URL, PROXMOX_TOKEN_ID, and PROXMOX_TOKEN_SECRET.";
@@ -486,14 +519,12 @@ function baseDeployTargetIssue(deployTarget, env = process.env) {
   }
 }
 
-function runtimeSelectionIssue(
-  {
+function runtimeSelectionIssue(selection = {}, env = process.env) {
+  const {
     runtimeFamily = DEFAULT_RUNTIME_FAMILY,
     deployTarget = "docker",
     sandboxProfile = "standard",
-  } = {},
-  env = process.env,
-) {
+  } = selection;
   const normalizedRuntimeFamily = normalizeRuntimeFamilyName(runtimeFamily);
   const normalizedDeployTarget = normalizeDeployTargetName(deployTarget);
   const normalizedSandboxProfile = normalizeSandboxProfileName(sandboxProfile);
@@ -511,7 +542,13 @@ function runtimeSelectionIssue(
     return `${getRuntimeFamilyMetadata(normalizedRuntimeFamily).label} does not support the ${sandboxProfileLabel(normalizedSandboxProfile)} sandbox profile.`;
   }
 
-  const targetIssue = baseDeployTargetIssue(normalizedDeployTarget, env);
+  const targetIssue = baseDeployTargetIssue(normalizedDeployTarget, env, {
+    ...selection,
+    executionTargetId:
+      selection.executionTargetId ||
+      selection.execution_target_id ||
+      normalizeExecutionTargetId(selection.deployTarget || selection.deploy_target),
+  });
   if (targetIssue) return targetIssue;
 
   if (
@@ -553,11 +590,25 @@ function getRuntimeSelectionStatus(selection = {}, env = process.env) {
       selection.sandbox ||
       selection.sandbox_type,
   );
+  const executionTargetId =
+    normalizeExecutionTargetId(
+      selection.executionTargetId ||
+        selection.execution_target_id ||
+        selection.deployTarget ||
+        selection.deploy_target,
+    ) || deployTarget;
+  const hasRegisteredKubernetesTarget =
+    deployTarget === "k8s" && String(executionTargetId || "").startsWith("k8s:");
+  const deployTargetEnabled =
+    hasRegisteredKubernetesTarget || getEnabledDeployTargets(env, { runtimeFamily }).includes(deployTarget);
   const enabled =
     getEnabledRuntimeFamilies(env).includes(runtimeFamily) &&
-    getEnabledDeployTargets(env, { runtimeFamily }).includes(deployTarget) &&
+    deployTargetEnabled &&
     getEnabledSandboxProfiles(env, { runtimeFamily }).includes(sandboxProfile);
-  const issue = runtimeSelectionIssue({ runtimeFamily, deployTarget, sandboxProfile }, env);
+  const issue = runtimeSelectionIssue(
+    { runtimeFamily, deployTarget, executionTargetId, sandboxProfile },
+    env,
+  );
   return {
     enabled,
     configured: issue == null,
@@ -565,6 +616,7 @@ function getRuntimeSelectionStatus(selection = {}, env = process.env) {
     issue,
     runtimeFamily,
     deployTarget,
+    executionTargetId,
     sandboxProfile,
   };
 }
@@ -767,20 +819,129 @@ function buildExecutionTargetEntry(runtimeFamily, deployTarget, env = process.en
   };
 }
 
+function buildKubernetesClusterExecutionTargetEntry(
+  runtimeFamily,
+  cluster = {},
+  env = process.env,
+) {
+  const base = buildExecutionTargetEntry(runtimeFamily, "k8s", env);
+  const runtimeFamilyMetadata = getRuntimeFamilyMetadata(runtimeFamily);
+  const normalizedRuntimeFamily = normalizeRuntimeFamilyName(runtimeFamily);
+  const executionTargetId =
+    normalizeExecutionTargetId(
+      cluster.executionTargetId ||
+        cluster.execution_target_id ||
+        (cluster.id ? `k8s:${cluster.id}` : "k8s"),
+    ) || "k8s";
+  const label = cluster.label || cluster.clusterName || base.label;
+  const providerLabel =
+    cluster.providerLabel || cluster.provider || base.providerLabel || "Kubernetes";
+  const runtimeFamilyEnabled = getEnabledRuntimeFamilies(env).includes(normalizedRuntimeFamily);
+  const enabled = runtimeFamilyEnabled && cluster.enabled !== false;
+  const configured = cluster.configured !== false;
+  const available = enabled && configured && cluster.available !== false;
+  const issue = available
+    ? null
+    : cluster.issue || (!enabled ? `${label} is disabled.` : `${label} is not configured.`);
+  const sandboxProfiles = base.sandboxProfiles.map((option) => {
+    const optionEnabled =
+      enabled &&
+      supportedSandboxProfilesForDeployTarget(normalizedRuntimeFamily, "k8s").includes(option.id) &&
+      getEnabledSandboxProfiles(env, { runtimeFamily: normalizedRuntimeFamily }).includes(
+        option.id,
+      );
+    const optionAvailable = available && optionEnabled;
+
+    return {
+      ...option,
+      enabled: optionEnabled,
+      configured,
+      available: optionAvailable,
+      issue,
+      deployTarget: "k8s",
+      executionTargetId,
+      deployTargetLabel: label,
+      fullLabel:
+        option.id === "nemoclaw"
+          ? `${runtimeFamilyMetadata.label} + ${label} + ${option.sandboxProfileLabel}`
+          : `${runtimeFamilyMetadata.label} + ${label}`,
+      legacyBackendId: "k8s",
+      selectionId: `${runtimeFamilyMetadata.id}:${executionTargetId}:${option.id}`,
+      availableForOnboarding: option.onboardingVisible !== false && optionAvailable,
+    };
+  });
+  const enabledSandboxProfiles = sandboxProfiles
+    .filter((option) => option.enabled)
+    .map((option) => option.id);
+  const availableSandboxProfiles = sandboxProfiles
+    .filter((option) => option.available)
+    .map((option) => option.id);
+  const selectableSandboxProfiles = sandboxProfiles.filter(
+    (option) => option.enabled && option.availableForOnboarding && option.available,
+  );
+  const defaultSelection =
+    sandboxProfiles.find((option) => option.isDefault) ||
+    sandboxProfiles.find((option) => option.available) ||
+    sandboxProfiles.find((option) => option.enabled) ||
+    sandboxProfiles[0];
+
+  return {
+    ...base,
+    id: executionTargetId,
+    executionTargetId,
+    adapter: "k8s",
+    deployTarget: "k8s",
+    legacyBackendId: "k8s",
+    label,
+    shortLabel: cluster.shortLabel || label,
+    summary: cluster.summary || base.summary,
+    detail: cluster.detail || base.detail,
+    badges: cluster.badges || base.badges,
+    providerId: cluster.providerId || cluster.provider || base.providerId,
+    providerLabel,
+    clusterName: cluster.clusterName || cluster.cluster_name || "",
+    namespace: cluster.openclawNamespace || cluster.namespace || "",
+    exposureMode: cluster.exposureMode || cluster.exposure_mode || "",
+    enabled,
+    configured,
+    available,
+    issue,
+    isDefault: Boolean(cluster.isDefault || cluster.is_default),
+    defaultSandboxProfile: defaultSelection?.id || "standard",
+    enabledSandboxProfiles,
+    availableSandboxProfiles,
+    supportsSandboxSelection: selectableSandboxProfiles.length > 1,
+    sandboxProfiles,
+    availableForOnboarding: selectableSandboxProfiles.length > 0,
+    fullLabel: defaultSelection?.fullLabel || `${runtimeFamilyMetadata.label} + ${label}`,
+  };
+}
+
 function getExecutionTargetCatalog(env = process.env, options = {}) {
   const runtimeFamily = normalizeRuntimeFamilyName(
     options.runtimeFamily || getDefaultRuntimeFamily(env),
   );
-  return executionTargetsForRuntimeFamily(runtimeFamily).map((deployTarget) =>
-    buildExecutionTargetEntry(runtimeFamily, deployTarget, env),
-  );
+  const kubernetesClusters = Array.isArray(options.kubernetesClusters)
+    ? options.kubernetesClusters
+    : [];
+  return executionTargetsForRuntimeFamily(runtimeFamily).flatMap((deployTarget) => {
+    if (deployTarget === "k8s") {
+      return kubernetesClusters.map((cluster) =>
+        buildKubernetesClusterExecutionTargetEntry(runtimeFamily, cluster, env),
+      );
+    }
+    return [buildExecutionTargetEntry(runtimeFamily, deployTarget, env)];
+  });
 }
 
 function getSandboxProfileCatalog(env = process.env, options = {}) {
   const runtimeFamily = normalizeRuntimeFamilyName(
     options.runtimeFamily || getDefaultRuntimeFamily(env),
   );
-  const executionTargets = getExecutionTargetCatalog(env, { runtimeFamily });
+  const executionTargets = getExecutionTargetCatalog(env, {
+    runtimeFamily,
+    kubernetesClusters: options.kubernetesClusters,
+  });
   const supportedSandboxProfiles =
     runtimeFamily === "hermes" ? ["standard"] : [...KNOWN_SANDBOX_PROFILES];
 
@@ -854,9 +1015,29 @@ function getBackendCatalog(env = process.env, options = {}) {
   const runtimeFamily = normalizeRuntimeFamilyName(
     options.runtimeFamily || getDefaultRuntimeFamily(env),
   );
-  return KNOWN_DEPLOY_TARGETS.map((backendId) =>
-    buildCatalogEntry(backendId, env, { runtimeFamily }),
-  );
+  const kubernetesClusters = Array.isArray(options.kubernetesClusters)
+    ? options.kubernetesClusters
+    : [];
+  return KNOWN_DEPLOY_TARGETS.flatMap((backendId) => {
+    if (backendId === "k8s") {
+      return kubernetesClusters.map((cluster) => {
+        const target = buildKubernetesClusterExecutionTargetEntry(runtimeFamily, cluster, env);
+        return {
+          ...target,
+          id: target.id,
+          deployTarget: "k8s",
+          deployTargetLabel: target.label,
+          sandboxProfile: target.defaultSandboxProfile,
+          sandboxProfileLabel: sandboxProfileLabel(target.defaultSandboxProfile),
+          selectionId: target.id,
+          selectionLabel: target.fullLabel,
+          selectionType: "deploy_target",
+          legacyBackendId: "k8s",
+        };
+      });
+    }
+    return [buildCatalogEntry(backendId, env, { runtimeFamily })];
+  });
 }
 
 function isBackendEnabled(backend, env = process.env) {
@@ -874,23 +1055,36 @@ function buildBackendEnablementMessage(backendOrStatus, env = process.env) {
       : getBackendStatus(backendOrStatus, env);
   if (status.id === "k8s") {
     return (
-      `${status.label} is not enabled. Enable it with ` +
-      "ENABLED_BACKENDS=k3s, or use ENABLED_BACKENDS=k8s for upstream and managed Kubernetes."
+      `${status.label} is not enabled. Register a Kubernetes cluster in Admin -> Kubernetes.`
     );
   }
   return `${status.label} is not enabled. Enable it with ` + `ENABLED_BACKENDS=${status.id}.`;
 }
 
-function getRuntimeCatalog(env = process.env) {
+function getRuntimeCatalog(env = process.env, options = {}) {
   const defaultRuntimeFamily = getDefaultRuntimeFamily(env);
 
   return getEnabledRuntimeFamilies(env).map((runtimeFamily) => {
     const metadata = getRuntimeFamilyMetadata(runtimeFamily);
-    const executionTargets = getExecutionTargetCatalog(env, { runtimeFamily });
-    const sandboxProfiles = getSandboxProfileCatalog(env, { runtimeFamily });
+    const executionTargets = getExecutionTargetCatalog(env, {
+      runtimeFamily,
+      kubernetesClusters: options.kubernetesClusters,
+    });
+    const sandboxProfiles = getSandboxProfileCatalog(env, {
+      runtimeFamily,
+      kubernetesClusters: options.kubernetesClusters,
+    });
     const enabled = executionTargets.some((target) => target.enabled);
     const configured = executionTargets.some((target) => target.configured);
     const available = executionTargets.some((target) => target.available);
+    const enabledDeployTargets = Array.from(
+      new Set([
+        ...getEnabledDeployTargets(env, { runtimeFamily }),
+        ...executionTargets
+          .filter((target) => target.enabled)
+          .map((target) => target.deployTarget || target.id),
+      ]),
+    ).filter(Boolean);
 
     return {
       ...metadata,
@@ -900,7 +1094,7 @@ function getRuntimeCatalog(env = process.env) {
       isDefault: runtimeFamily === defaultRuntimeFamily,
       defaultDeployTarget: getDefaultDeployTarget(env, { runtimeFamily }),
       defaultSandboxProfile: getDefaultSandboxProfile(env, { runtimeFamily }),
-      enabledDeployTargets: getEnabledDeployTargets(env, { runtimeFamily }),
+      enabledDeployTargets,
       enabledSandboxProfiles: getEnabledSandboxProfiles(env, { runtimeFamily }),
       executionTargets,
       sandboxProfiles,
@@ -925,6 +1119,8 @@ module.exports = {
   backendConfigIssue,
   backendForRuntimeSelection,
   buildBackendEnablementMessage,
+  buildKubernetesClusterExecutionTargetEntry,
+  deployTargetFromExecutionTargetId,
   deployTargetForBackend,
   getBackendCatalog,
   getBackendMetadata,
@@ -952,6 +1148,7 @@ module.exports = {
   isProxmoxApiTokenId,
   normalizeBackendName,
   normalizeDeployTargetName,
+  normalizeExecutionTargetId,
   normalizeRuntimeFamilyName,
   normalizeSandboxProfileName,
   runtimeFamilyForBackend,

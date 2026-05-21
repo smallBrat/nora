@@ -12,8 +12,8 @@ const router = express.Router({ mergeParams: true });
 
 router.get("/cost", requireWorkspaceRole("viewer", "id"), async (req, res) => {
   try {
-    const periodDays = Math.max(1, Math.min(365, Number(req.query.period_days) || 30));
-    const summary = await metrics.getWorkspaceCost(req.params.id, { periodDays });
+    const costOptions = metrics.parseCostQuery(req.query);
+    const summary = await metrics.getWorkspaceCost(req.params.id, costOptions);
 
     // Evaluate budget crossings on every cost read. This is a cheap way to
     // surface alerts without standing up a separate cron — if the dashboard

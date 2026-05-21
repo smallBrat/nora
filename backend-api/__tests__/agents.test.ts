@@ -60,11 +60,16 @@ const mockGetDeploymentDefaults = jest.fn().mockResolvedValue({
   disk_gb: 10,
 });
 const mockGetAgentHubSourceApiKey = jest.fn().mockResolvedValue("nora_hub_test_key");
+const mockAssertKubernetesExecutionTargetAvailable = jest.fn().mockResolvedValue();
 jest.mock("../db", () => mockDb);
 jest.mock("../redisQueue", () => ({
   addDeploymentJob: mockAddDeploymentJob,
   getDLQJobs: jest.fn(),
   retryDLQJob: jest.fn(),
+}));
+jest.mock("../kubernetesClusters", () => ({
+  assertKubernetesExecutionTargetAvailable: mockAssertKubernetesExecutionTargetAvailable,
+  listKubernetesExecutionTargets: jest.fn().mockResolvedValue([]),
 }));
 jest.mock("../scheduler", () => ({
   selectNode: jest.fn().mockResolvedValue({ name: "worker-01" }),
@@ -74,6 +79,16 @@ jest.mock("../containerManager", () => ({
   stop: jest.fn().mockResolvedValue({}),
   restart: jest.fn().mockResolvedValue({}),
   destroy: jest.fn().mockResolvedValue({}),
+  canMutate: jest.fn(
+    (agent) =>
+      Boolean(agent?.container_id) ||
+      ((agent?.backend_type === "k8s" || agent?.deploy_target === "k8s") &&
+        Boolean(agent?.container_name || agent?.name || agent?.id)),
+  ),
+  canDestroy: jest.fn((agent) => Boolean(agent?.container_id || agent?.container_name)),
+  isKubernetesAgent: jest.fn(
+    (agent) => agent?.backend_type === "k8s" || agent?.deploy_target === "k8s",
+  ),
   status: jest.fn().mockResolvedValue({ running: true }),
   stats: mockStats,
 }));
@@ -126,6 +141,9 @@ jest.mock("../workspaces", () => ({
   createWorkspace: jest.fn(),
   addAgent: jest.fn(),
   getWorkspaceAgents: jest.fn().mockResolvedValue([]),
+  listAgentCandidates: jest.fn().mockResolvedValue([]),
+  removeAgent: jest.fn(),
+  listAccessibleAgents: jest.fn().mockResolvedValue([]),
 }));
 jest.mock("../integrations", () => ({
   listIntegrations: jest.fn().mockResolvedValue([]),
@@ -191,9 +209,14 @@ jest.mock("../channels", () => ({
   })),
 }));
 jest.mock("../metrics", () => ({
+  parseCostQuery: jest.fn((query = {}) => ({ periodDays: Number(query.period_days) || 30 })),
   getAgentMetrics: jest.fn().mockResolvedValue([]),
   getAgentSummary: jest.fn().mockResolvedValue({}),
   getAgentCost: jest.fn().mockResolvedValue(null),
+  getWorkspaceCost: jest.fn().mockResolvedValue({ totalUsd: 0, perAgent: [] }),
+  getAccessibleWorkspaceCosts: jest.fn().mockResolvedValue({ workspaces: [], uniqueFleetTotalUsd: 0 }),
+  recordMetric: jest.fn().mockResolvedValue(),
+  recordTokenUsage: jest.fn().mockResolvedValue(),
   recordApiMetric: jest.fn(),
 }));
 jest.mock("../platformSettings", () => {
@@ -247,6 +270,7 @@ jest.mock("../agentFiles", () => ({
 }));
 
 const app = require("../server");
+const metrics = require("../metrics");
 
 const userToken = jwt.sign({ id: "user-1", email: "user@nora.test", role: "user" }, JWT_SECRET, {
   expiresIn: "1h",
@@ -359,7 +383,6 @@ beforeEach(() => {
   delete process.env.ENABLED_BACKENDS;
   delete process.env.ENABLED_RUNTIME_FAMILIES;
   delete process.env.ENABLED_SANDBOX_PROFILES;
-  delete process.env.KUBECONFIG;
   delete process.env.KUBERNETES_SERVICE_HOST;
   delete process.env.NEXTAUTH_URL;
   require("../billing").IS_PAAS = false;
@@ -391,16 +414,27 @@ describe("GET /agents", () => {
   });
 
   it("returns agent list for authenticated user", async () => {
-    mockDb.query.mockResolvedValueOnce({
-      rows: [
-        { id: "a1", name: "Agent 1", status: "running", created_at: new Date().toISOString() },
-      ],
-    });
+    const workspaces = require("../workspaces");
+    workspaces.listAccessibleAgents.mockResolvedValueOnce([
+      { id: "a1", name: "Agent 1", status: "running", created_at: new Date().toISOString() },
+    ]);
 
     const res = await auth(request(app).get("/agents"));
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);
     expect(res.body[0]).toHaveProperty("name", "Agent 1");
+    expect(workspaces.listAccessibleAgents).toHaveBeenCalledWith("user-1", {
+      scope: "accessible",
+    });
+  });
+
+  it("supports direct-owned scope for deploy and quota surfaces", async () => {
+    const workspaces = require("../workspaces");
+    workspaces.listAccessibleAgents.mockResolvedValueOnce([]);
+
+    const res = await auth(request(app).get("/agents?scope=owned"));
+    expect(res.status).toBe(200);
+    expect(workspaces.listAccessibleAgents).toHaveBeenCalledWith("user-1", { scope: "owned" });
   });
 });
 
@@ -483,6 +517,48 @@ describe("GET /agents/:id", () => {
 
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty("status", "running");
+  });
+
+  it("includes Kubernetes pod replica status in agent details", async () => {
+    const containerManager = require("../containerManager");
+    containerManager.status.mockResolvedValueOnce({
+      running: true,
+      replicas: {
+        specReplicas: 2,
+        replicas: 2,
+        readyReplicas: 1,
+        availableReplicas: 1,
+        updatedReplicas: 2,
+      },
+    });
+    mockDb.query.mockResolvedValueOnce({
+      rows: [
+        {
+          id: "a-k8s-replicas",
+          name: "K8s Replicas",
+          status: "running",
+          user_id: "user-1",
+          runtime_family: "openclaw",
+          backend_type: "k8s",
+          deploy_target: "k8s",
+          execution_target_id: "k8s:test-cluster",
+          sandbox_profile: "standard",
+          container_id: "nora-oclaw-k8s-replicas",
+          effective_role: "owner",
+        },
+      ],
+    });
+
+    const res = await auth(request(app).get("/agents/a-k8s-replicas"));
+
+    expect(res.status).toBe(200);
+    expect(res.body.runtime_status.replicas).toEqual({
+      specReplicas: 2,
+      replicas: 2,
+      readyReplicas: 1,
+      availableReplicas: 1,
+      updatedReplicas: 2,
+    });
   });
 });
 
@@ -1009,6 +1085,20 @@ describe("Hermes WebUI routes", () => {
       stream: false,
       messages: [{ role: "user", content: "Inspect the workspace" }],
     });
+    expect(metrics.recordTokenUsage).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "a-hermes-chat", runtime_family: "hermes" }),
+      "user-1",
+      expect.objectContaining({
+        model: "desk-bot",
+        usage: { total_tokens: 42 },
+      }),
+      expect.objectContaining({
+        runtimeFamily: "hermes",
+        source: "hermes-ui",
+        model: "desk-bot",
+        sessionId: "sess-123",
+      }),
+    );
   });
 
   it("rejects Hermes cron routes for non-Hermes agents", async () => {
@@ -2152,18 +2242,29 @@ describe("POST /agents/deploy", () => {
     );
   });
 
-  it("queues an explicitly selected enabled backend", async () => {
-    process.env.ENABLED_BACKENDS = "docker,k8s";
-    process.env.KUBECONFIG = "/tmp/test-kubeconfig";
+  it("queues an explicitly selected Admin-registered Kubernetes target", async () => {
+    process.env.ENABLED_BACKENDS = "docker";
 
     mockDb.query
       .mockResolvedValueOnce({
-        rows: [{ id: "a-k8s", name: "K8sAgent", status: "queued", user_id: "user-1" }],
+        rows: [
+          {
+            id: "a-k8s",
+            name: "K8sAgent",
+            status: "queued",
+            user_id: "user-1",
+            deploy_target: "k8s",
+            execution_target_id: "k8s:test-cluster",
+          },
+        ],
       })
       .mockResolvedValueOnce({ rows: [] });
 
     const res = await auth(
-      request(app).post("/agents/deploy").send({ name: "K8sAgent", backend: "k8s" }),
+      request(app).post("/agents/deploy").send({
+        name: "K8sAgent",
+        deploy_target: "k8s:test-cluster",
+      }),
     );
 
     expect(res.status).toBe(200);
@@ -2171,14 +2272,14 @@ describe("POST /agents/deploy", () => {
       expect.objectContaining({
         id: "a-k8s",
         backend: "k8s",
+        execution_target_id: "k8s:test-cluster",
         sandbox: "standard",
       }),
     );
   });
 
   it("accepts runtime-family and deploy-target aliases", async () => {
-    process.env.ENABLED_BACKENDS = "docker,k8s";
-    process.env.KUBECONFIG = "/tmp/test-kubeconfig";
+    process.env.ENABLED_BACKENDS = "docker";
 
     mockDb.query
       .mockResolvedValueOnce({
@@ -2190,6 +2291,8 @@ describe("POST /agents/deploy", () => {
             user_id: "user-1",
             backend_type: "k8s",
             sandbox_type: "standard",
+            deploy_target: "k8s",
+            execution_target_id: "k8s:test-cluster",
           },
         ],
       })
@@ -2199,7 +2302,7 @@ describe("POST /agents/deploy", () => {
       request(app).post("/agents/deploy").send({
         name: "TargetAgent",
         runtime_family: "openclaw",
-        deploy_target: "k8s",
+        deploy_target: "k8s:test-cluster",
       }),
     );
 
@@ -2219,6 +2322,7 @@ describe("POST /agents/deploy", () => {
       expect.objectContaining({
         id: "a-target",
         backend: "k8s",
+        execution_target_id: "k8s:test-cluster",
         sandbox: "standard",
       }),
     );
@@ -2275,9 +2379,8 @@ describe("POST /agents/deploy", () => {
   });
 
   it("queues NemoClaw sandbox requests on Kubernetes execution targets", async () => {
-    process.env.ENABLED_BACKENDS = "docker,k8s";
+    process.env.ENABLED_BACKENDS = "docker";
     process.env.ENABLED_SANDBOX_PROFILES = "standard,nemoclaw";
-    process.env.KUBECONFIG = "/tmp/test-kubeconfig";
 
     mockDb.query
       .mockResolvedValueOnce({
@@ -2291,6 +2394,7 @@ describe("POST /agents/deploy", () => {
             sandbox_type: "nemoclaw",
             runtime_family: "openclaw",
             deploy_target: "k8s",
+            execution_target_id: "k8s:test-cluster",
             sandbox_profile: "nemoclaw",
           },
         ],
@@ -2300,7 +2404,7 @@ describe("POST /agents/deploy", () => {
     const res = await auth(
       request(app).post("/agents/deploy").send({
         name: "Nemo K8s",
-        deploy_target: "k8s",
+        deploy_target: "k8s:test-cluster",
         sandbox_profile: "nemoclaw",
       }),
     );
@@ -2310,6 +2414,7 @@ describe("POST /agents/deploy", () => {
       expect.objectContaining({
         id: "a-nemo-k8s",
         backend: "k8s",
+        execution_target_id: "k8s:test-cluster",
         sandbox: "nemoclaw",
       }),
     );
@@ -2823,8 +2928,7 @@ describe("POST /agents/:id/duplicate", () => {
   });
 
   it("recomputes the default image when duplicating onto a different execution target", async () => {
-    process.env.ENABLED_BACKENDS = "docker,k8s";
-    process.env.KUBECONFIG = "/tmp/test-kubeconfig";
+    process.env.ENABLED_BACKENDS = "docker";
 
     mockDb.query
       .mockResolvedValueOnce({
@@ -2862,6 +2966,7 @@ describe("POST /agents/:id/duplicate", () => {
             sandbox_type: "standard",
             runtime_family: "openclaw",
             deploy_target: "k8s",
+            execution_target_id: "k8s:test-cluster",
             sandbox_profile: "standard",
           },
         ],
@@ -2874,7 +2979,7 @@ describe("POST /agents/:id/duplicate", () => {
       request(app).post("/agents/a-source-k8s/duplicate").send({
         name: "Source Agent K8s",
         clone_mode: "full_clone",
-        deploy_target: "k8s",
+        deploy_target: "k8s:test-cluster",
       }),
     );
 
@@ -2885,6 +2990,7 @@ describe("POST /agents/:id/duplicate", () => {
       expect.objectContaining({
         id: "a-duplicate-k8s",
         backend: "k8s",
+        execution_target_id: "k8s:test-cluster",
         sandbox: "standard",
         image: "node:24-slim",
       }),
@@ -3048,9 +3154,8 @@ describe("POST /agent-hub/install", () => {
   });
 
   it("installs NemoClaw sandbox templates on Kubernetes execution targets", async () => {
-    process.env.ENABLED_BACKENDS = "docker,k8s";
+    process.env.ENABLED_BACKENDS = "docker";
     process.env.ENABLED_SANDBOX_PROFILES = "standard,nemoclaw";
-    process.env.KUBECONFIG = "/tmp/test-kubeconfig";
     const agentHubStoreModule = require("../agentHubStore");
     const snapshotsModule = require("../snapshots");
 
@@ -3083,6 +3188,7 @@ describe("POST /agent-hub/install", () => {
             sandbox_type: "nemoclaw",
             runtime_family: "openclaw",
             deploy_target: "k8s",
+            execution_target_id: "k8s:test-cluster",
             sandbox_profile: "nemoclaw",
           },
         ],
@@ -3094,7 +3200,7 @@ describe("POST /agent-hub/install", () => {
       request(app).post("/agent-hub/install").send({
         listingId: "listing-1",
         name: "COS Agent",
-        deploy_target: "k8s",
+        deploy_target: "k8s:test-cluster",
         sandbox_profile: "nemoclaw",
       }),
     );
@@ -3104,14 +3210,14 @@ describe("POST /agent-hub/install", () => {
       expect.objectContaining({
         id: "a-market-nemo-k8s",
         backend: "k8s",
+        execution_target_id: "k8s:test-cluster",
         sandbox: "nemoclaw",
       }),
     );
   });
 
   it("recomputes the default image when installing onto a different execution target", async () => {
-    process.env.ENABLED_BACKENDS = "docker,k8s";
-    process.env.KUBECONFIG = "/tmp/test-kubeconfig";
+    process.env.ENABLED_BACKENDS = "docker";
 
     const agentHubStoreModule = require("../agentHubStore");
     const snapshotsModule = require("../snapshots");
@@ -3150,6 +3256,7 @@ describe("POST /agent-hub/install", () => {
             sandbox_type: "standard",
             runtime_family: "openclaw",
             deploy_target: "k8s",
+            execution_target_id: "k8s:test-cluster",
             sandbox_profile: "standard",
           },
         ],
@@ -3161,7 +3268,7 @@ describe("POST /agent-hub/install", () => {
       request(app).post("/agent-hub/install").send({
         listingId: "listing-1",
         name: "COS Agent K8s",
-        deploy_target: "k8s",
+        deploy_target: "k8s:test-cluster",
       }),
     );
 
@@ -3172,6 +3279,7 @@ describe("POST /agent-hub/install", () => {
       expect.objectContaining({
         id: "a-market-k8s",
         backend: "k8s",
+        execution_target_id: "k8s:test-cluster",
         sandbox: "standard",
         image: "node:24-slim",
       }),
@@ -3895,6 +4003,68 @@ describe("POST /agents/:id/stop", () => {
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty("status", "stopped");
   });
+
+  it("stops a Kubernetes deployment by container_name when container_id is missing", async () => {
+    const containerManager = require("../containerManager");
+    mockDb.query
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: "a-k8s-stop",
+            name: "K8s Stop",
+            status: "running",
+            user_id: "user-1",
+            runtime_family: "openclaw",
+            backend_type: "k8s",
+            deploy_target: "k8s",
+            execution_target_id: "k8s:test-cluster",
+            sandbox_profile: "standard",
+            container_id: null,
+            container_name: "nora-oclaw-k8s-stop",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [{ id: "a-k8s-stop", status: "stopped" }] });
+
+    const res = await auth(request(app).post("/agents/a-k8s-stop/stop"));
+
+    expect(res.status).toBe(200);
+    expect(containerManager.stop).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "a-k8s-stop",
+        container_name: "nora-oclaw-k8s-stop",
+      }),
+    );
+    expect(res.body).toHaveProperty("status", "stopped");
+  });
+
+  it("keeps a Kubernetes agent running in Nora when Kubernetes stop fails", async () => {
+    const containerManager = require("../containerManager");
+    containerManager.stop.mockRejectedValueOnce(new Error("Kubernetes patch failed"));
+    mockDb.query.mockResolvedValueOnce({
+      rows: [
+        {
+          id: "a-k8s-stop-fail",
+          name: "K8s Stop Fail",
+          status: "running",
+          user_id: "user-1",
+          runtime_family: "openclaw",
+          backend_type: "k8s",
+          deploy_target: "k8s",
+          execution_target_id: "k8s:test-cluster",
+          sandbox_profile: "standard",
+          container_id: null,
+          container_name: "nora-oclaw-k8s-stop-fail",
+        },
+      ],
+    });
+
+    const res = await auth(request(app).post("/agents/a-k8s-stop-fail/stop"));
+
+    expect(res.status).toBe(500);
+    expect(res.body.error).toMatch(/Kubernetes patch failed/i);
+    expect(mockDb.query).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("POST /agents/:id/redeploy", () => {
@@ -3931,6 +4101,7 @@ describe("POST /agents/:id/redeploy", () => {
         "standard",
         "openclaw",
         "docker",
+        "docker",
         "standard",
         expect.stringMatching(/^nora-oclaw-warning-agent-/),
         "nora-openclaw-agent:local",
@@ -3942,6 +4113,7 @@ describe("POST /agents/:id/redeploy", () => {
         name: "Warning Agent",
         userId: "user-1",
         backend: "docker",
+        execution_target_id: "docker",
         sandbox: "standard",
         specs: { vcpu: 2, ram_mb: 2048, disk_gb: 20 },
         container_name: expect.stringMatching(/^nora-oclaw-warning-agent-/),
@@ -3950,9 +4122,8 @@ describe("POST /agents/:id/redeploy", () => {
   });
 
   it("accepts deploy-target overrides during redeploy and resets the sandbox when needed", async () => {
-    process.env.ENABLED_BACKENDS = "docker,k8s";
+    process.env.ENABLED_BACKENDS = "docker";
     process.env.ENABLED_SANDBOX_PROFILES = "standard,nemoclaw";
-    process.env.KUBECONFIG = "/tmp/test-kubeconfig";
 
     mockDb.query
       .mockResolvedValueOnce({
@@ -3978,7 +4149,7 @@ describe("POST /agents/:id/redeploy", () => {
 
     const res = await auth(
       request(app).post("/agents/a-nemo-redeploy/redeploy").send({
-        deploy_target: "k8s",
+        deploy_target: "k8s:test-cluster",
       }),
     );
 
@@ -3990,6 +4161,7 @@ describe("POST /agents/:id/redeploy", () => {
       "standard",
       "openclaw",
       "k8s",
+      "k8s:test-cluster",
       "standard",
       expect.stringMatching(/^nora-oclaw-nemo-agent-/),
       "node:24-slim",
@@ -3998,6 +4170,7 @@ describe("POST /agents/:id/redeploy", () => {
       expect.objectContaining({
         id: "a-nemo-redeploy",
         backend: "k8s",
+        execution_target_id: "k8s:test-cluster",
         sandbox: "standard",
         image: "node:24-slim",
       }),
@@ -4005,8 +4178,7 @@ describe("POST /agents/:id/redeploy", () => {
   });
 
   it("passes previous Kubernetes runtime refs so redeploy deletes the old resources first", async () => {
-    process.env.ENABLED_BACKENDS = "k8s";
-    process.env.KUBECONFIG = "/tmp/test-kubeconfig";
+    process.env.ENABLED_BACKENDS = "docker";
 
     mockDb.query
       .mockResolvedValueOnce({
@@ -4018,6 +4190,7 @@ describe("POST /agents/:id/redeploy", () => {
             runtime_family: "openclaw",
             backend_type: "k8s",
             deploy_target: "k8s",
+            execution_target_id: "k8s:test-cluster",
             sandbox_profile: "standard",
             vcpu: 2,
             ram_mb: 2048,
@@ -4046,14 +4219,14 @@ describe("POST /agents/:id/redeploy", () => {
         previous_backend: "k8s",
         previous_runtime_family: "openclaw",
         previous_deploy_target: "k8s",
+        previous_execution_target_id: "k8s:test-cluster",
         previous_sandbox_profile: "standard",
       }),
     );
   });
 
   it("recomputes the default image when redeploying onto a different execution target", async () => {
-    process.env.ENABLED_BACKENDS = "docker,k8s";
-    process.env.KUBECONFIG = "/tmp/test-kubeconfig";
+    process.env.ENABLED_BACKENDS = "docker";
 
     mockDb.query
       .mockResolvedValueOnce({
@@ -4079,17 +4252,18 @@ describe("POST /agents/:id/redeploy", () => {
 
     const res = await auth(
       request(app).post("/agents/a-docker-redeploy/redeploy").send({
-        deploy_target: "k8s",
+        deploy_target: "k8s:test-cluster",
       }),
     );
 
     expect(res.status).toBe(200);
-    expect(mockDb.query).toHaveBeenNthCalledWith(2, expect.stringContaining("image = $8"), [
+    expect(mockDb.query).toHaveBeenNthCalledWith(2, expect.stringContaining("image = $9"), [
       "a-docker-redeploy",
       "k8s",
       "standard",
       "openclaw",
       "k8s",
+      "k8s:test-cluster",
       "standard",
       expect.stringMatching(/^nora-oclaw-docker-agent-/),
       "node:24-slim",
@@ -4098,6 +4272,7 @@ describe("POST /agents/:id/redeploy", () => {
       expect.objectContaining({
         id: "a-docker-redeploy",
         backend: "k8s",
+        execution_target_id: "k8s:test-cluster",
         sandbox: "standard",
         image: "node:24-slim",
       }),
@@ -4139,12 +4314,13 @@ describe("POST /agents/:id/redeploy", () => {
     expect(res.status).toBe(200);
     expect(mockDb.query).toHaveBeenNthCalledWith(
       2,
-      expect.stringContaining("container_name = $7"),
+      expect.stringContaining("container_name = $8"),
       [
         "a-hermes-redeploy",
         "docker",
         "standard",
         "hermes",
+        "docker",
         "docker",
         "standard",
         expect.stringMatching(/^nora-hermes-desk-bot-/),
@@ -4155,6 +4331,7 @@ describe("POST /agents/:id/redeploy", () => {
       expect.objectContaining({
         id: "a-hermes-redeploy",
         backend: "docker",
+        execution_target_id: "docker",
         container_name: expect.stringMatching(/^nora-hermes-desk-bot-/),
         image: "nousresearch/hermes-agent:latest",
       }),
@@ -4184,6 +4361,80 @@ describe("POST /agents/:id/delete", () => {
     const res = await auth(request(app).post("/agents/a1/delete"));
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty("success", true);
+  });
+
+  it("rejects deleting a workspace-shared agent when caller is not the direct owner", async () => {
+    mockDb.query
+      .mockResolvedValueOnce({
+        rows: [{ id: "a-shared", container_id: null, user_id: "owner-2" }],
+      })
+      .mockResolvedValueOnce({ rows: [{ role: "admin" }] });
+
+    const res = await auth(request(app).post("/agents/a-shared/delete"));
+    expect(res.status).toBe(403);
+    expect(res.body.error).toMatch(/direct agent owner/i);
+  });
+
+  it("destroys Kubernetes resources by container_name before deleting a stale local record", async () => {
+    const containerManager = require("../containerManager");
+    mockDb.query
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: "a-k8s-stale",
+            name: "Stale K8s Agent",
+            user_id: "user-1",
+            runtime_family: "openclaw",
+            backend_type: "k8s",
+            deploy_target: "k8s",
+            execution_target_id: "k8s:test-cluster",
+            sandbox_profile: "standard",
+            container_id: null,
+            container_name: "nora-oclaw-stale-k8s-agent-abc123",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const res = await auth(request(app).delete("/agents/a-k8s-stale"));
+
+    expect(res.status).toBe(200);
+    expect(containerManager.destroy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "a-k8s-stale",
+        container_name: "nora-oclaw-stale-k8s-agent-abc123",
+      }),
+    );
+    expect(mockDb.query).toHaveBeenLastCalledWith("DELETE FROM agents WHERE id = $1", [
+      "a-k8s-stale",
+    ]);
+  });
+
+  it("keeps the Kubernetes agent record when runtime cleanup fails", async () => {
+    const containerManager = require("../containerManager");
+    containerManager.destroy.mockRejectedValueOnce(new Error("Kubernetes API unreachable"));
+    mockDb.query.mockResolvedValueOnce({
+      rows: [
+        {
+          id: "a-k8s-delete-fail",
+          name: "K8s Delete Fail",
+          user_id: "user-1",
+          runtime_family: "openclaw",
+          backend_type: "k8s",
+          deploy_target: "k8s",
+          execution_target_id: "k8s:test-cluster",
+          sandbox_profile: "standard",
+          container_id: null,
+          container_name: "nora-oclaw-delete-fail",
+        },
+      ],
+    });
+
+    const res = await auth(request(app).delete("/agents/a-k8s-delete-fail"));
+
+    expect(res.status).toBe(500);
+    expect(res.body.error).toMatch(/Kubernetes API unreachable/i);
+    expect(mockDb.query).toHaveBeenCalledTimes(1);
   });
 
   it("returns 404 for non-existent agent", async () => {

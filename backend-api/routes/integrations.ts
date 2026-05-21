@@ -241,7 +241,7 @@ async function getAgentIntegrationRuntimeTarget(agentId) {
   const agentResult = await db.query(
     `SELECT id, container_id, host, runtime_host, runtime_port, status, gateway_token,
             gateway_host_port, gateway_host, gateway_port, backend_type,
-            runtime_family, deploy_target, sandbox_profile, user_id
+            runtime_family, deploy_target, execution_target_id, sandbox_profile, user_id
        FROM agents WHERE id = $1`,
     [agentId],
   );

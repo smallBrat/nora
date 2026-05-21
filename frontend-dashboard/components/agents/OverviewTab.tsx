@@ -65,6 +65,36 @@ function formatRuntimeAddress(agent) {
   return `Port ${port}`;
 }
 
+function toReplicaCount(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function resolveKubernetesReplicaSnapshot(agent) {
+  const replicas = agent?.runtime_status?.replicas || agent?.replicas;
+  if (!replicas) return null;
+
+  const snapshot = {
+    desired: toReplicaCount(replicas.specReplicas ?? replicas.desiredReplicas ?? replicas.desired),
+    current: toReplicaCount(replicas.replicas ?? replicas.currentReplicas ?? replicas.current),
+    ready: toReplicaCount(replicas.readyReplicas ?? replicas.ready),
+    available: toReplicaCount(replicas.availableReplicas ?? replicas.available),
+    updated: toReplicaCount(replicas.updatedReplicas ?? replicas.updated),
+  };
+
+  return Object.values(snapshot).some((value) => value != null) ? snapshot : null;
+}
+
+function isKubernetesTarget(agent, executionTarget) {
+  return [executionTarget, agent?.deploy_target, agent?.backend_type]
+    .filter(Boolean)
+    .some((value) => String(value).trim().toLowerCase().startsWith("k8s"));
+}
+
+function formatReplicaCount(value) {
+  return value == null ? "—" : String(value);
+}
+
 export default function OverviewTab({
   agent,
   backendConfig,
@@ -79,8 +109,9 @@ export default function OverviewTab({
   const [lastError, setLastError] = useState(null);
   const [browserHostname, setBrowserHostname] = useState("");
   const deployModeLabel = formatRuntimePathLabel(agent, backendConfig);
+  const executionTarget = resolveAgentExecutionTarget(agent);
   const executionTargetLabel = formatExecutionTargetLabel(
-    resolveAgentExecutionTarget(agent),
+    executionTarget,
     backendConfig,
     agent.runtime_family,
   );
@@ -91,6 +122,8 @@ export default function OverviewTab({
   const supportsAgentHub = runtimeSupportsAgentHubSharing(agent);
   const gatewayAddress = formatGatewayAddress(agent, browserHostname);
   const runtimeAddress = formatRuntimeAddress(agent);
+  const isKubernetesAgent = isKubernetesTarget(agent, executionTarget);
+  const replicas = isKubernetesAgent ? resolveKubernetesReplicaSnapshot(agent) : null;
 
   // Fetch last error event when agent is in error state
   useEffect(() => {
@@ -389,6 +422,25 @@ export default function OverviewTab({
             </label>
             <p className="text-sm text-slate-900 mt-1">{executionTargetLabel}</p>
           </div>
+          {isKubernetesAgent ? (
+            <div>
+              <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+                Pod Replicas
+              </label>
+              <p className="text-sm text-slate-900 mt-1">
+                {replicas
+                  ? `${formatReplicaCount(replicas.ready)}/${formatReplicaCount(replicas.desired)} ready`
+                  : "—"}
+              </p>
+              {replicas ? (
+                <p className="text-xs text-slate-500 mt-1">
+                  Current {formatReplicaCount(replicas.current)} · Available{" "}
+                  {formatReplicaCount(replicas.available)} · Updated{" "}
+                  {formatReplicaCount(replicas.updated)}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
           <div>
             <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
               Sandbox

@@ -11,6 +11,39 @@ export interface Workspace {
   user_id: string;
   created_at: string;
   role: WorkspaceRole | null;
+  agent_count?: number;
+  member_count?: number;
+}
+
+export interface WorkspaceAgent {
+  id: string;
+  workspaceId: string;
+  agentId: string;
+  role: string;
+  assignedAt: string;
+  agentName: string;
+  agentStatus: string;
+  name?: string;
+  status?: string;
+  isDirectOwner: boolean;
+  runtime_family?: string | null;
+  deploy_target?: string | null;
+  execution_target_id?: string | null;
+  sandbox_profile?: string | null;
+  backend_type?: string | null;
+}
+
+export interface WorkspaceAgentCandidate {
+  id: string;
+  agentId: string;
+  name: string;
+  status: string;
+  assigned: boolean;
+  runtime_family?: string | null;
+  deploy_target?: string | null;
+  execution_target_id?: string | null;
+  sandbox_profile?: string | null;
+  backend_type?: string | null;
 }
 
 export interface WorkspaceMember {
@@ -56,6 +89,40 @@ export async function listWorkspaces(): Promise<Workspace[]> {
 export async function listMembers(workspaceId: string): Promise<WorkspaceMember[]> {
   const res = await fetchWithAuth(`/api/workspaces/${workspaceId}/members`);
   return jsonOrThrow<WorkspaceMember[]>(res);
+}
+
+export async function listWorkspaceAgents(workspaceId: string): Promise<WorkspaceAgent[]> {
+  const res = await fetchWithAuth(`/api/workspaces/${workspaceId}/agents`);
+  return jsonOrThrow<WorkspaceAgent[]>(res);
+}
+
+export async function listWorkspaceAgentCandidates(
+  workspaceId: string,
+): Promise<WorkspaceAgentCandidate[]> {
+  const res = await fetchWithAuth(`/api/workspaces/${workspaceId}/agent-candidates`);
+  return jsonOrThrow<WorkspaceAgentCandidate[]>(res);
+}
+
+export async function assignWorkspaceAgent(
+  workspaceId: string,
+  agentId: string,
+  role = "member",
+): Promise<{ id: string; workspace_id: string; agent_id: string; role: string }> {
+  const res = await fetchWithAuth(`/api/workspaces/${workspaceId}/agents`, {
+    method: "POST",
+    body: JSON.stringify({ agentId, role }),
+  });
+  return jsonOrThrow<{ id: string; workspace_id: string; agent_id: string; role: string }>(res);
+}
+
+export async function removeWorkspaceAgent(
+  workspaceId: string,
+  agentId: string,
+): Promise<void> {
+  const res = await fetchWithAuth(`/api/workspaces/${workspaceId}/agents/${agentId}`, {
+    method: "DELETE",
+  });
+  await jsonOrThrow<{ success: boolean }>(res);
 }
 
 export async function updateMemberRole(
@@ -239,11 +306,44 @@ export async function testAlertRule(workspaceId: string, ruleId: string): Promis
 export interface AgentCostEntry {
   agentId: string;
   agentName: string;
-  compute_cost: number;
+  status?: string | null;
+  runtime_family?: string | null;
+  deploy_target?: string | null;
+  execution_target_id?: string | null;
+  sandbox_profile?: string | null;
+  backend_type?: string | null;
+  workspaceRole?: string | null;
   token_cost: number;
   total_cost: number;
+  input_tokens?: number;
+  output_tokens?: number;
   total_tokens: number;
-  uptime_hours: number;
+  periodStart?: string | null;
+  periodEnd?: string | null;
+  cost_details?: {
+    tokens?: {
+      fallback_per_1k?: number;
+      total_tokens?: number;
+      input_tokens?: number;
+      output_tokens?: number;
+      total_cost?: number;
+      models?: Array<{
+        model: string;
+        provider?: string | null;
+        input_tokens: number;
+        output_tokens: number;
+        total_tokens: number;
+        token_cost: number;
+        request_count: number;
+        rate_source: "model" | "model_total" | "fallback" | "unknown" | string;
+        rates?: {
+          input_per_1k?: number | null;
+          output_per_1k?: number | null;
+          per_1k?: number | null;
+        };
+      }>;
+    };
+  };
 }
 
 export interface WorkspaceCost {
@@ -261,6 +361,24 @@ export interface WorkspaceCost {
   }>;
 }
 
+export interface WorkspaceCostGroup extends WorkspaceCost {
+  workspaceName: string;
+  role: WorkspaceRole | null;
+}
+
+export interface WorkspaceCostSummary {
+  periodDays: number;
+  periodStart: string;
+  periodEnd: string;
+  workspaceTotalUsd: number;
+  uniqueFleetTotalUsd: number;
+  workspaces: WorkspaceCostGroup[];
+  unassigned: {
+    totalUsd: number;
+    perAgent: AgentCostEntry[];
+  };
+}
+
 export interface WorkspaceBudget {
   id: string;
   workspaceId: string;
@@ -273,12 +391,36 @@ export interface WorkspaceBudget {
   updatedAt: string;
 }
 
+export interface CostQueryOptions {
+  periodDays?: number;
+  periodStart?: string;
+  periodEnd?: string;
+}
+
+function buildCostQuery({ periodDays = 30, periodStart, periodEnd }: CostQueryOptions = {}) {
+  const params = new URLSearchParams();
+  if (periodStart || periodEnd) {
+    if (periodStart) params.set("period_start", periodStart);
+    if (periodEnd) params.set("period_end", periodEnd);
+  } else {
+    params.set("period_days", String(periodDays));
+  }
+  return params.toString();
+}
+
 export async function getWorkspaceCost(
   workspaceId: string,
-  { periodDays = 30 }: { periodDays?: number } = {},
+  options: CostQueryOptions = {},
 ): Promise<WorkspaceCost> {
-  const res = await fetchWithAuth(`/api/workspaces/${workspaceId}/cost?period_days=${periodDays}`);
+  const res = await fetchWithAuth(`/api/workspaces/${workspaceId}/cost?${buildCostQuery(options)}`);
   return jsonOrThrow<WorkspaceCost>(res);
+}
+
+export async function getWorkspaceCostSummary(
+  options: CostQueryOptions = {},
+): Promise<WorkspaceCostSummary> {
+  const res = await fetchWithAuth(`/api/workspaces/cost?${buildCostQuery(options)}`);
+  return jsonOrThrow<WorkspaceCostSummary>(res);
 }
 
 export async function listBudgets(workspaceId: string): Promise<WorkspaceBudget[]> {

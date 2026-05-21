@@ -20,6 +20,7 @@ const {
   applyPersistedHermesState,
   getPersistedHermesState,
 } = require("../../backend-api/hermesUi");
+const { getKubernetesClusterProfile } = require("../../backend-api/kubernetesClusters");
 const {
   buildIntegrationSyncEntry,
   decryptSensitiveConfig,
@@ -1044,10 +1045,13 @@ function backendInstanceKey(runtimeFields = {}) {
     if (runtimeFields.runtime_family === "hermes") return "docker:hermes";
     if (runtimeFields.sandbox_profile === "nemoclaw") return "docker:nemoclaw";
   }
+  if (backend === "k8s" && runtimeFields.execution_target_id) {
+    return String(runtimeFields.execution_target_id).trim().toLowerCase() || "k8s";
+  }
   return backend;
 }
 
-function loadBackend(runtimeFields = {}) {
+async function loadBackend(runtimeFields = {}) {
   const key = backendInstanceKey(runtimeFields);
   if (backendInstances.has(key)) return backendInstances.get(key);
 
@@ -1065,10 +1069,20 @@ function loadBackend(runtimeFields = {}) {
     case "proxmox":
       instance = new (require("./backends/proxmox"))();
       break;
-    case "k8s":
-      instance = new (require("./backends/k8s"))();
-      break;
     default:
+      if (key.startsWith("k8s:")) {
+        const profile = await getKubernetesClusterProfile(key);
+        if (!profile) {
+          throw new Error(`Unknown Kubernetes execution target: ${key}`);
+        }
+        instance = new (require("./backends/k8s"))(profile);
+        break;
+      }
+      if (key === "k8s") {
+        throw new Error(
+          "Kubernetes provisioning requires an Admin-registered cluster target such as k8s:aks-eastus2.",
+        );
+      }
       console.warn(`Unknown backend "${key}", falling back to docker`);
       instance = new (require("./backends/docker"))();
       break;
@@ -1076,6 +1090,22 @@ function loadBackend(runtimeFields = {}) {
 
   backendInstances.set(key, instance);
   return instance;
+}
+
+function safeK8sName(name, fallback) {
+  return (
+    String(name || fallback || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 63) || fallback
+  );
+}
+
+function defaultK8sDeployName(runtimeFamily, id, name) {
+  const prefix = runtimeFamily === "hermes" ? "nora-hermes" : "nora-oclaw";
+  return safeK8sName(`${prefix}-${name || "agent"}-${id}`, `${prefix}-${id}`);
 }
 
 async function cleanupPreviousK8sRuntime({
@@ -1088,16 +1118,19 @@ async function cleanupPreviousK8sRuntime({
   );
   if (previousBackend !== "k8s") return;
 
-  const previousResourceName = jobData.previous_container_id || jobData.previous_container_name;
-  if (!previousResourceName) return;
-
   const previousRuntimeFields = buildAgentRuntimeFields({
     runtime_family: jobData.previous_runtime_family || fallbackRuntimeFields.runtime_family,
     backend_type: "k8s",
     deploy_target: "k8s",
+    execution_target_id:
+      jobData.previous_execution_target_id || fallbackRuntimeFields.execution_target_id,
     sandbox_profile: jobData.previous_sandbox_profile || fallbackRuntimeFields.sandbox_profile,
   });
-  const previousProvisioner = loadBackend(previousRuntimeFields);
+  const previousResourceName =
+    jobData.previous_container_id ||
+    jobData.previous_container_name ||
+    defaultK8sDeployName(previousRuntimeFields.runtime_family, agentId, jobData.name);
+  const previousProvisioner = await loadBackend(previousRuntimeFields);
 
   console.log(
     `[provisioner] Destroying previous Kubernetes runtime ${previousResourceName} before redeploying agent ${agentId}`,
@@ -1134,7 +1167,7 @@ const worker = new Worker(
     try {
       const agentRowResult = await db.query(
         `SELECT image, template_payload, sandbox_type, backend_type, runtime_family,
-            deploy_target, sandbox_profile, gateway_token
+            deploy_target, execution_target_id, sandbox_profile, gateway_token
        FROM agents
       WHERE id = $1`,
         [id],
@@ -1146,6 +1179,8 @@ const worker = new Worker(
         deploy_target: isKnownBackend(backend)
           ? normalizeBackendName(backend)
           : storedRuntimeFields.deploy_target,
+        execution_target_id:
+          job.data.execution_target_id || storedRuntimeFields.execution_target_id,
         backend_type: isKnownBackend(backend)
           ? normalizeBackendName(backend)
           : storedRuntimeFields.backend_type,
@@ -1153,7 +1188,7 @@ const worker = new Worker(
       });
       const resolvedBackend = resolvedRuntimeFields.backend_type;
       const resolvedSandbox = resolvedRuntimeFields.sandbox_profile;
-      const provisioner = loadBackend(resolvedRuntimeFields);
+      const provisioner = await loadBackend(resolvedRuntimeFields);
       const resolvedImage =
         image ||
         agentRow.image ||
@@ -1437,6 +1472,7 @@ const worker = new Worker(
           templatePayload,
           runtimeFamily: resolvedRuntimeFields.runtime_family,
           deployTarget: resolvedRuntimeFields.deploy_target,
+          executionTargetId: resolvedRuntimeFields.execution_target_id,
           sandboxProfile: resolvedRuntimeFields.sandbox_profile,
           abortSignal: abortController.signal,
           env: {
@@ -1580,6 +1616,7 @@ const worker = new Worker(
                 backend_type: resolvedBackend,
                 runtime_family: "hermes",
                 deploy_target: resolvedRuntimeFields.deploy_target,
+                execution_target_id: resolvedRuntimeFields.execution_target_id,
                 sandbox_profile: "standard",
                 host,
                 runtime_host: runtimeHost,
@@ -1634,8 +1671,9 @@ const worker = new Worker(
               image = COALESCE($12, image),
               runtime_family = $13,
               deploy_target = $14,
-              sandbox_profile = $15,
-              sandbox_type = $16
+              execution_target_id = $15,
+              sandbox_profile = $16,
+              sandbox_type = $17
         WHERE id = $1`,
           [
             id,
@@ -1652,6 +1690,7 @@ const worker = new Worker(
             resolvedImage || null,
             resolvedRuntimeFields.runtime_family,
             resolvedRuntimeFields.deploy_target,
+            resolvedRuntimeFields.execution_target_id,
             resolvedRuntimeFields.sandbox_profile,
             resolvedRuntimeFields.sandbox_type,
           ],
@@ -1820,7 +1859,7 @@ const clawhubInstallWorker = new Worker(
 
     const result = await db.query(
       `SELECT id, name, status, container_id, backend_type, runtime_family, deploy_target,
-              sandbox_profile, clawhub_skills
+              execution_target_id, sandbox_profile, clawhub_skills
          FROM agents
         WHERE id = $1
         LIMIT 1`,
@@ -1836,7 +1875,7 @@ const clawhubInstallWorker = new Worker(
     if (!agent.container_id || (agent.status !== "running" && agent.status !== "warning")) {
       throw new Error("Start the agent before installing skills.");
     }
-    const provisioner = loadBackend(buildAgentRuntimeFields(agent));
+    const provisioner = await loadBackend(buildAgentRuntimeFields(agent));
 
     logInstall("start", "Starting install job");
 

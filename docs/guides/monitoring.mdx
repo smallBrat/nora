@@ -8,7 +8,7 @@ Nora collects runtime metrics, activity events, and cost data for every agent yo
 
 ![Platform monitoring — agent counts, queue depth, and recent activity at a glance](/images/guides/monitoring/monitoring-overview.png)
 
-The platform-level monitoring endpoint returns aggregate statistics across all agents on your account, including totals for running agents, queued jobs, and recent activity.
+The platform-level monitoring endpoint returns aggregate statistics across all agents you can access, including directly owned agents and agents shared with you through workspaces. It includes totals for running agents, queued jobs, and recent activity.
 
 ```http theme={null}
 GET /api/monitoring/metrics
@@ -132,13 +132,33 @@ GET /api/agents/:id/metrics?type=cpu&since=2026-04-09T00:00:00Z
 
 ![Workspace cost panel — daily provider spend stacked across the past week](/images/guides/monitoring/monitoring-cost.png)
 
-Nora tracks token usage and associated costs for each agent. To view the accumulated cost data for an agent:
+Nora tracks token usage for each agent and estimates spend from model rates. The operator cost dashboard groups token spend by workspace, links each row back to the related agent, and reports a unique fleet total so an agent assigned to multiple workspaces is not double-counted. Each agent row can show token usage grouped by model.
+
+To view the all-workspaces cost dashboard through the API:
+
+```http theme={null}
+GET /api/workspaces/cost?period_days=30
+```
+
+Use `period_start=YYYY-MM-DD&period_end=YYYY-MM-DD` for a custom UTC date range. The dashboard also supports searching by workspace, agent, model, or provider.
+
+The response includes `workspaces[]`, `unassigned.perAgent[]`, `workspaceTotalUsd`, `uniqueFleetTotalUsd`, and each agent's `cost_details.tokens`. Use `uniqueFleetTotalUsd` for fleet-wide totals and workspace totals for team-level budgeting.
+
+Token cost uses `COST_MODEL_RATES_JSON` when the metric row includes model metadata. Rows without model metadata are grouped as `Unknown model` and priced with `COST_PER_1K_TOKENS`.
+
+To view the accumulated cost data for one agent:
 
 ```http theme={null}
 GET /api/agents/:id/cost
 ```
 
-The response includes cost totals and usage breakdowns. If the agent has no recorded usage, the endpoint returns a `404`.
+The response includes token totals and usage breakdowns. If the agent exists but has no recorded token usage in the selected window, totals are zero.
+
+To view one workspace's cost breakdown:
+
+```http theme={null}
+GET /api/workspaces/:id/cost?period_days=30
+```
 
 ## Performance data
 

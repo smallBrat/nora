@@ -33,6 +33,7 @@ export default function SettingsTab({
     agent.runtime_family,
   );
   const sandboxLabel = formatSandboxProfileLabel(resolveAgentSandboxProfile(agent));
+  const canDelete = agent.isDirectOwner !== false;
 
   useEffect(() => {
     setAgentName(agent.name || "");
@@ -229,26 +230,35 @@ export default function SettingsTab({
         </p>
       </section>
 
-      {/* Danger Zone */}
-      <section className="bg-red-50 border border-red-200 rounded-2xl p-6 space-y-4">
-        <h3 className="text-sm font-bold text-red-700">Danger Zone</h3>
-        <p className="text-xs text-red-600">
-          Deleting this agent will permanently destroy the container and all associated data
-          including integrations, channels, and message history.
-        </p>
-        <button
-          onClick={() => setShowDeleteConfirm(true)}
-          disabled={!!actionLoading}
-          className="flex items-center gap-2 px-4 py-2.5 bg-red-600 text-white text-xs font-bold rounded-xl hover:bg-red-700 transition-all disabled:opacity-50"
-        >
-          {actionLoading === "delete" ? (
-            <Loader2 size={14} className="animate-spin" />
-          ) : (
-            <Trash2 size={14} />
-          )}
-          Delete Agent
-        </button>
-      </section>
+      {canDelete ? (
+        <section className="bg-red-50 border border-red-200 rounded-2xl p-6 space-y-4">
+          <h3 className="text-sm font-bold text-red-700">Danger Zone</h3>
+          <p className="text-xs text-red-600">
+            Deleting this agent will permanently destroy the container and all associated data
+            including integrations, channels, and message history.
+          </p>
+          <button
+            onClick={() => setShowDeleteConfirm(true)}
+            disabled={!!actionLoading}
+            className="flex items-center gap-2 px-4 py-2.5 bg-red-600 text-white text-xs font-bold rounded-xl hover:bg-red-700 transition-all disabled:opacity-50"
+          >
+            {actionLoading === "delete" ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <Trash2 size={14} />
+            )}
+            Delete Agent
+          </button>
+        </section>
+      ) : (
+        <section className="bg-slate-50 border border-slate-200 rounded-2xl p-6 space-y-2">
+          <h3 className="text-sm font-bold text-slate-700">Workspace-shared agent</h3>
+          <p className="text-xs text-slate-500">
+            This agent is shared through a workspace. Only the direct owner can delete the runtime;
+            workspace admins can remove the assignment from the workspace agents page.
+          </p>
+        </section>
+      )}
     </div>
   );
 }

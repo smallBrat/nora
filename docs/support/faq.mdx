@@ -77,20 +77,17 @@ If you are evaluating Nora or have just started self-hosting it, the questions b
   </Accordion>
 
   <Accordion title="Can I run Nora on Kubernetes?">
-    Yes. Nora supports Kubernetes as a provisioner backend. Set the following variable in your `.env` file to switch from the default Docker backend to Kubernetes:
+    Yes. Nora supports Kubernetes as a provisioner backend. Start Nora with the generic Kubernetes
+    compose overlay so kubeconfig files are mounted into the containers:
 
     ```bash theme={null}
-    ENABLED_BACKENDS=k8s
+    NORA_KUBECONFIGS_DIR=./.secrets/kubeconfigs
+    docker compose -f docker-compose.yml -f docker-compose.kubernetes.yml up -d --build
     ```
 
-    For a Compose-hosted control plane provisioning into K3s, use the K3s backend id and NodePort exposure:
-
-    ```bash theme={null}
-    ENABLED_BACKENDS=k3s
-    K3S_K8S_EXPOSURE_MODE=node-port
-    ```
-
-    This allows the Compose-hosted control plane to reach each agent runtime and gateway through K3s NodePorts. For setup details and the difference between K3s and cloud Kubernetes, see [K3s provisioner backend](/configuration/provisioner-backends/kubernetes-k3s). For managed Kubernetes, use the AKS, GKE, or EKS child pages under [Provisioner backends](/configuration/provisioner-backends).
+    Then register each cluster in **Admin -> Kubernetes** with a kubeconfig path like
+    `/kubeconfigs/aks-eastus2`. K3s clusters usually use NodePort exposure in the Admin row; AKS,
+    GKE, and EKS usually use LoadBalancer exposure.
   </Accordion>
 
   <Accordion title="How do I get support?">

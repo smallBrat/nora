@@ -8,6 +8,7 @@ const {
   isKnownDeployTarget,
   isKnownRuntimeFamily,
   isKnownSandboxProfile,
+  normalizeExecutionTargetId,
   normalizeDeployTargetName,
   normalizeRuntimeFamilyName,
   normalizeSandboxProfileName,
@@ -27,6 +28,10 @@ function parseDeployTarget(value) {
   return normalizeDeployTargetName(value);
 }
 
+function parseExecutionTargetId(value) {
+  return normalizeExecutionTargetId(value);
+}
+
 function parseSandboxProfile(value) {
   if (!isKnownSandboxProfile(value)) return null;
   return normalizeSandboxProfileName(value);
@@ -34,6 +39,10 @@ function parseSandboxProfile(value) {
 
 function normalizeRequestedDeployTarget(value) {
   return parseDeployTarget(value);
+}
+
+function normalizeRequestedExecutionTargetId(value) {
+  return parseExecutionTargetId(value);
 }
 
 function resolveFallbackRuntimeFields(fallback = {}) {
@@ -49,29 +58,24 @@ function resolveFallbackRuntimeFields(fallback = {}) {
 function hasNewRuntimeSelection(agent = {}) {
   return Boolean(
     parseRuntimeFamily(agent.runtime_family ?? agent.runtimeFamily) ||
-      parseDeployTarget(agent.deploy_target ?? agent.deployTarget) ||
-      parseSandboxProfile(agent.sandbox_profile ?? agent.sandboxProfile)
+    parseDeployTarget(agent.deploy_target ?? agent.deployTarget) ||
+    parseExecutionTargetId(agent.execution_target_id ?? agent.executionTargetId) ||
+    parseSandboxProfile(agent.sandbox_profile ?? agent.sandboxProfile),
   );
 }
 
 function resolveAgentRuntimeFamily(agent = {}) {
-  const explicitRuntimeFamily = parseRuntimeFamily(
-    agent.runtime_family ?? agent.runtimeFamily
-  );
+  const explicitRuntimeFamily = parseRuntimeFamily(agent.runtime_family ?? agent.runtimeFamily);
   if (explicitRuntimeFamily) return explicitRuntimeFamily;
 
   return getDefaultRuntimeFamily(process.env) || DEFAULT_RUNTIME_FAMILY;
 }
 
 function resolveAgentSandboxProfile(agent = {}) {
-  const explicitSandbox = parseSandboxProfile(
-    agent.sandbox_profile ?? agent.sandboxProfile
-  );
+  const explicitSandbox = parseSandboxProfile(agent.sandbox_profile ?? agent.sandboxProfile);
   if (explicitSandbox) return explicitSandbox;
 
-  const legacySandbox = parseSandboxProfile(
-    agent.sandbox_type ?? agent.sandboxType
-  );
+  const legacySandbox = parseSandboxProfile(agent.sandbox_type ?? agent.sandboxType);
   if (legacySandbox) return legacySandbox;
 
   const runtimeFamily = resolveAgentRuntimeFamily(agent);
@@ -80,12 +84,15 @@ function resolveAgentSandboxProfile(agent = {}) {
 
 function resolveAgentDeployTarget(agent = {}) {
   const explicitDeployTarget = parseDeployTarget(
-    agent.deploy_target ?? agent.deployTarget
+    agent.deploy_target ??
+      agent.deployTarget ??
+      agent.execution_target_id ??
+      agent.executionTargetId,
   );
   if (explicitDeployTarget) return explicitDeployTarget;
 
   const backendDeployTarget = parseDeployTarget(
-    agent.backend_type ?? agent.backendType ?? agent.backend
+    agent.backend_type ?? agent.backendType ?? agent.backend,
   );
   if (backendDeployTarget) return backendDeployTarget;
 
@@ -98,6 +105,19 @@ function resolveAgentDeployTarget(agent = {}) {
     runtimeFamily,
     sandbox: sandboxProfile,
   });
+}
+
+function resolveAgentExecutionTargetId(agent = {}) {
+  const explicitExecutionTarget = parseExecutionTargetId(
+    agent.execution_target_id ??
+      agent.executionTargetId ??
+      agent.deploy_target ??
+      agent.deployTarget,
+  );
+  if (explicitExecutionTarget) return explicitExecutionTarget;
+
+  const deployTarget = resolveAgentDeployTarget(agent);
+  return parseExecutionTargetId(deployTarget) || deployTarget;
 }
 
 function resolveAgentBackendType(agent = {}) {
@@ -129,6 +149,10 @@ function buildAgentRuntimeFields(agent = {}) {
     ...agent,
     runtime_family: runtimeFamily,
   });
+  const executionTargetId = resolveAgentExecutionTargetId({
+    ...agent,
+    runtime_family: runtimeFamily,
+  });
   const sandboxProfile = resolveAgentSandboxProfile({
     ...agent,
     runtime_family: runtimeFamily,
@@ -138,12 +162,14 @@ function buildAgentRuntimeFields(agent = {}) {
     ...agent,
     runtime_family: runtimeFamily,
     deploy_target: deployTarget,
+    execution_target_id: executionTargetId,
     sandbox_profile: sandboxProfile,
   });
 
   return {
     runtime_family: runtimeFamily,
     deploy_target: deployTarget,
+    execution_target_id: executionTargetId,
     sandbox_profile: sandboxProfile,
     backend_type: backendType,
     sandbox_type: sandboxProfile,
@@ -157,6 +183,7 @@ function isSameRuntimePath(left = {}, right = {}) {
   return (
     leftRuntime.runtime_family === rightRuntime.runtime_family &&
     leftRuntime.deploy_target === rightRuntime.deploy_target &&
+    leftRuntime.execution_target_id === rightRuntime.execution_target_id &&
     leftRuntime.sandbox_profile === rightRuntime.sandbox_profile
   );
 }
@@ -164,7 +191,7 @@ function isSameRuntimePath(left = {}, right = {}) {
 function resolveRequestedRuntimeFields({ request = {}, fallback = {} } = {}) {
   const fallbackRuntime = resolveFallbackRuntimeFields(fallback);
   const requestedRuntimeFamily = parseRuntimeFamily(
-    request.runtime_family ?? request.runtimeFamily
+    request.runtime_family ?? request.runtimeFamily,
   );
   const effectiveRuntimeFamily =
     requestedRuntimeFamily ||
@@ -172,23 +199,30 @@ function resolveRequestedRuntimeFields({ request = {}, fallback = {} } = {}) {
     getDefaultRuntimeFamily(process.env) ||
     DEFAULT_RUNTIME_FAMILY;
   const runtimeFamilyChanged =
-    Boolean(requestedRuntimeFamily) &&
-    requestedRuntimeFamily !== fallbackRuntime.runtime_family;
+    Boolean(requestedRuntimeFamily) && requestedRuntimeFamily !== fallbackRuntime.runtime_family;
   const rawRequestedDeployTarget = request.deploy_target ?? request.deployTarget;
-  const rawRequestedBackend =
-    request.backend ?? request.backend_type ?? request.backendType;
+  const rawRequestedExecutionTarget =
+    request.execution_target_id ?? request.executionTargetId ?? request.executionTarget;
+  const rawRequestedBackend = request.backend ?? request.backend_type ?? request.backendType;
+  const requestedExecutionTargetId =
+    normalizeRequestedExecutionTargetId(rawRequestedExecutionTarget) ||
+    normalizeRequestedExecutionTargetId(rawRequestedDeployTarget) ||
+    normalizeRequestedExecutionTargetId(rawRequestedBackend);
   const requestedDeployTarget =
     normalizeRequestedDeployTarget(rawRequestedDeployTarget) ||
-    normalizeRequestedDeployTarget(rawRequestedBackend);
+    normalizeRequestedDeployTarget(rawRequestedBackend) ||
+    normalizeRequestedDeployTarget(requestedExecutionTargetId);
   const requestedSandboxProfile = parseSandboxProfile(
     request.sandbox_profile ??
       request.sandboxProfile ??
       request.sandbox ??
       request.sandbox_type ??
-      request.sandboxType
+      request.sandboxType,
   );
   const placementRequested =
-    hasText(rawRequestedDeployTarget) || hasText(rawRequestedBackend);
+    hasText(rawRequestedDeployTarget) ||
+    hasText(rawRequestedExecutionTarget) ||
+    hasText(rawRequestedBackend);
   const defaultRuntimeFields = runtimeFamilyChanged
     ? buildAgentRuntimeFields({
         runtime_family: effectiveRuntimeFamily,
@@ -196,25 +230,29 @@ function resolveRequestedRuntimeFields({ request = {}, fallback = {} } = {}) {
     : fallbackRuntime;
   const sandboxProfile =
     requestedSandboxProfile ||
-    (!placementRequested && !runtimeFamilyChanged
-      ? defaultRuntimeFields.sandbox_profile
-      : null) ||
+    (!placementRequested && !runtimeFamilyChanged ? defaultRuntimeFields.sandbox_profile : null) ||
     getDefaultSandboxProfile(process.env, {
       runtimeFamily: effectiveRuntimeFamily,
     });
   const deployTarget =
     requestedDeployTarget ||
-    (!placementRequested && !runtimeFamilyChanged
-      ? defaultRuntimeFields.deploy_target
-      : null) ||
+    (!placementRequested && !runtimeFamilyChanged ? defaultRuntimeFields.deploy_target : null) ||
     getDefaultDeployTarget(process.env, {
       runtimeFamily: effectiveRuntimeFamily,
       sandbox: sandboxProfile,
     });
+  const executionTargetId =
+    requestedExecutionTargetId ||
+    (!placementRequested && !runtimeFamilyChanged
+      ? defaultRuntimeFields.execution_target_id
+      : null) ||
+    normalizeRequestedExecutionTargetId(deployTarget) ||
+    deployTarget;
 
   return buildAgentRuntimeFields({
     runtime_family: effectiveRuntimeFamily,
     deploy_target: deployTarget,
+    execution_target_id: executionTargetId,
     sandbox_profile: sandboxProfile,
   });
 }
@@ -235,6 +273,7 @@ module.exports = {
   resolveRequestedRuntimeFields,
   resolveAgentBackendType,
   resolveAgentDeployTarget,
+  resolveAgentExecutionTargetId,
   resolveAgentRuntimeFamily,
   resolveAgentSandboxProfile,
   resolveAgentSandboxType,

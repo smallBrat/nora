@@ -283,6 +283,7 @@ export default function ClawHubDeployPage() {
           name: draft.name,
           runtime_family: draft.runtimeFamily,
           deploy_target: draft.deployTarget,
+          execution_target_id: draft.deployTarget,
           sandbox_profile: draft.sandboxProfile || "standard",
           ...(draft.containerName.trim() ? { container_name: draft.containerName.trim() } : {}),
           ...(draft.model ? { model: draft.model } : {}),

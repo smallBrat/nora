@@ -3,8 +3,31 @@
 import { execFileSync } from "node:child_process";
 
 const API_BASE_URL = process.env.API_BASE_URL || "http://127.0.0.1:4100";
-const K8S_NAMESPACE = process.env.K8S_NAMESPACE || "openclaw-agents";
 const KUBECTL_BIN = process.env.KUBECTL_BIN || "kubectl";
+const K8S_CLUSTER_ID = process.env.NORA_K8S_CLUSTER_ID || "kind-local";
+const K8S_EXECUTION_TARGET_ID = `k8s:${K8S_CLUSTER_ID}`;
+const K8S_PROVIDER = process.env.NORA_K8S_PROVIDER || "kubernetes";
+const K8S_CLUSTER_LABEL = process.env.NORA_K8S_CLUSTER_LABEL || "Kind Local";
+const K8S_CLUSTER_NAME = process.env.NORA_K8S_CLUSTER_NAME || K8S_CLUSTER_ID;
+const K8S_KUBECONFIG_PATH = process.env.NORA_K8S_KUBECONFIG_PATH || "/kubeconfigs/kubeconfig";
+const K8S_NAMESPACE = process.env.NORA_K8S_NAMESPACE || "openclaw-agents";
+const K8S_OPENCLAW_NAMESPACE = process.env.NORA_K8S_OPENCLAW_NAMESPACE || K8S_NAMESPACE;
+const K8S_HERMES_NAMESPACE = process.env.NORA_K8S_HERMES_NAMESPACE || K8S_NAMESPACE;
+const K8S_EXPOSURE_MODE = process.env.NORA_K8S_EXPOSURE_MODE || "node-port";
+const K8S_RUNTIME_HOST = process.env.NORA_K8S_RUNTIME_HOST || "";
+const K8S_RUNTIME_NODE_PORT = process.env.NORA_K8S_RUNTIME_NODE_PORT || "";
+const K8S_GATEWAY_NODE_PORT = process.env.NORA_K8S_GATEWAY_NODE_PORT || "";
+const K8S_SERVICE_ANNOTATIONS_JSON = process.env.NORA_K8S_SERVICE_ANNOTATIONS_JSON || "";
+const K8S_LOAD_BALANCER_SOURCE_RANGES = process.env.NORA_K8S_LOAD_BALANCER_SOURCE_RANGES || "";
+const K8S_LOAD_BALANCER_CLASS = process.env.NORA_K8S_LOAD_BALANCER_CLASS || "";
+const K8S_LOAD_BALANCER_READY_TIMEOUT_MS = Number.parseInt(
+  process.env.NORA_K8S_LOAD_BALANCER_READY_TIMEOUT_MS || "600000",
+  10,
+);
+const K8S_LOAD_BALANCER_READY_INTERVAL_MS = Number.parseInt(
+  process.env.NORA_K8S_LOAD_BALANCER_READY_INTERVAL_MS || "5000",
+  10,
+);
 const POLL_INTERVAL_MS = Number.parseInt(process.env.K8S_SMOKE_POLL_MS || "5000", 10);
 // First boot can spend several minutes installing OpenClaw and bundled plugins.
 const POLL_TIMEOUT_MS = Number.parseInt(process.env.K8S_SMOKE_TIMEOUT_MS || "600000", 10);
@@ -68,6 +91,60 @@ function kubectl(...args) {
   }).trim();
 }
 
+function namespaceForRuntime(runtimeFamily) {
+  return runtimeFamily === "hermes" ? K8S_HERMES_NAMESPACE : K8S_OPENCLAW_NAMESPACE;
+}
+
+function parseServiceAnnotations() {
+  const raw = String(K8S_SERVICE_ANNOTATIONS_JSON || "").trim();
+  if (!raw) return {};
+  const parsed = JSON.parse(raw);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("NORA_K8S_SERVICE_ANNOTATIONS_JSON must be a JSON object");
+  }
+  return parsed;
+}
+
+async function registerKubernetesCluster(token) {
+  const body = {
+    id: K8S_CLUSTER_ID,
+    label: K8S_CLUSTER_LABEL,
+    provider: K8S_PROVIDER,
+    clusterName: K8S_CLUSTER_NAME,
+    credentialMode: "mounted_path",
+    kubeconfigPath: K8S_KUBECONFIG_PATH,
+    namespace: K8S_NAMESPACE,
+    openclawNamespace: K8S_OPENCLAW_NAMESPACE,
+    hermesNamespace: K8S_HERMES_NAMESPACE,
+    exposureMode: K8S_EXPOSURE_MODE,
+    runtimeHost: K8S_RUNTIME_HOST,
+    runtimeNodePort: K8S_RUNTIME_NODE_PORT,
+    gatewayNodePort: K8S_GATEWAY_NODE_PORT,
+    serviceAnnotations: parseServiceAnnotations(),
+    loadBalancerSourceRanges: K8S_LOAD_BALANCER_SOURCE_RANGES,
+    loadBalancerClass: K8S_LOAD_BALANCER_CLASS,
+    loadBalancerReadyTimeoutMs: K8S_LOAD_BALANCER_READY_TIMEOUT_MS,
+    loadBalancerReadyIntervalMs: K8S_LOAD_BALANCER_READY_INTERVAL_MS,
+    enabled: true,
+    isDefault: true,
+  };
+  const created = await api("/admin/kubernetes-clusters", {
+    method: "POST",
+    token,
+    body,
+    expectOk: false,
+  });
+  if (created.response.ok) return;
+  if (created.response.status !== 409) {
+    throw new Error(`Failed to register Kubernetes cluster: ${created.response.status}`);
+  }
+  await api(`/admin/kubernetes-clusters/${K8S_CLUSTER_ID}`, {
+    method: "PUT",
+    token,
+    body,
+  });
+}
+
 async function waitForAgentStatus(token, agentId, allowedStatuses) {
   const startedAt = Date.now();
 
@@ -128,8 +205,9 @@ async function waitForRuntimeSurface(token, agent) {
 
 function assertK8sResources(runtimeFamily, agentId) {
   const runtime = RUNTIMES[runtimeFamily];
-  kubectl("get", "deployment", runtime.deploymentName(agentId), "-n", K8S_NAMESPACE);
-  kubectl("get", "service", runtime.deploymentName(agentId), "-n", K8S_NAMESPACE);
+  const namespace = namespaceForRuntime(runtimeFamily);
+  kubectl("get", "deployment", runtime.deploymentName(agentId), "-n", namespace);
+  kubectl("get", "service", runtime.deploymentName(agentId), "-n", namespace);
 }
 
 function isHttpUrl(value) {
@@ -173,6 +251,8 @@ async function main() {
     });
     token = login.body.token;
 
+    await registerKubernetesCluster(token);
+
     for (const runtimeFamily of RUNTIME_FAMILIES) {
       const runtime = RUNTIMES[runtimeFamily];
       const deploy = await api("/agents/deploy", {
@@ -182,7 +262,8 @@ async function main() {
           name: `${runtime.label} K8s Smoke ${stamp}`,
           runtime_family: runtimeFamily,
           backend_type: "k8s",
-          deploy_target: "k8s",
+          deploy_target: K8S_EXECUTION_TARGET_ID,
+          execution_target_id: K8S_EXECUTION_TARGET_ID,
         },
       });
       const agentId = deploy.body.id;
@@ -248,6 +329,7 @@ async function main() {
       ok: true,
       agents: results,
       namespace: K8S_NAMESPACE,
+      executionTarget: K8S_EXECUTION_TARGET_ID,
     }));
   } finally {
     if (token) {

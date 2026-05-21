@@ -40,6 +40,9 @@ const mockWorkspaces = {
   createWorkspace: jest.fn(),
   addAgent: jest.fn(),
   getWorkspaceAgents: jest.fn().mockResolvedValue([]),
+  listAgentCandidates: jest.fn().mockResolvedValue([]),
+  removeAgent: jest.fn(),
+  listAccessibleAgents: jest.fn().mockResolvedValue([]),
 };
 jest.mock("../workspaces", () => mockWorkspaces);
 const mockWorkspaceMembers = {
@@ -108,9 +111,12 @@ jest.mock("../channels", () => ({
   handleInboundWebhook: jest.fn(),
 }));
 jest.mock("../metrics", () => ({
+  parseCostQuery: jest.fn((query = {}) => ({ periodDays: Number(query.period_days) || 30 })),
   getAgentMetrics: jest.fn().mockResolvedValue([]),
   getAgentSummary: jest.fn().mockResolvedValue({}),
   getAgentCost: jest.fn().mockResolvedValue(null),
+  getWorkspaceCost: jest.fn().mockResolvedValue({ totalUsd: 0, perAgent: [] }),
+  getAccessibleWorkspaceCosts: jest.fn().mockResolvedValue({ workspaces: [], uniqueFleetTotalUsd: 0 }),
   recordApiMetric: jest.fn(),
 }));
 
@@ -124,6 +130,8 @@ beforeEach(() => {
   mockWorkspaces.listWorkspaces.mockReset().mockResolvedValue([]);
   mockWorkspaces.createWorkspace.mockReset();
   mockWorkspaces.addAgent.mockReset();
+  mockWorkspaces.listAgentCandidates.mockReset().mockResolvedValue([]);
+  mockWorkspaces.removeAgent.mockReset();
   mockWorkspaceMembers.listMembers.mockReset().mockResolvedValue([]);
   mockWorkspaceMembers.updateMemberRole.mockReset();
   mockWorkspaceMembers.removeMember.mockReset();
@@ -269,6 +277,68 @@ describe("POST /workspaces/:id/agents", () => {
       request(app).post("/workspaces/ws-1/agents").send({ agentId: "a-foreign" }),
     );
     expect(res.status).toBe(404);
+  });
+
+  it("allows workspace editors to assign directly owned agents", async () => {
+    mockDb.query
+      .mockResolvedValueOnce({ rows: [{ id: "ws-1", user_id: "creator", role: "editor" }] })
+      .mockResolvedValueOnce({ rows: [{ id: "a1", user_id: "user-1", name: "Agent 1" }] });
+    mockWorkspaces.addAgent.mockResolvedValueOnce({
+      workspace_id: "ws-1",
+      agent_id: "a1",
+      role: "member",
+    });
+
+    const res = await auth(request(app).post("/workspaces/ws-1/agents").send({ agentId: "a1" }));
+    expect(res.status).toBe(200);
+    expect(mockWorkspaces.addAgent).toHaveBeenCalledWith("ws-1", "a1", undefined, "user-1");
+  });
+});
+
+describe("GET /workspaces/:id/agent-candidates", () => {
+  it("returns owned assignment candidates to editors", async () => {
+    mockDb.query.mockResolvedValueOnce({
+      rows: [{ id: "ws-1", user_id: "creator", role: "editor" }],
+    });
+    mockWorkspaces.listAgentCandidates.mockResolvedValueOnce([
+      { agentId: "a1", name: "Agent 1", assigned: false },
+    ]);
+
+    const res = await auth(request(app).get("/workspaces/ws-1/agent-candidates"));
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([{ agentId: "a1", name: "Agent 1", assigned: false }]);
+    expect(mockWorkspaces.listAgentCandidates).toHaveBeenCalledWith("ws-1", "user-1");
+  });
+});
+
+describe("GET /workspaces/cost", () => {
+  it("returns all accessible workspace cost groups", async () => {
+    const metrics = require("../metrics");
+    metrics.getAccessibleWorkspaceCosts.mockResolvedValueOnce({
+      periodDays: 30,
+      workspaces: [],
+      uniqueFleetTotalUsd: 0,
+    });
+
+    const res = await auth(request(app).get("/workspaces/cost?period_days=30"));
+    expect(res.status).toBe(200);
+    expect(metrics.getAccessibleWorkspaceCosts).toHaveBeenCalledWith("user-1", {
+      periodDays: 30,
+    });
+  });
+});
+
+describe("DELETE /workspaces/:id/agents/:agentId", () => {
+  it("allows workspace admins to remove an assignment without deleting the agent", async () => {
+    mockDb.query.mockResolvedValueOnce({
+      rows: [{ id: "ws-1", user_id: "creator", role: "admin" }],
+    });
+    mockWorkspaces.removeAgent.mockResolvedValueOnce({ workspace_id: "ws-1", agent_id: "a1" });
+
+    const res = await auth(request(app).delete("/workspaces/ws-1/agents/a1"));
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ success: true });
+    expect(mockWorkspaces.removeAgent).toHaveBeenCalledWith("ws-1", "a1");
   });
 });
 

@@ -4,64 +4,167 @@
 
 The Kubernetes backend is provider-neutral. Nora reads a kubeconfig, creates a namespace if needed, schedules one Deployment per agent, and creates one Service per agent. OpenClaw Services expose the runtime and gateway ports; Hermes Services expose the runtime and dashboard ports.
 
-During redeploy, Nora deletes the previous Kubernetes Deployment, Service, and bootstrap ConfigMap before creating the replacement. This cleanup runs through the same shared adapter for K3s, AKS, GKE, EKS, and generic Kubernetes clusters.
+During stop/start/restart, Nora patches the existing Kubernetes Deployment for the selected cluster and uses stored namespace hints from the agent host when needed. During delete or redeploy, Nora deletes the previous Deployment, Service, and bootstrap ConfigMap before removing or replacing the control-plane runtime reference. These lifecycle paths run through the same shared adapter for K3s, AKS, GKE, EKS, and generic Kubernetes clusters.
+
+Stopping an agent scales its Deployment to `0` replicas. Cloud consoles such as AKS can still show the zero-replica Deployment itself as `OK` because the object is healthy and matching its desired state; verify stop by checking that desired/ready replicas are `0` and that no pods remain for the agent. Use delete or redeploy when the Deployment and Service objects should be removed.
+
+The agent Overview tab shows the live Kubernetes pod replica snapshot in the Details block: desired, current, ready, available, and updated counts from the Deployment.
 
 ## Configuration
 
-```bash theme={null}
-ENABLED_BACKENDS=k8s
-KUBECONFIG=/kubeconfig/config
-K8S_PROVIDER=kubernetes
-K8S_NAMESPACE=openclaw-agents
-K8S_EXPOSURE_MODE=cluster-ip
-```
+Register Kubernetes clusters in **Admin -> Kubernetes**. Nora does not create a Kubernetes execution target from `.env`; each enabled Admin row with a passing connection test becomes a concrete execution target such as `k8s:aks-eastus2`.
 
-`KUBECONFIG` must be visible inside both `backend-api` and `worker-provisioner`. The managed-provider Compose overlays mount the host kubeconfig at `/kubeconfig/config` for both services. For production, prefer a scoped identity or service account with the permissions below instead of a broad cluster-admin kubeconfig.
+For production, prefer a scoped identity or service account with the permissions below instead of a broad cluster-admin kubeconfig.
 
-Set `K8S_PROVIDER` to the connected backend (`k3s`, `aks`, `gke`, `eks`, or `kubernetes`) so the deploy page, agent cards, and runtime details show labels like **Kubernetes on AKS** instead of a generic Kubernetes target.
+## Cluster registry
 
-Use `K8S_OPENCLAW_NAMESPACE` and `K8S_HERMES_NAMESPACE` when OpenClaw/NemoClaw and Hermes should land in separate namespaces. If those are empty, Nora falls back to `K8S_NAMESPACE`.
+Open **Admin -> Kubernetes** and register one row per cluster. Enabled rows appear in the operator Deploy page as separate execution targets only after the latest Admin **Test** result is `ok`:
+
+| Field                   | Purpose                                                                                                        |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------- |
+| Cluster id              | Stable id used in persisted agents, for example `k8s:aks-eastus2`.                                             |
+| Label                   | Operator-facing name shown in Deploy and runtime cards.                                                        |
+| Actual cluster name     | Cloud or kubeconfig cluster name, shown in target descriptions so operators know which backend is which.       |
+| Credential mode         | Use a mounted kubeconfig path or encrypted kubeconfig content. Encrypted kubeconfigs require `ENCRYPTION_KEY`. |
+| Namespaces and exposure | Per-cluster overrides for OpenClaw, Hermes, Service type, annotations, source ranges, and load-balancer class. |
+
+Agents deployed to a registry entry keep `deploy_target=k8s` and store the selected cluster in `execution_target_id`.
+
+### Admin registry setup
+
+Use clear labels so the Deploy page can show a named cluster such as **AKS East US 2** instead of a generic Kubernetes target.
+
+<Steps>
+  <Step title="Make sure the kubeconfig is mounted into Nora">
+    With `docker-compose.kubernetes.yml`, `NORA_KUBECONFIGS_DIR` is mounted into both
+    `backend-api` and `worker-provisioner` as `/kubeconfigs`. Put one kubeconfig file in that
+    directory for each cluster Nora should control.
+
+    | Setup | Host-side `.env` value | Admin Kubeconfig path |
+    | ----- | ---------------------- | --------------------- |
+    | Single cluster | `NORA_KUBECONFIGS_DIR=./.secrets/kubeconfigs` | `/kubeconfigs/aks-eastus2` |
+    | Multiple mounted files | `NORA_KUBECONFIGS_DIR=./.secrets/kubeconfigs` | `/kubeconfigs/<cluster-file>` |
+    | Kind smoke | `CONTAINER_KUBECONFIG_PATH=/tmp/nora-kind.container.kubeconfig` | `/kubeconfigs/nora-kind.container.kubeconfig` |
+
+    The value used in the Admin form is the container path, not the host path.
+
+  </Step>
+
+  <Step title="Open the Admin Kubernetes page">
+    Sign in as an admin and open **Admin -> Kubernetes**. Click **Add cluster**.
+  </Step>
+
+  <Step title="Fill the cluster identity fields">
+    Use stable values that make the Deploy page obvious to operators:
+
+    | Field | Example |
+    | ----- | ------- |
+    | Cluster id | `aks-eastus2` |
+    | Label | `AKS East US 2` |
+    | Provider | `AKS` |
+    | Actual cluster name | `nora-dns-vjb9kjjz` |
+
+  </Step>
+
+  <Step title="Select the credential mode">
+    For an AKS kubeconfig copied to `./.secrets/kubeconfigs/aks-eastus2`, use:
+
+    | Field | Value |
+    | ----- | ----- |
+    | Credential mode | `Mounted kubeconfig path` |
+    | Kubeconfig path | `/kubeconfigs/aks-eastus2` |
+
+    Do not enter `./.secrets/aks-kubeconfig` in this field unless Nora is running directly on the
+    host without Docker. In Compose, always use the path under `/kubeconfigs`.
+
+  </Step>
+
+  <Step title="Set namespaces and exposure">
+    For AKS LoadBalancer deployments:
+
+    | Field | Value |
+    | ----- | ----- |
+    | Fallback namespace | `nora-openclaw-agents` |
+    | OpenClaw namespace | `nora-openclaw-agents` |
+    | Hermes namespace | `nora-hermes-agents` |
+    | Exposure mode | `LoadBalancer` |
+    | Service annotations JSON | `{}` for public load balancers, or the internal-LB annotation JSON when needed |
+    | Source ranges | Your Nora control-plane egress CIDR when you can restrict access |
+    | Load balancer class | Leave empty for normal AKS Services |
+
+  </Step>
+
+  <Step title="Save, test, then deploy">
+    Save the cluster, click **Test**, then open the operator Deploy page. Nora hides failed,
+    untested, and disabled Kubernetes clusters from Deploy for both OpenClaw and Hermes. Once the
+    latest test is `ok`, the execution target appears as `k8s:aks-eastus2` internally and as the
+    label you configured in the UI.
+  </Step>
+</Steps>
+
+<Note>
+  For several Kubernetes clusters at once, use one Admin registry row per cluster. Mounted-path mode
+  uses files under `NORA_KUBECONFIGS_DIR`, which is mounted at `/kubeconfigs` in both containers.
+  For simpler multi-cluster setup, use **Encrypted kubeconfig** mode and paste each kubeconfig into
+  its registry row; that requires a valid `ENCRYPTION_KEY`.
+</Note>
+
+### Provider quick values
+
+Use these starting values when adding named clusters in **Admin -> Kubernetes**. Adjust labels, actual cluster names, CIDRs, and provider-specific Service options to match the real cluster.
+
+| Provider | Example cluster id | Credential mode         | Kubeconfig path                | Exposure        |
+| -------- | ------------------ | ----------------------- | ------------------------------ | --------------- |
+| Kind     | `kind-local`       | Mounted kubeconfig path | `/kubeconfigs/kind-local`      | `node-port`     |
+| K3s      | `k3s-local`        | Mounted kubeconfig path | `/kubeconfigs/k3s-local`       | `node-port`     |
+| AKS      | `aks-eastus2`      | Mounted kubeconfig path | `/kubeconfigs/aks-eastus2`     | `load-balancer` |
+| GKE      | `gke-us-central1`  | Mounted kubeconfig path | `/kubeconfigs/gke-us-central1` | `load-balancer` |
+| EKS      | `eks-us-east-1`    | Mounted kubeconfig path | `/kubeconfigs/eks-us-east-1`   | `load-balancer` |
+
+If you paste kubeconfig content instead of mounting a file, select **Encrypted kubeconfig** and leave the path field empty. That mode is often simpler when Nora controls several cloud clusters from the same Compose stack.
 
 ## Exposure modes
 
-| Mode            | Use when                                                              | Required settings                                            |
+Set these fields on the Admin cluster row:
+
+| Mode            | Use when                                                              | Required Admin settings                                      |
 | --------------- | --------------------------------------------------------------------- | ------------------------------------------------------------ |
-| `cluster-ip`    | Nora runs in the same cluster or has an in-cluster route to Services. | `K8S_NAMESPACE`                                              |
-| `node-port`     | K3s or another self-hosted cluster where Nora reaches node ports.     | `K8S_RUNTIME_HOST`, optional fixed node ports                |
+| `cluster-ip`    | Nora runs in the same cluster or has an in-cluster route to Services. | Fallback namespace, plus runtime-specific namespaces if used |
+| `node-port`     | K3s or another self-hosted cluster where Nora reaches node ports.     | Runtime host, optional fixed runtime and gateway node ports  |
 | `load-balancer` | Nora runs outside AKS, GKE, EKS, or another cloud cluster.            | Optional annotations, source ranges, and load balancer class |
 
 NodePort example:
 
-```bash theme={null}
-K8S_EXPOSURE_MODE=node-port
-K8S_RUNTIME_NODE_PORT=30909
-K8S_GATEWAY_NODE_PORT=31879 # OpenClaw gateway or Hermes dashboard
-K8S_RUNTIME_HOST=host.docker.internal
-```
+| Admin field       | Value                  |
+| ----------------- | ---------------------- |
+| Exposure mode     | `NodePort`             |
+| Runtime host      | `host.docker.internal` |
+| Runtime node port | `30909`                |
+| Gateway node port | `31879`                |
 
 LoadBalancer example:
 
-```bash theme={null}
-K8S_EXPOSURE_MODE=load-balancer
-K8S_LOAD_BALANCER_SOURCE_RANGES=<nora-control-plane-egress-cidr>
-K8S_LOAD_BALANCER_READY_TIMEOUT_MS=1200000
-```
+| Admin field               | Value                                |
+| ------------------------- | ------------------------------------ |
+| Exposure mode             | `LoadBalancer`                       |
+| Source ranges             | `<nora-control-plane-egress-cidr>`   |
+| Load balancer timeout     | `1200000`                            |
 
 ## Service customization
 
-Provider-specific Service annotations are passed as JSON:
+Provider-specific Service annotations are saved in the Admin **Service annotations JSON** field:
 
-```bash theme={null}
-K8S_SERVICE_ANNOTATIONS_JSON='{"example.com/annotation":"value"}'
+```json theme={null}
+{"example.com/annotation":"value"}
 ```
 
-`K8S_LOAD_BALANCER_SOURCE_RANGES` is a comma-separated CIDR list. Use it to restrict cloud load balancers to the Nora control-plane egress IP whenever possible.
+The Admin **Source ranges** field accepts comma-separated CIDRs. Use it to restrict cloud load balancers to the Nora control-plane egress IP whenever possible.
 
-`K8S_LOAD_BALANCER_CLASS` is copied to the Service `loadBalancerClass` field in `load-balancer` mode.
+The Admin **Load balancer class** field is copied to the Service `loadBalancerClass` field in `load-balancer` mode.
 
 ## RBAC expectations
 
-The kubeconfig identity needs permissions in `K8S_NAMESPACE` and in any runtime-specific namespaces set through `K8S_OPENCLAW_NAMESPACE` or `K8S_HERMES_NAMESPACE` to:
+The kubeconfig identity needs permissions in the Admin fallback namespace and in any runtime-specific OpenClaw or Hermes namespaces to:
 
 - Create and read Namespaces.
 - Create, read, patch, and delete Deployments.

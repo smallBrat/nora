@@ -3,7 +3,15 @@
 import { execFileSync } from "node:child_process";
 
 const API_BASE_URL = process.env.API_BASE_URL || "http://127.0.0.1:4110";
-const K8S_NAMESPACE = process.env.K8S_NAMESPACE || "openclaw-agents";
+const K8S_CLUSTER_ID = process.env.NORA_K8S_CLUSTER_ID || "runtime-path-smoke";
+const K8S_EXECUTION_TARGET_ID = `k8s:${K8S_CLUSTER_ID}`;
+const K8S_NAMESPACE = process.env.NORA_K8S_NAMESPACE || "openclaw-agents";
+const K8S_KUBECONFIG_PATH = process.env.NORA_K8S_KUBECONFIG_PATH || "/kubeconfigs/kubeconfig";
+const K8S_PROVIDER = process.env.NORA_K8S_PROVIDER || "kubernetes";
+const K8S_CLUSTER_LABEL = process.env.NORA_K8S_CLUSTER_LABEL || "Runtime Path Kubernetes";
+const K8S_CLUSTER_NAME = process.env.NORA_K8S_CLUSTER_NAME || K8S_CLUSTER_ID;
+const K8S_EXPOSURE_MODE = process.env.NORA_K8S_EXPOSURE_MODE || "node-port";
+const K8S_RUNTIME_HOST = process.env.NORA_K8S_RUNTIME_HOST || "";
 const KUBECTL_BIN = process.env.KUBECTL_BIN || "/tmp/nora-tools/kubectl";
 const POLL_INTERVAL_MS = Number.parseInt(
   process.env.RUNTIME_PATH_SMOKE_POLL_MS || "5000",
@@ -59,6 +67,39 @@ function kubectl(...args) {
     env: process.env,
     stdio: ["ignore", "pipe", "pipe"],
   }).trim();
+}
+
+async function registerKubernetesCluster(token) {
+  const body = {
+    id: K8S_CLUSTER_ID,
+    label: K8S_CLUSTER_LABEL,
+    provider: K8S_PROVIDER,
+    clusterName: K8S_CLUSTER_NAME,
+    credentialMode: "mounted_path",
+    kubeconfigPath: K8S_KUBECONFIG_PATH,
+    namespace: K8S_NAMESPACE,
+    openclawNamespace: K8S_NAMESPACE,
+    hermesNamespace: K8S_NAMESPACE,
+    exposureMode: K8S_EXPOSURE_MODE,
+    runtimeHost: K8S_RUNTIME_HOST,
+    enabled: true,
+    isDefault: true,
+  };
+  const created = await api("/admin/kubernetes-clusters", {
+    method: "POST",
+    token,
+    body,
+    expectOk: false,
+  });
+  if (created.response.ok) return;
+  if (created.response.status !== 409) {
+    throw new Error(`Failed to register Kubernetes cluster: ${created.response.status}`);
+  }
+  await api(`/admin/kubernetes-clusters/${K8S_CLUSTER_ID}`, {
+    method: "PUT",
+    token,
+    body,
+  });
 }
 
 async function waitForAgent(agentId, token, allowedStatuses) {
@@ -156,6 +197,8 @@ async function main() {
     });
     token = login.body.token;
 
+    await registerKubernetesCluster(token);
+
     const sourceDeploy = await api("/agents/deploy", {
       method: "POST",
       token,
@@ -185,7 +228,8 @@ async function main() {
       token,
       body: {
         name: `Runtime Path Duplicate ${stamp}`,
-        deploy_target: "k8s",
+        deploy_target: K8S_EXECUTION_TARGET_ID,
+        execution_target_id: K8S_EXECUTION_TARGET_ID,
         clone_mode: "files_only",
       },
     });
@@ -216,7 +260,8 @@ async function main() {
       method: "POST",
       token,
       body: {
-        deploy_target: "k8s",
+        deploy_target: K8S_EXECUTION_TARGET_ID,
+        execution_target_id: K8S_EXECUTION_TARGET_ID,
       },
     });
     sourceAgent = await waitForAgent(sourceId, token, [
@@ -243,7 +288,8 @@ async function main() {
       body: {
         listingId: listing.id,
         name: `Runtime Path Install ${stamp}`,
-        deploy_target: "k8s",
+        deploy_target: K8S_EXECUTION_TARGET_ID,
+        execution_target_id: K8S_EXECUTION_TARGET_ID,
       },
     });
     const installedId = installDeploy.body.id;

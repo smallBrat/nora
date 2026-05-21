@@ -2,16 +2,16 @@
 # Run the Kubernetes adapter lifecycle smoke against an operator-supplied cluster.
 #
 # Works for K3s, AKS, GKE, and EKS — they all share the same k8s adapter, so this
-# script just expects a working KUBECONFIG and a Compose overlay file.
+# script just expects a working KUBECONFIG and the generic Kubernetes Compose overlay.
 #
 # Required:
 #   KUBECONFIG_PATH       Host path to a kubeconfig the Compose stack can mount.
-#   COMPOSE_OVERLAY       Path to the provider Compose overlay
-#                         (docker-compose.k3s.yml, .aks.yml, .gke.yml, .eks.yml).
 #
 # Optional:
+#   COMPOSE_OVERLAY       Defaults to docker-compose.kubernetes.yml.
 #   API_BASE_URL          Defaults to http://127.0.0.1:8080/api
-#   K8S_NAMESPACE         Defaults to openclaw-agents.
+#   NORA_K8S_PROVIDER     k3s, aks, gke, eks, or kubernetes.
+#   NORA_K8S_NAMESPACE    Defaults to openclaw-agents.
 #   KUBECTL_BIN           Defaults to kubectl.
 #   K8S_SMOKE_RUNTIME_FAMILIES
 #                         Comma-separated runtime families to deploy.
@@ -28,26 +28,67 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
 : "${KUBECONFIG_PATH:?KUBECONFIG_PATH is required}"
-: "${COMPOSE_OVERLAY:?COMPOSE_OVERLAY is required (e.g. docker-compose.k3s.yml)}"
-
 if [[ ! -f "$KUBECONFIG_PATH" ]]; then
   echo "KUBECONFIG_PATH does not exist: $KUBECONFIG_PATH" >&2
   exit 1
 fi
 
+COMPOSE_OVERLAY="${COMPOSE_OVERLAY:-docker-compose.kubernetes.yml}"
 if [[ ! -f "$COMPOSE_OVERLAY" ]]; then
   echo "COMPOSE_OVERLAY does not exist: $COMPOSE_OVERLAY" >&2
   exit 1
 fi
 
 CONTAINER_KUBECONFIG_PATH="${CONTAINER_KUBECONFIG_PATH:-$KUBECONFIG_PATH}"
+if [[ ! -f "$CONTAINER_KUBECONFIG_PATH" ]]; then
+  echo "CONTAINER_KUBECONFIG_PATH does not exist: $CONTAINER_KUBECONFIG_PATH" >&2
+  exit 1
+fi
 API_BASE_URL="${API_BASE_URL:-http://127.0.0.1:8080/api}"
-K8S_NAMESPACE="${K8S_NAMESPACE:-openclaw-agents}"
+NORA_K8S_NAMESPACE="${NORA_K8S_NAMESPACE:-openclaw-agents}"
 KUBECTL_BIN="${KUBECTL_BIN:-kubectl}"
+DEFAULT_PROVIDER="${NORA_K8S_PROVIDER:-kubernetes}"
 
-export CONTAINER_KUBECONFIG_PATH
+case "$DEFAULT_PROVIDER" in
+  k3s)
+    DEFAULT_PROVIDER="k3s"
+    DEFAULT_LABEL="K3s Smoke"
+    DEFAULT_EXPOSURE="node-port"
+    ;;
+  aks)
+    DEFAULT_PROVIDER="aks"
+    DEFAULT_LABEL="AKS Smoke"
+    DEFAULT_EXPOSURE="load-balancer"
+    ;;
+  gke)
+    DEFAULT_PROVIDER="gke"
+    DEFAULT_LABEL="GKE Smoke"
+    DEFAULT_EXPOSURE="load-balancer"
+    ;;
+  eks)
+    DEFAULT_PROVIDER="eks"
+    DEFAULT_LABEL="EKS Smoke"
+    DEFAULT_EXPOSURE="load-balancer"
+    ;;
+  *)
+    DEFAULT_PROVIDER="kubernetes"
+    DEFAULT_LABEL="Kubernetes Smoke"
+    DEFAULT_EXPOSURE="load-balancer"
+    ;;
+esac
+
+export NORA_KUBECONFIGS_DIR="${NORA_KUBECONFIGS_DIR:-$(dirname "$CONTAINER_KUBECONFIG_PATH")}"
 export API_BASE_URL
-export K8S_NAMESPACE
+export NORA_K8S_CLUSTER_ID="${NORA_K8S_CLUSTER_ID:-${DEFAULT_PROVIDER}-smoke}"
+export NORA_K8S_CLUSTER_LABEL="${NORA_K8S_CLUSTER_LABEL:-$DEFAULT_LABEL}"
+export NORA_K8S_CLUSTER_NAME="${NORA_K8S_CLUSTER_NAME:-$NORA_K8S_CLUSTER_ID}"
+export NORA_K8S_PROVIDER="${NORA_K8S_PROVIDER:-$DEFAULT_PROVIDER}"
+export NORA_K8S_KUBECONFIG_PATH="${NORA_K8S_KUBECONFIG_PATH:-/kubeconfigs/$(basename "$CONTAINER_KUBECONFIG_PATH")}"
+export NORA_K8S_NAMESPACE
+export NORA_K8S_OPENCLAW_NAMESPACE="${NORA_K8S_OPENCLAW_NAMESPACE:-$NORA_K8S_NAMESPACE}"
+export NORA_K8S_HERMES_NAMESPACE="${NORA_K8S_HERMES_NAMESPACE:-$NORA_K8S_NAMESPACE}"
+export NORA_K8S_EXPOSURE_MODE="${NORA_K8S_EXPOSURE_MODE:-$DEFAULT_EXPOSURE}"
+export NORA_K8S_RUNTIME_HOST="${NORA_K8S_RUNTIME_HOST:-host.docker.internal}"
 export KUBECTL_BIN
 export KUBECONFIG="$KUBECONFIG_PATH"
 

@@ -73,13 +73,11 @@ function parseCsvPortSet(value) {
 
 function isAllowedGatewayPort(port) {
   const configuredPorts = parseCsvPortSet(process.env.NORA_GATEWAY_PROXY_ALLOWED_PORTS);
-  const configuredK8sNodePort = Number.parseInt(process.env.K8S_GATEWAY_NODE_PORT || "", 10);
   return (
     port === OPENCLAW_GATEWAY_PORT ||
     (port >= DOCKER_GATEWAY_HOST_PORT_MIN && port <= DOCKER_GATEWAY_HOST_PORT_MAX) ||
     (port >= K8S_NODE_PORT_MIN && port <= K8S_NODE_PORT_MAX) ||
-    configuredPorts.has(port) ||
-    port === configuredK8sNodePort
+    configuredPorts.has(port)
   );
 }
 
@@ -542,7 +540,7 @@ async function resolveAgent(agentId, userId) {
   const result = await db.query(
     `SELECT id, name, status, container_id, host, backend_type, gateway_token,
             gateway_host_port, gateway_host, gateway_port, runtime_host,
-            runtime_port, runtime_family, user_id
+            runtime_port, runtime_family, deploy_target, execution_target_id, user_id
        FROM agents WHERE id = $1`,
     [agentId],
   );
@@ -729,6 +727,7 @@ function createGatewayRouter() {
 
         let streamDone = false;
         let sawAssistantContent = false;
+        let finalTokenPayload = null;
         const streamHandler = (evt) => {
           const payload = evt.payload || evt;
           const state = payload.state;
@@ -746,6 +745,7 @@ function createGatewayRouter() {
           // The gateway sends a "final" for the user message before the assistant starts.
           if (state === "final" || state === "error" || state === "aborted") {
             if (role !== "user" && role !== "human" && sawAssistantContent) {
+              if (state === "final") finalTokenPayload = payload;
               streamDone = true;
             }
           }
@@ -793,6 +793,13 @@ function createGatewayRouter() {
 
         // Record metrics
         metrics.recordMetric(req.agent.id, req.user.id, "messages_sent", 1).catch(() => {});
+        metrics
+          .recordTokenUsage(req.agent, req.user.id, finalTokenPayload, {
+            source: "openclaw.gateway",
+            sessionId: session_id || "main",
+            requestId: idempotencyKey,
+          })
+          .catch(() => {});
 
         res.write(`data: ${JSON.stringify({ type: "done", runId })}\n\n`);
         res.write("data: [DONE]\n\n");
@@ -802,9 +809,13 @@ function createGatewayRouter() {
         const result = await rpcCall(req.agent, "chat.send", params, CHAT_TIMEOUT);
         // Record metrics
         metrics.recordMetric(req.agent.id, req.user.id, "messages_sent", 1).catch(() => {});
-        const tokens = result?.usage?.total_tokens;
-        if (tokens)
-          metrics.recordMetric(req.agent.id, req.user.id, "tokens_used", tokens).catch(() => {});
+        metrics
+          .recordTokenUsage(req.agent, req.user.id, result, {
+            source: "openclaw.gateway",
+            sessionId: session_id || "main",
+            requestId: idempotencyKey,
+          })
+          .catch(() => {});
         res.json(result);
       }
     } catch (err) {

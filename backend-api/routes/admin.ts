@@ -9,6 +9,7 @@ const { buildAgentHubTemplateUpdate } = require("../agentHubTemplateEdits");
 const snapshots = require("../snapshots");
 const containerManager = require("../containerManager");
 const releaseUpgrade = require("../releaseUpgrade");
+const kubernetesClusters = require("../kubernetesClusters");
 const { repairHermesAgentConfig } = require("../hermesUi");
 const { addBackupJob, addDeploymentJob, getDLQJobs, retryDLQJob } = require("../redisQueue");
 const backups = require("../backups");
@@ -86,6 +87,11 @@ function createHttpError(message, statusCode = 400) {
   return error;
 }
 
+function isIgnorableStopError(error) {
+  const message = String(error?.message || "");
+  return message.includes("already stopped") || message.includes("not running");
+}
+
 function normalizeRequestedRuntimeFamily(value) {
   if (!isKnownRuntimeFamily(value)) return null;
   return normalizeRuntimeFamilyName(value);
@@ -106,6 +112,12 @@ function assertRuntimeSelectionAvailable(runtimeFields) {
       status.issue || "Runtime selection is not configured for this Nora control plane.",
     );
   }
+  return status;
+}
+
+async function assertRuntimeTargetAvailable(runtimeFields) {
+  const status = assertRuntimeSelectionAvailable(runtimeFields);
+  await kubernetesClusters.assertKubernetesExecutionTargetAvailable(runtimeFields);
   return status;
 }
 
@@ -467,11 +479,14 @@ async function ensureNotLastAdmin(user) {
 }
 
 async function destroyAgent(agent) {
-  if (agent?.container_id) {
+  if (containerManager.canDestroy(agent)) {
     try {
       await containerManager.destroy(agent);
     } catch (error) {
       console.error("Container cleanup error:", error.message);
+      if (containerManager.isKubernetesAgent(agent)) {
+        throw error;
+      }
     }
   }
 
@@ -585,6 +600,104 @@ router.get(
   "/stats",
   asyncHandler(async (_req, res) => {
     res.json(await monitoring.getMetrics());
+  }),
+);
+
+router.get(
+  "/kubernetes-clusters",
+  asyncHandler(async (_req, res) => {
+    res.json(await kubernetesClusters.listKubernetesClusters());
+  }),
+);
+
+router.post(
+  "/kubernetes-clusters",
+  asyncHandler(async (req, res) => {
+    const cluster = await kubernetesClusters.createKubernetesCluster(req.body || {});
+    res.locals.auditContext = { settings: { kind: "kubernetes_clusters", id: cluster.id } };
+    await monitoring.logEvent(
+      "admin_kubernetes_cluster_created",
+      `Admin registered Kubernetes cluster "${cluster.label}"`,
+      adminAuditMetadata(req, {
+        settings: {
+          kind: "kubernetes_clusters",
+          cluster: {
+            id: cluster.id,
+            label: cluster.label,
+            provider: cluster.provider,
+            clusterName: cluster.clusterName,
+          },
+        },
+      }),
+    );
+    res.status(201).json(cluster);
+  }),
+);
+
+router.put(
+  "/kubernetes-clusters/:id",
+  asyncHandler(async (req, res) => {
+    const cluster = await kubernetesClusters.updateKubernetesCluster(req.params.id, req.body || {});
+    res.locals.auditContext = { settings: { kind: "kubernetes_clusters", id: cluster.id } };
+    await monitoring.logEvent(
+      "admin_kubernetes_cluster_updated",
+      `Admin updated Kubernetes cluster "${cluster.label}"`,
+      adminAuditMetadata(req, {
+        settings: {
+          kind: "kubernetes_clusters",
+          cluster: {
+            id: cluster.id,
+            label: cluster.label,
+            provider: cluster.provider,
+            clusterName: cluster.clusterName,
+            enabled: cluster.enabled,
+          },
+        },
+      }),
+    );
+    res.json(cluster);
+  }),
+);
+
+router.post(
+  "/kubernetes-clusters/:id/test",
+  asyncHandler(async (req, res) => {
+    const cluster = await kubernetesClusters.testKubernetesCluster(req.params.id);
+    res.locals.auditContext = { settings: { kind: "kubernetes_clusters", id: cluster.id } };
+    await monitoring.logEvent(
+      "admin_kubernetes_cluster_tested",
+      `Admin tested Kubernetes cluster "${cluster.label}" (${cluster.lastTestStatus})`,
+      adminAuditMetadata(req, {
+        settings: {
+          kind: "kubernetes_clusters",
+          cluster: {
+            id: cluster.id,
+            label: cluster.label,
+            status: cluster.lastTestStatus,
+          },
+        },
+      }),
+    );
+    res.json(cluster);
+  }),
+);
+
+router.delete(
+  "/kubernetes-clusters/:id",
+  asyncHandler(async (req, res) => {
+    const cluster = await kubernetesClusters.deleteKubernetesCluster(req.params.id);
+    res.locals.auditContext = { settings: { kind: "kubernetes_clusters", id: cluster.id } };
+    await monitoring.logEvent(
+      "admin_kubernetes_cluster_deleted",
+      `Admin deleted Kubernetes cluster "${cluster.label}"`,
+      adminAuditMetadata(req, {
+        settings: {
+          kind: "kubernetes_clusters",
+          cluster: { id: cluster.id, label: cluster.label },
+        },
+      }),
+    );
+    res.json({ success: true, cluster });
   }),
 );
 
@@ -1356,7 +1469,7 @@ router.post(
     const agent = await findAdminAgent(req.params.id, { includeOwner: true });
     if (!agent) return res.status(404).json({ error: "Agent not found" });
     res.locals.auditContext = buildAgentContext(agent);
-    if (!agent.container_id) {
+    if (!containerManager.canMutate(agent)) {
       return res.status(400).json({ error: "No container - redeploy the agent first" });
     }
 
@@ -1390,12 +1503,15 @@ router.post(
     if (!agent) return res.status(404).json({ error: "Agent not found" });
     res.locals.auditContext = buildAgentContext(agent);
 
-    if (agent.container_id) {
+    if (containerManager.canMutate(agent)) {
       try {
         await containerManager.stop(agent);
       } catch (error) {
-        if (!error.message.includes("already stopped") && !error.message.includes("not running")) {
+        if (!isIgnorableStopError(error)) {
           console.error("Container stop error:", error.message);
+          if (containerManager.isKubernetesAgent(agent)) {
+            throw error;
+          }
         }
       }
     }
@@ -1428,7 +1544,7 @@ router.post(
     const agent = await findAdminAgent(req.params.id, { includeOwner: true });
     if (!agent) return res.status(404).json({ error: "Agent not found" });
     res.locals.auditContext = buildAgentContext(agent);
-    if (!agent.container_id) {
+    if (!containerManager.canMutate(agent)) {
       return res.status(400).json({ error: "No container - redeploy the agent first" });
     }
 
@@ -1512,7 +1628,7 @@ router.post(
       },
       fallback: currentRuntimeFields,
     });
-    assertRuntimeSelectionAvailable(runtimeFields);
+    await assertRuntimeTargetAvailable(runtimeFields);
     const containerName = resolveContainerName({
       requestedName: requestBody.container_name,
       currentName: agent.container_name,
@@ -1541,9 +1657,10 @@ router.post(
               sandbox_type = $3,
               runtime_family = $4,
               deploy_target = $5,
-              sandbox_profile = $6,
-              container_name = $7,
-              image = $8
+              execution_target_id = $6,
+              sandbox_profile = $7,
+              container_name = $8,
+              image = $9
         WHERE id = $1`,
       [
         agent.id,
@@ -1551,6 +1668,7 @@ router.post(
         runtimeFields.sandbox_type,
         runtimeFields.runtime_family,
         runtimeFields.deploy_target,
+        runtimeFields.execution_target_id,
         runtimeFields.sandbox_profile,
         containerName,
         image,
@@ -1564,6 +1682,7 @@ router.post(
       name: agent.name,
       userId: agent.user_id,
       backend: runtimeFields.backend_type,
+      execution_target_id: runtimeFields.execution_target_id,
       sandbox: runtimeFields.sandbox_profile,
       specs: {
         vcpu: agent.vcpu || 2,
@@ -1571,6 +1690,14 @@ router.post(
         disk_gb: agent.disk_gb || 20,
       },
       container_name: containerName,
+      previous_container_id: agent.container_id || null,
+      previous_container_name: agent.container_name || null,
+      previous_host: agent.host || null,
+      previous_backend: currentRuntimeFields.backend_type,
+      previous_runtime_family: currentRuntimeFields.runtime_family,
+      previous_deploy_target: currentRuntimeFields.deploy_target,
+      previous_execution_target_id: currentRuntimeFields.execution_target_id,
+      previous_sandbox_profile: currentRuntimeFields.sandbox_profile,
       image,
     });
 
@@ -1583,6 +1710,7 @@ router.post(
           nextStatus: "queued",
           runtimeFamily: runtimeFields.runtime_family,
           deployTarget: runtimeFields.deploy_target,
+          executionTargetId: runtimeFields.execution_target_id,
           sandboxProfile: runtimeFields.sandbox_profile,
         },
       }),

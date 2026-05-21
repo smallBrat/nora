@@ -156,6 +156,6 @@
   </text>
   <text x="322" y="952" class="small">
     For private agent traffic, set the Azure internal load balancer annotation in
-    AKS_K8S_SERVICE_ANNOTATIONS_JSON.
+    the Admin Service annotations JSON field.
   </text>
 </svg>

@@ -1,4 +1,4 @@
-import { Bell, ChevronDown, DollarSign, FolderOpen, Key, Loader2, Users } from "lucide-react";
+import { Bell, Bot, ChevronDown, DollarSign, FolderOpen, Key, Loader2, Users } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/router";
 import { clsx } from "clsx";
@@ -132,6 +132,17 @@ export default function WorkspaceSwitcher({ className = "" }: { className?: stri
                 >
                   <Users size={14} />
                   {t("Members & invitations")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpen(false);
+                    router.push(`/workspaces/${active.id}/agents`);
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-50"
+                >
+                  <Bot size={14} />
+                  {t("Agents")}
                 </button>
                 <button
                   type="button"

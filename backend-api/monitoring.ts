@@ -104,7 +104,13 @@ function buildUserEventScopeClause(
       OR EXISTS (
         SELECT 1
          FROM agents scoped_agents
-         WHERE scoped_agents.user_id = $${scopedAgentUserParamIndex}::uuid
+         LEFT JOIN workspace_agents scoped_workspace_agents
+           ON scoped_workspace_agents.agent_id = scoped_agents.id
+         LEFT JOIN workspace_members scoped_workspace_members
+           ON scoped_workspace_members.workspace_id = scoped_workspace_agents.workspace_id
+          AND scoped_workspace_members.user_id = $${scopedAgentUserParamIndex}::uuid
+         WHERE (scoped_agents.user_id = $${scopedAgentUserParamIndex}::uuid
+            OR scoped_workspace_members.user_id = $${scopedAgentUserParamIndex}::uuid)
            AND (
              scoped_agents.id::text = ${prefix}metadata->>'agentId'
              OR scoped_agents.id::text = ${prefix}metadata #>> '{agent,id}'
@@ -187,17 +193,27 @@ async function getMetrics(options = {}) {
       : null;
 
   const agentCountsQuery = userId
-    ? db.query("SELECT status, count(*)::int FROM agents WHERE user_id = $1 GROUP BY status", [
-        userId,
-      ])
+    ? db.query(
+        `SELECT a.status, count(DISTINCT a.id)::int
+           FROM agents a
+           LEFT JOIN workspace_agents wa ON wa.agent_id = a.id
+           LEFT JOIN workspace_members wm
+             ON wm.workspace_id = wa.workspace_id AND wm.user_id = $1
+          WHERE a.user_id = $1 OR wm.user_id = $1
+          GROUP BY a.status`,
+        [userId],
+      )
     : db.query("SELECT status, count(*)::int FROM agents GROUP BY status");
 
   const deploymentCountQuery = userId
     ? db.query(
-        `SELECT count(*)::int as total
+        `SELECT count(DISTINCT d.id)::int as total
            FROM deployments d
            INNER JOIN agents a ON a.id = d.agent_id
-          WHERE a.user_id = $1`,
+           LEFT JOIN workspace_agents wa ON wa.agent_id = a.id
+           LEFT JOIN workspace_members wm
+             ON wm.workspace_id = wa.workspace_id AND wm.user_id = $1
+          WHERE a.user_id = $1 OR wm.user_id = $1`,
         [userId],
       )
     : db.query("SELECT count(*)::int as total FROM deployments");

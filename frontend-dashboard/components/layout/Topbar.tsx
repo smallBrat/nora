@@ -20,6 +20,10 @@ const PAGE_META = {
     title: "Agent Details",
     subtitle: "Validate runtime health, logs, chat, and terminal access.",
   },
+  "/cost": {
+    title: "Cost",
+    subtitle: "Workspace token spend, unique fleet totals, and per-agent usage.",
+  },
   "/deploy": {
     title: "Deploy",
     subtitle: "Step 2 of 3 — deploy an agent, then validate it immediately.",
@@ -27,6 +31,22 @@ const PAGE_META = {
   "/logs": {
     title: "Logs",
     subtitle: "Review account activity, request failures, and runtime events.",
+  },
+  "/workspaces": {
+    title: "Workspaces",
+    subtitle: "Group agents and share them with teammates.",
+  },
+  "/workspaces/[id]/agents": {
+    title: "Workspace Agents",
+    subtitle: "Assign owned agents and manage team access.",
+  },
+  "/workspaces/[id]/cost": {
+    title: "Workspace Cost",
+    subtitle: "Per-agent token spend for this workspace.",
+  },
+  "/workspaces/[id]/members": {
+    title: "Workspace Members",
+    subtitle: "Manage teammates, roles, and invitations.",
   },
   "/settings": {
     title: "Settings",
