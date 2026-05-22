@@ -297,6 +297,219 @@
     "mcp": { "available": false }
   },
   {
+    "id": "wecom",
+    "name": "WeCom",
+    "icon": "message-square-share",
+    "category": "communication",
+    "description": "Configure the official WeCom OpenClaw plugin for bot mode, agent mode, or both from Nora's integrations panel.",
+    "authType": "custom",
+    "configFields": [
+      {
+        "key": "mode",
+        "label": "Connection Mode",
+        "type": "select",
+        "required": true,
+        "defaultValue": "bot",
+        "options": [
+          { "label": "Bot", "value": "bot" },
+          { "label": "Agent", "value": "agent" },
+          { "label": "Both", "value": "both" }
+        ]
+      },
+      {
+        "key": "defaultAccount.label",
+        "label": "Default Account Label",
+        "type": "text",
+        "required": false,
+        "placeholder": "Main WeCom account"
+      },
+      {
+        "key": "defaultAccount.bot.botId",
+        "label": "Default Bot ID",
+        "type": "text",
+        "required": false,
+        "placeholder": "wx_bot_xxx",
+        "visibleWhen": { "mode": ["bot", "both"] }
+      },
+      {
+        "key": "defaultAccount.bot.secret",
+        "label": "Default Bot Secret",
+        "type": "password",
+        "required": false,
+        "visibleWhen": { "mode": ["bot", "both"] }
+      },
+      {
+        "key": "defaultAccount.bot.name",
+        "label": "Bot Display Name",
+        "type": "text",
+        "required": false,
+        "placeholder": "Nora Bot",
+        "visibleWhen": { "mode": ["bot", "both"] }
+      },
+      {
+        "key": "defaultAccount.agent.corpId",
+        "label": "Corp ID",
+        "type": "text",
+        "required": false,
+        "placeholder": "ww1234567890abcdef",
+        "visibleWhen": { "mode": ["agent", "both"] }
+      },
+      {
+        "key": "defaultAccount.agent.corpSecret",
+        "label": "Corp Secret",
+        "type": "password",
+        "required": false,
+        "visibleWhen": { "mode": ["agent", "both"] }
+      },
+      {
+        "key": "defaultAccount.agent.agentId",
+        "label": "Agent ID",
+        "type": "number",
+        "required": false,
+        "visibleWhen": { "mode": ["agent", "both"] }
+      },
+      {
+        "key": "defaultAccount.agent.token",
+        "label": "Callback Token",
+        "type": "password",
+        "required": false,
+        "visibleWhen": { "mode": ["agent", "both"] }
+      },
+      {
+        "key": "defaultAccount.agent.encodingAESKey",
+        "label": "Encoding AES Key",
+        "type": "password",
+        "required": false,
+        "visibleWhen": { "mode": ["agent", "both"] }
+      },
+      {
+        "key": "policies.dmPolicy",
+        "label": "Direct Message Policy",
+        "type": "select",
+        "required": false,
+        "defaultValue": "pairing",
+        "options": [
+          { "label": "Pairing", "value": "pairing" },
+          { "label": "Open", "value": "open" },
+          { "label": "Allowlist", "value": "allowlist" },
+          { "label": "Disabled", "value": "disabled" }
+        ]
+      },
+      {
+        "key": "policies.allowFrom",
+        "label": "Direct Message Allowlist",
+        "type": "textarea",
+        "required": false,
+        "placeholder": "user_a,user_b",
+        "visibleWhen": { "policies.dmPolicy": ["allowlist"] }
+      },
+      {
+        "key": "policies.groupPolicy",
+        "label": "Group Policy",
+        "type": "select",
+        "required": false,
+        "defaultValue": "open",
+        "options": [
+          { "label": "Open", "value": "open" },
+          { "label": "Allowlist", "value": "allowlist" },
+          { "label": "Disabled", "value": "disabled" }
+        ]
+      },
+      {
+        "key": "policies.groupAllowFrom",
+        "label": "Group Allowlist",
+        "type": "textarea",
+        "required": false,
+        "placeholder": "group_a,group_b",
+        "visibleWhen": { "policies.groupPolicy": ["allowlist"] }
+      },
+      {
+        "key": "policies.groupsJson",
+        "label": "Per-Group Sender Allowlists",
+        "type": "textarea",
+        "required": false,
+        "section": "advanced",
+        "placeholder": "{\"group_id_1\":{\"allowFrom\":[\"user_a\",\"user_b\"]}}",
+        "visibleWhen": { "policies.groupPolicy": ["allowlist"] }
+      },
+      {
+        "key": "accountsJson",
+        "label": "Additional Accounts JSON",
+        "type": "textarea",
+        "required": false,
+        "section": "advanced",
+        "placeholder": "[{\"id\":\"sales\",\"label\":\"Sales\",\"bot\":{\"botId\":\"wx_bot_sales\",\"secret\":\"...\"}}]"
+      },
+      {
+        "key": "defaultAccount.bot.websocketUrl",
+        "label": "Bot WebSocket URL",
+        "type": "url",
+        "required": false,
+        "defaultValue": "wss://openws.work.weixin.qq.com",
+        "section": "advanced",
+        "visibleWhen": { "mode": ["bot", "both"] }
+      },
+      {
+        "key": "defaultAccount.bot.sendThinkingMessage",
+        "label": "Send Thinking Placeholder",
+        "type": "checkbox",
+        "required": false,
+        "defaultValue": true,
+        "section": "advanced",
+        "visibleWhen": { "mode": ["bot", "both"] }
+      },
+      {
+        "key": "defaultAccount.agent.callbackPath",
+        "label": "Agent Callback Path",
+        "type": "text",
+        "required": false,
+        "defaultValue": "/plugins/wecom/agent/default",
+        "section": "advanced",
+        "visibleWhen": { "mode": ["agent", "both"] }
+      },
+      {
+        "key": "advanced.mediaLocalRoots",
+        "label": "Media Local Roots",
+        "type": "text",
+        "required": false,
+        "section": "advanced",
+        "placeholder": "/workspace,/tmp"
+      },
+      {
+        "key": "advanced.egressProxyUrl",
+        "label": "Egress Proxy URL",
+        "type": "url",
+        "required": false,
+        "section": "advanced",
+        "placeholder": "http://proxy.internal:8080"
+      },
+      {
+        "key": "advanced.dynamicAgentEnabled",
+        "label": "Enable Dynamic Agent Routing",
+        "type": "checkbox",
+        "required": false,
+        "defaultValue": false,
+        "section": "advanced"
+      }
+    ],
+    "capabilities": ["connect", "verify", "message", "webhook"],
+    "usageHints": [
+      "Bot mode uses a WeCom bot account with WebSocket transport.",
+      "Agent mode uses encrypted HTTP callbacks and requires Corp ID, Agent ID, Token, and Encoding AES Key.",
+      "Use Additional Accounts JSON only when you need more than the default WeCom account in this first version."
+    ],
+    "credentialsUrl": "https://github.com/WecomTeam/wecom-openclaw-plugin",
+    "setupGuide": {
+      "steps": [
+        "Create or identify the WeCom bot or self-built app you want Nora to configure.",
+        "For Bot mode, collect the Bot ID and Secret from the WeCom bot setup flow.",
+        "For Agent mode, collect Corp ID, Corp Secret, Agent ID, Token, and Encoding AES Key from the WeCom admin console.",
+        "On running OpenClaw agents, Nora will install and configure the official WeCom plugin automatically after you connect."
+      ]
+    },
+    "mcp": { "available": false }
+  },
+  {
     "id": "email",
     "name": "Email (IMAP + SMTP)",
     "icon": "mail",

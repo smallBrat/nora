@@ -15,6 +15,7 @@ type IntegrationsModule = {
   buildIntegrationToolCatalogEntries: (...args: unknown[]) => unknown;
   normalizeEmailConfigInput: (...args: unknown[]) => unknown;
   extractEmailPrimarySecret: (...args: unknown[]) => unknown;
+  normalizeWecomConfigInput: (...args: unknown[]) => unknown;
   seedCatalog: (...args: unknown[]) => Promise<unknown>;
   getCatalog: (...args: unknown[]) => Promise<unknown>;
   getCatalogItem: (...args: unknown[]) => Promise<unknown>;
@@ -26,6 +27,7 @@ type IntegrationsModule = {
   updateIntegration: (...args: unknown[]) => Promise<unknown>;
   updateEmailCronJobId: (...args: unknown[]) => Promise<unknown>;
   testIntegration: (...args: unknown[]) => Promise<unknown>;
+  getDecryptedIntegration: (...args: unknown[]) => Promise<unknown>;
   getIntegrationsForSync: (...args: unknown[]) => Promise<unknown>;
   getIntegrationEnvVars: (...args: unknown[]) => Promise<unknown>;
   integrationProviderAffectsLlmAuth: (provider: string) => boolean;
@@ -39,6 +41,7 @@ const exported: IntegrationsModule = {
   buildIntegrationToolCatalogEntries: service.buildIntegrationToolCatalogEntries,
   normalizeEmailConfigInput: service.normalizeEmailConfigInput,
   extractEmailPrimarySecret: service.extractEmailPrimarySecret,
+  normalizeWecomConfigInput: service.normalizeWecomConfigInput,
   seedCatalog: service.seedCatalog,
   getCatalog: service.getCatalog,
   getCatalogItem: service.getCatalogItem,
@@ -50,6 +53,7 @@ const exported: IntegrationsModule = {
   updateIntegration: service.updateIntegration,
   updateEmailCronJobId: service.updateEmailCronJobId,
   testIntegration: service.testIntegration,
+  getDecryptedIntegration: service.getDecryptedIntegration,
   getIntegrationsForSync: service.getIntegrationsForSync,
   getIntegrationEnvVars: service.getIntegrationEnvVars,
   integrationProviderAffectsLlmAuth: service.integrationProviderAffectsLlmAuth,

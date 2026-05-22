@@ -89,6 +89,11 @@ const { discordProvider } = require("../providers/discord");
 const { telegramProvider } = require("../providers/telegram");
 const { teamsProvider } = require("../providers/teams");
 const { emailProvider } = require("../providers/email");
+const {
+  wecomProvider,
+  normalizeWecomConfigInput,
+  normalizeWecomDisplayConfig,
+} = require("../providers/wecom");
 const { twilioProvider } = require("../providers/twilio");
 const { sendgridProvider } = require("../providers/sendgrid");
 const { postgresqlProvider } = require("../providers/postgresql");
@@ -178,6 +183,7 @@ const providerRegistry = createProviderRegistry(createStubProvider);
   telegramProvider,
   teamsProvider,
   emailProvider,
+  wecomProvider,
   twilioProvider,
   sendgridProvider,
   postgresqlProvider,
@@ -325,7 +331,11 @@ function buildIntegrationSyncEntry(row = {}) {
   const provider = row.provider || row.catalog_id || row.id;
   const decryptedConfigRaw = decryptSensitiveConfig(provider, row.config);
   const decryptedConfig =
-    provider === "email" ? normalizeEmailConfigInput(decryptedConfigRaw) : decryptedConfigRaw;
+    provider === "email"
+      ? normalizeEmailConfigInput(decryptedConfigRaw)
+      : provider === "wecom"
+        ? normalizeWecomConfigInput(decryptedConfigRaw)
+        : decryptedConfigRaw;
   const resolved = providerRegistry.resolve(provider);
   const config =
     typeof resolved.sanitizeForSync === "function"
@@ -400,6 +410,8 @@ async function connectIntegration(agentId, provider, token, config = {}) {
   if (provider === "email") {
     config = normalizeEmailConfigInput(config || {});
     if (!token) token = extractEmailPrimarySecret(config);
+  } else if (provider === "wecom") {
+    config = normalizeWecomConfigInput(config || {});
   }
 
   // If no explicit token, try to extract from config (first
@@ -457,6 +469,8 @@ async function listIntegrations(agentId) {
             decryptSensitiveConfig(row.provider, row.config),
             row.cron_job_id,
           )
+        : row.provider === "wecom"
+          ? normalizeWecomDisplayConfig(decryptSensitiveConfig(row.provider, row.config))
         : row.config;
     return {
       ...hydrated,
@@ -478,11 +492,17 @@ async function updateIntegration(integrationId, agentId, token, config = {}) {
   const provider = current.provider;
   const currentConfigRaw = decryptSensitiveConfig(provider, current.config);
   const currentConfig =
-    provider === "email" ? normalizeEmailConfigInput(currentConfigRaw) : currentConfigRaw;
+    provider === "email"
+      ? normalizeEmailConfigInput(currentConfigRaw)
+      : provider === "wecom"
+        ? normalizeWecomConfigInput(currentConfigRaw)
+        : currentConfigRaw;
   const patchConfig = expandDottedConfig(config || {});
   const mergedConfig =
     provider === "email"
       ? normalizeEmailConfigInput(mergeConfig(currentConfig, patchConfig))
+      : provider === "wecom"
+        ? normalizeWecomConfigInput(mergeConfig(currentConfig, patchConfig))
       : mergeConfig(currentConfig, patchConfig);
 
   let resolvedToken = token;
@@ -524,6 +544,8 @@ async function updateIntegration(integrationId, agentId, token, config = {}) {
       provider,
       provider === "email"
         ? normalizeEmailDisplayConfig(mergedConfig, updated.cron_job_id)
+        : provider === "wecom"
+          ? normalizeWecomDisplayConfig(mergedConfig)
         : mergedConfig,
     ),
   };
@@ -545,7 +567,7 @@ async function testIntegration(integrationId, agentId) {
   const integration = await repo.findIntegration({ integrationId, agentId });
   if (!integration) throw new Error("Integration not found");
 
-  if (!integration.access_token && integration.provider !== "email") {
+  if (!integration.access_token && !["email", "wecom"].includes(integration.provider)) {
     return { success: false, error: "No access token configured" };
   }
 
@@ -559,7 +581,11 @@ async function testIntegration(integrationId, agentId) {
   const token = refreshedRow.access_token ? decrypt(refreshedRow.access_token) : null;
   const decryptedConfigRaw = decryptSensitiveConfig(provider, refreshedRow.config);
   const decryptedConfig =
-    provider === "email" ? normalizeEmailConfigInput(decryptedConfigRaw) : decryptedConfigRaw;
+    provider === "email"
+      ? normalizeEmailConfigInput(decryptedConfigRaw)
+      : provider === "wecom"
+        ? normalizeWecomConfigInput(decryptedConfigRaw)
+        : decryptedConfigRaw;
 
   const ctx = {
     row: { ...refreshedRow, config: decryptedConfig },
@@ -568,6 +594,26 @@ async function testIntegration(integrationId, agentId) {
   };
 
   return providerRegistry.resolve(provider).test(ctx, providerDeps);
+}
+
+async function getDecryptedIntegration(integrationId, agentId) {
+  const row = await repo.findIntegration({ integrationId, agentId });
+  if (!row) return null;
+
+  const provider = row.provider || row.catalog_id;
+  const decryptedConfigRaw = decryptSensitiveConfig(provider, row.config);
+  const decryptedConfig =
+    provider === "email"
+      ? normalizeEmailConfigInput(decryptedConfigRaw)
+      : provider === "wecom"
+        ? normalizeWecomConfigInput(decryptedConfigRaw)
+        : decryptedConfigRaw;
+
+  return {
+    ...hydrateRow(row),
+    access_token: row.access_token ? decrypt(row.access_token) : null,
+    config: decryptedConfig,
+  };
 }
 
 // ── Sync + env ──────────────────────────────────────────
@@ -601,7 +647,11 @@ async function getIntegrationEnvVars(agentId) {
     const row = await refreshTwitterOAuthRowIfNeeded(rawRow);
     const decryptedConfigRaw = decryptSensitiveConfig(row.provider, row.config);
     const decryptedConfig =
-      row.provider === "email" ? normalizeEmailConfigInput(decryptedConfigRaw) : decryptedConfigRaw;
+      row.provider === "email"
+        ? normalizeEmailConfigInput(decryptedConfigRaw)
+        : row.provider === "wecom"
+          ? normalizeWecomConfigInput(decryptedConfigRaw)
+          : decryptedConfigRaw;
     const envMapping = providerRegistry
       .resolve(row.provider)
       .mapToEnv({ row, token: null, config: decryptedConfig });
@@ -633,6 +683,7 @@ module.exports = {
   // Email helpers
   normalizeEmailConfigInput,
   extractEmailPrimarySecret,
+  normalizeWecomConfigInput,
   // OAuth refresh
   refreshTwitterOAuthRowIfNeeded,
   // Sync entries
@@ -646,6 +697,7 @@ module.exports = {
   removeIntegration,
   updateIntegration,
   testIntegration,
+  getDecryptedIntegration,
   updateEmailCronJobId,
   findActiveEmailIntegrations,
   findActiveIntegrationByCronJobId,

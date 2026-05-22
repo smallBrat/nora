@@ -52,6 +52,11 @@ export { discordProvider } from "./providers/discord";
 export { telegramProvider } from "./providers/telegram";
 export { teamsProvider } from "./providers/teams";
 export { emailProvider } from "./providers/email";
+export {
+  wecomProvider,
+  normalizeWecomConfigInput,
+  normalizeWecomDisplayConfig,
+} from "./providers/wecom";
 export { twilioProvider } from "./providers/twilio";
 export { sendgridProvider } from "./providers/sendgrid";
 export { postgresqlProvider } from "./providers/postgresql";
@@ -117,6 +122,7 @@ export const {
   removeIntegration,
   updateIntegration,
   testIntegration,
+  getDecryptedIntegration,
   getIntegrationsForSync,
   getIntegrationEnvVars,
   buildIntegrationSyncEntry,

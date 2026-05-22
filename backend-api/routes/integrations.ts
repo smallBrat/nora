@@ -13,6 +13,11 @@ const { AGENT_RUNTIME_PORT } = require("../../agent-runtime/lib/contracts");
 const { runtimeUrlForAgent } = require("../../agent-runtime/lib/agentEndpoints");
 const { resolveAgentRuntimeFamily } = require("../agentRuntimeFields");
 const { normalizeEmailConfigInput } = require("../integrations");
+const {
+  activateWecomForOpenClawAgent,
+  deactivateWecomForOpenClawAgent,
+  verifyWecomForOpenClawAgent,
+} = require("../integrations/providers/wecomActivation");
 
 const router = express.Router();
 
@@ -23,6 +28,7 @@ const TWITTER_OAUTH_SCOPES = ["tweet.read", "users.read", "tweet.write", "offlin
 const TWITTER_OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 const DEFAULT_EMAIL_CRON_PROMPT =
   "Look for any new emails or calendar invites I should be aware of and summarize anything important for me.";
+const SINGLETON_INTEGRATION_PROVIDERS = new Set(["wecom"]);
 
 // Editor floor — integration configs include sensitive credentials, so viewers
 // don't see them. Per-route GET could be relaxed to viewer in a follow-up if
@@ -773,13 +779,58 @@ async function reconcileEmailCronJob(
   return nextCronJobId;
 }
 
+async function updateWecomActivationState(agentId, integrationId, activation) {
+  if (!integrationId || !activation || typeof activation !== "object") return null;
+  return integrations.updateIntegration(integrationId, agentId, null, {
+    activation,
+  });
+}
+
+async function activateWecomIntegration(agent, agentId, integrationId) {
+  const savedIntegration = await integrations.getDecryptedIntegration(integrationId, agentId);
+  if (!savedIntegration) {
+    const error = new Error("Saved WeCom integration could not be loaded for activation.");
+    error.statusCode = 500;
+    throw error;
+  }
+
+  try {
+    const outcome = await activateWecomForOpenClawAgent(agent, savedIntegration.config || {}, {
+      runContainerCommand,
+      rpcCall,
+    });
+    return (await updateWecomActivationState(agentId, integrationId, outcome.activation)) || savedIntegration;
+  } catch (error) {
+    const message =
+      String(error?.message || "WeCom activation failed.")
+        .trim()
+        .replace(/\s+/g, " ") || "WeCom activation failed.";
+    await updateWecomActivationState(agentId, integrationId, {
+      lifecycleStatus: "activation_failed",
+      readiness: "error",
+      lastError: message,
+      lastVerifiedAt: "",
+    }).catch(() => null);
+    const wrapped = new Error(message);
+    wrapped.statusCode = 502;
+    throw wrapped;
+  }
+}
+
 router.post("/agents/:id/integrations", async (req, res) => {
   try {
     const { provider, token, config } = req.body;
     if (!provider) return res.status(400).json({ error: "Provider required" });
     const agent = await getAgentIntegrationRuntimeTarget(req.params.id);
     const runtimeFamily = resolveAgentRuntimeFamily(agent || {});
-    const result = await integrations.connectIntegration(req.params.id, provider, token, config);
+    let result = SINGLETON_INTEGRATION_PROVIDERS.has(String(provider))
+      ? await integrations.replaceIntegration(req.params.id, provider, token, config)
+      : await integrations.connectIntegration(req.params.id, provider, token, config);
+
+    if (provider === "wecom" && runtimeFamily === "openclaw" && result?.id) {
+      const latestAgent = await getAgentIntegrationRuntimeTarget(req.params.id);
+      result = await activateWecomIntegration(latestAgent || agent, req.params.id, result.id);
+    }
 
     if (runtimeFamily === "hermes") {
       await syncIntegrationsToAgent(req.params.id, { strictHermes: true });
@@ -828,6 +879,10 @@ router.delete("/agents/:id/integrations/:iid", async (req, res) => {
       await removeEmailCronJobs(agent, [linkedCronJobId, ...runtimeCronJobIds]);
     }
 
+    if (current?.provider === "wecom" && runtimeFamily === "openclaw") {
+      await deactivateWecomForOpenClawAgent(agent, { rpcCall, runContainerCommand });
+    }
+
     const removed = await integrations.removeIntegration(req.params.iid, req.params.id);
 
     if (runtimeFamily === "hermes") {
@@ -862,12 +917,17 @@ router.put("/agents/:id/integrations/:iid", async (req, res) => {
       : null;
     if (!current) return res.status(404).json({ error: "Integration not found" });
 
-    const result = await integrations.updateIntegration(
+    let result = await integrations.updateIntegration(
       req.params.iid,
       req.params.id,
       req.body?.token,
       req.body?.config || {},
     );
+
+    if (result?.provider === "wecom" && runtimeFamily === "openclaw") {
+      const latestAgent = await getAgentIntegrationRuntimeTarget(req.params.id);
+      result = await activateWecomIntegration(latestAgent || agent, req.params.id, result.id);
+    }
 
     if (runtimeFamily === "hermes") {
       await syncIntegrationsToAgent(req.params.id, { strictHermes: true });
@@ -1031,7 +1091,29 @@ router.get("/integrations/twitter/oauth/callback", async (req, res) => {
 
 router.post("/agents/:id/integrations/:iid/test", async (req, res) => {
   try {
-    const result = await integrations.testIntegration(req.params.iid, req.params.id);
+    const agent = await getAgentIntegrationRuntimeTarget(req.params.id);
+    const runtimeFamily = resolveAgentRuntimeFamily(agent || {});
+    const existing = await integrations.listIntegrations(req.params.id);
+    const current = Array.isArray(existing)
+      ? existing.find((item) => String(item.id) === String(req.params.iid))
+      : null;
+    let result;
+
+    if (current?.provider === "wecom" && runtimeFamily === "openclaw") {
+      const savedIntegration = await integrations.getDecryptedIntegration(req.params.iid, req.params.id);
+      if (!savedIntegration) {
+        return res.status(404).json({ error: "Integration not found" });
+      }
+      result = await verifyWecomForOpenClawAgent(agent, savedIntegration.config || {}, {
+        runContainerCommand,
+        rpcCall,
+      });
+      if (result?.activation) {
+        await updateWecomActivationState(req.params.id, req.params.iid, result.activation).catch(() => null);
+      }
+    } else {
+      result = await integrations.testIntegration(req.params.iid, req.params.id);
+    }
     res.json(result);
   } catch (e) {
     res.status(e.statusCode || 500).json({ error: e.message });

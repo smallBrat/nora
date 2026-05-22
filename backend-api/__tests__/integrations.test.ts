@@ -12,6 +12,11 @@ jest.mock("../crypto", () => ({
 }));
 
 const integrations = require("../integrations");
+const {
+  activateWecomForOpenClawAgent,
+  buildWecomOpenClawChannelConfig,
+  verifyWecomForOpenClawAgent,
+} = require("../integrations/providers/wecomActivation");
 const nativeFetch = global.fetch;
 
 describe("integration secret handling", () => {
@@ -50,6 +55,393 @@ describe("integration secret handling", () => {
     });
   });
 
+  it("re-exports the WeCom config normalizer through the legacy integrations shim", () => {
+    expect(typeof integrations.normalizeWecomConfigInput).toBe("function");
+    expect(
+      integrations.normalizeWecomConfigInput({
+        mode: "both",
+        "defaultAccount.bot.botId": "wx_bot_main",
+        "defaultAccount.agent.agentId": 1000002,
+        accountsJson: '[{"label":"Sales","bot":{"botId":"wx_bot_sales"}}]',
+      }),
+    ).toMatchObject({
+      mode: "both",
+      defaultAccount: {
+        bot: { botId: "wx_bot_main" },
+        agent: { agentId: 1000002 },
+      },
+      accounts: [
+        expect.objectContaining({
+          label: "Sales",
+          bot: expect.objectContaining({ botId: "wx_bot_sales" }),
+        }),
+      ],
+      activation: {
+        lifecycleStatus: "saved",
+        readiness: "pending_activation",
+      },
+    });
+  });
+
+  it("rejects malformed WeCom accountsJson", () => {
+    expect(() =>
+      integrations.normalizeWecomConfigInput({
+        mode: "bot",
+        "defaultAccount.bot.botId": "wx_bot_main",
+        accountsJson: '[{"label":"Sales",}]',
+      }),
+    ).toThrow("Additional Accounts JSON must be valid JSON.");
+  });
+
+  it("rejects wrong-shape WeCom accountsJson", () => {
+    expect(() =>
+      integrations.normalizeWecomConfigInput({
+        mode: "bot",
+        "defaultAccount.bot.botId": "wx_bot_main",
+        accountsJson: '{"id":"sales"}',
+      }),
+    ).toThrow("Additional Accounts JSON must be a JSON array.");
+  });
+
+  it("rejects malformed WeCom per-group sender allowlists JSON", () => {
+    expect(() =>
+      integrations.normalizeWecomConfigInput({
+        mode: "bot",
+        "defaultAccount.bot.botId": "wx_bot_main",
+        "defaultAccount.bot.secret": "secret",
+        "policies.groupsJson": '{"group-a":{"allowFrom":["user1",]}}',
+      }),
+    ).toThrow("Per-group sender allowlists must be valid JSON.");
+  });
+
+  it("maps the saved WeCom config into the official OpenClaw channels.wecom shape", () => {
+    const mapped = buildWecomOpenClawChannelConfig(
+      integrations.normalizeWecomConfigInput({
+        mode: "both",
+        "defaultAccount.id": "main",
+        "defaultAccount.bot.botId": "wx-bot-main",
+        "defaultAccount.bot.secret": "bot-secret",
+        "defaultAccount.agent.corpId": "ww123",
+        "defaultAccount.agent.corpSecret": "corp-secret",
+        "defaultAccount.agent.agentId": 1000002,
+        "defaultAccount.agent.token": "agent-token",
+        "defaultAccount.agent.encodingAESKey": "aes-key",
+        "policies.dmPolicy": "pairing",
+        "policies.allowFrom": ["u1", "u2"],
+        "policies.groupPolicy": "allowlist",
+        "policies.groupAllowFrom": ["g1"],
+        "policies.groupsJson": '{"g1":{"allowFrom":["owner1","owner2"]},"g2":{"allowFrom":["owner3"]}}',
+        "advanced.mediaLocalRoots": "/tmp/media, /var/data",
+        "advanced.egressProxyUrl": "http://proxy.internal:3128",
+        "advanced.dynamicAgentEnabled": true,
+        accountsJson:
+          '[{"id":"support","bot":{"botId":"wx-bot-support","secret":"support-secret"},"agent":{"corpId":"ww123","corpSecret":"support-corp-secret","agentId":1000003,"token":"support-token","encodingAESKey":"support-aes"}}]',
+      }),
+    );
+
+    expect(mapped).toEqual(
+      expect.objectContaining({
+        enabled: true,
+        defaultAccount: "main",
+        botId: "wx-bot-main",
+        secret: "bot-secret",
+        dmPolicy: "pairing",
+        allowFrom: ["u1", "u2"],
+        groupPolicy: "allowlist",
+        groupAllowFrom: ["g1"],
+        groups: {
+          g1: { allowFrom: ["owner1", "owner2"] },
+          g2: { allowFrom: ["owner3"] },
+        },
+        mediaLocalRoots: ["/tmp/media", "/var/data"],
+        network: {
+          egressProxyUrl: "http://proxy.internal:3128",
+        },
+        dynamicAgents: {
+          enabled: true,
+        },
+        accounts: {
+          main: expect.objectContaining({
+            botId: "wx-bot-main",
+            secret: "bot-secret",
+            agent: expect.objectContaining({
+              corpId: "ww123",
+              corpSecret: "corp-secret",
+              agentId: 1000002,
+              token: "agent-token",
+              encodingAESKey: "aes-key",
+            }),
+          }),
+          support: expect.objectContaining({
+            botId: "wx-bot-support",
+            secret: "support-secret",
+            agent: expect.objectContaining({
+              corpId: "ww123",
+              corpSecret: "support-corp-secret",
+              agentId: 1000003,
+              token: "support-token",
+              encodingAESKey: "support-aes",
+            }),
+          }),
+        },
+      }),
+    );
+  });
+
+  it("writes only agent config into the runtime when Nora is saved in agent mode", () => {
+    const mapped = buildWecomOpenClawChannelConfig(
+      integrations.normalizeWecomConfigInput({
+        mode: "agent",
+        "defaultAccount.bot.botId": "wx-bot-main",
+        "defaultAccount.bot.secret": "bot-secret",
+        "defaultAccount.agent.corpId": "ww123",
+        "defaultAccount.agent.corpSecret": "corp-secret",
+        "defaultAccount.agent.agentId": 1000002,
+        "defaultAccount.agent.token": "agent-token",
+        "defaultAccount.agent.encodingAESKey": "aes-key",
+      }),
+    );
+
+    expect(mapped).toEqual(
+      expect.objectContaining({
+        enabled: true,
+        agent: expect.objectContaining({
+          corpId: "ww123",
+          corpSecret: "corp-secret",
+          agentId: 1000002,
+          token: "agent-token",
+          encodingAESKey: "aes-key",
+        }),
+      }),
+    );
+    expect(mapped).not.toHaveProperty("botId");
+    expect(mapped).not.toHaveProperty("secret");
+    expect(mapped).not.toHaveProperty("connectionMode");
+  });
+
+  it("verifies a running OpenClaw agent with matching WeCom runtime config", async () => {
+    const normalized = integrations.normalizeWecomConfigInput({
+      mode: "both",
+      "defaultAccount.bot.botId": "wx-bot-main",
+      "defaultAccount.bot.secret": "bot-secret",
+      "defaultAccount.agent.corpId": "ww123",
+      "defaultAccount.agent.corpSecret": "corp-secret",
+      "defaultAccount.agent.agentId": 1000002,
+      "defaultAccount.agent.token": "agent-token",
+      "defaultAccount.agent.encodingAESKey": "aes-key",
+    });
+    const expectedRuntimeConfig = buildWecomOpenClawChannelConfig(normalized);
+    const runContainerCommand = jest
+      .fn()
+      .mockResolvedValueOnce({ output: "" })
+      .mockResolvedValueOnce({ output: JSON.stringify(expectedRuntimeConfig) });
+    const rpcCall = jest.fn().mockResolvedValue({ hash: "cfg-hash" });
+
+    const result = await verifyWecomForOpenClawAgent(
+      { id: "agent-1", status: "running" },
+      normalized,
+      { runContainerCommand, rpcCall },
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.message).toMatch(/plugin is installed/i);
+    expect(result.activation).toMatchObject({
+      lifecycleStatus: "active",
+      readiness: "ready",
+    });
+    expect(rpcCall).toHaveBeenCalledWith({ id: "agent-1", status: "running" }, "config.get");
+    expect(runContainerCommand).toHaveBeenCalledTimes(2);
+  });
+
+  it("clears stale WeCom runtime config before writing the selected mode", async () => {
+    const normalized = integrations.normalizeWecomConfigInput({
+      mode: "agent",
+      "defaultAccount.bot.botId": "wx-bot-main",
+      "defaultAccount.bot.secret": "bot-secret",
+      "defaultAccount.agent.corpId": "ww123",
+      "defaultAccount.agent.corpSecret": "corp-secret",
+      "defaultAccount.agent.agentId": 1000002,
+      "defaultAccount.agent.token": "agent-token",
+      "defaultAccount.agent.encodingAESKey": "aes-key",
+    });
+
+    const runContainerCommand = jest.fn().mockResolvedValue({ output: "" });
+    const rpcCall = jest
+      .fn()
+      .mockResolvedValueOnce({ hash: "cfg-before" })
+      .mockResolvedValueOnce({ ok: true })
+      .mockResolvedValueOnce({ hash: "cfg-after-clear" })
+      .mockResolvedValueOnce({ ok: true });
+
+    const result = await activateWecomForOpenClawAgent(
+      { id: "agent-1", status: "running" },
+      normalized,
+      { runContainerCommand, rpcCall },
+    );
+
+    expect(result).toMatchObject({
+      deferred: false,
+      activation: {
+        lifecycleStatus: "active",
+        readiness: "ready",
+      },
+    });
+    expect(rpcCall).toHaveBeenNthCalledWith(
+      1,
+      { id: "agent-1", status: "running" },
+      "config.get",
+    );
+    expect(rpcCall).toHaveBeenNthCalledWith(
+      2,
+      { id: "agent-1", status: "running" },
+      "config.patch",
+      {
+        raw: JSON.stringify({
+          channels: { wecom: null },
+          plugins: {
+            entries: {
+              "wecom-openclaw-plugin": {
+                enabled: false,
+              },
+            },
+          },
+        }),
+        baseHash: "cfg-before",
+      },
+    );
+    expect(rpcCall).toHaveBeenNthCalledWith(
+      3,
+      { id: "agent-1", status: "running" },
+      "config.get",
+    );
+    expect(rpcCall).toHaveBeenNthCalledWith(
+      4,
+      { id: "agent-1", status: "running" },
+      "config.patch",
+      {
+        raw: JSON.stringify({
+          channels: {
+            wecom: {
+              enabled: true,
+              agent: {
+                corpId: "ww123",
+                corpSecret: "corp-secret",
+                agentId: 1000002,
+                token: "agent-token",
+                encodingAESKey: "aes-key",
+              },
+              dmPolicy: "pairing",
+              groupPolicy: "open",
+            },
+          },
+          plugins: {
+            entries: {
+              "wecom-openclaw-plugin": {
+                enabled: true,
+              },
+            },
+          },
+        }),
+        baseHash: "cfg-after-clear",
+      },
+    );
+    expect(runContainerCommand).toHaveBeenCalledTimes(3);
+  });
+
+  it("returns a pending activation result when the OpenClaw agent is not running", async () => {
+    const result = await verifyWecomForOpenClawAgent(
+      { id: "agent-1", status: "stopped" },
+      integrations.normalizeWecomConfigInput({ mode: "bot" }),
+      {
+        runContainerCommand: jest.fn(),
+        rpcCall: jest.fn(),
+      },
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      activation: {
+        lifecycleStatus: "saved",
+        readiness: "pending_activation",
+      },
+    });
+    expect(result.message).toMatch(/start the agent/i);
+  });
+
+  it("reports an activation error when the runtime WeCom mode does not match the saved config", async () => {
+    const normalized = integrations.normalizeWecomConfigInput({
+      mode: "agent",
+      "defaultAccount.agent.corpId": "ww123",
+      "defaultAccount.agent.corpSecret": "corp-secret",
+      "defaultAccount.agent.agentId": 1000002,
+      "defaultAccount.agent.token": "agent-token",
+      "defaultAccount.agent.encodingAESKey": "aes-key",
+    });
+
+    const result = await verifyWecomForOpenClawAgent(
+      { id: "agent-1", status: "running" },
+      normalized,
+      {
+        rpcCall: jest.fn().mockResolvedValue({ hash: "cfg-hash" }),
+        runContainerCommand: jest
+          .fn()
+          .mockResolvedValueOnce({ output: "" })
+          .mockResolvedValueOnce({
+            output: JSON.stringify({
+              enabled: true,
+              botId: "wx-bot-main",
+              secret: "bot-secret",
+            }),
+          }),
+      },
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.activation).toMatchObject({
+      lifecycleStatus: "activation_failed",
+      readiness: "error",
+    });
+    expect(result.message).toMatch(/saved agent mode/i);
+  });
+
+  it("reports an activation error when the runtime WeCom config differs from Nora's saved config", async () => {
+    const normalized = integrations.normalizeWecomConfigInput({
+      mode: "bot",
+      "defaultAccount.bot.botId": "wx-bot-main",
+      "defaultAccount.bot.secret": "bot-secret",
+    });
+
+    const result = await verifyWecomForOpenClawAgent(
+      { id: "agent-1", status: "running" },
+      normalized,
+      {
+        rpcCall: jest.fn().mockResolvedValue({ hash: "cfg-hash" }),
+        runContainerCommand: jest
+          .fn()
+          .mockResolvedValueOnce({ output: "" })
+          .mockResolvedValueOnce({
+            output: JSON.stringify({
+              enabled: true,
+              botId: "wx-bot-main",
+              secret: "different-secret",
+              connectionMode: "websocket",
+              websocketUrl: "wss://openws.work.weixin.qq.com",
+              sendThinkingMessage: true,
+              dmPolicy: "pairing",
+              groupPolicy: "open",
+            }),
+          }),
+      },
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.activation).toMatchObject({
+      lifecycleStatus: "activation_failed",
+      readiness: "error",
+    });
+    expect(result.message).toMatch(/does not fully match/i);
+  });
+
   it("redacts sensitive config and does not return access_token after create", async () => {
     mockDb.query.mockResolvedValueOnce({
       rows: [
@@ -85,6 +477,103 @@ describe("integration secret handling", () => {
       },
     });
     expect(result).not.toHaveProperty("access_token");
+  });
+
+  it("normalizes and redacts WeCom config on create", async () => {
+    mockDb.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: "int-wecom",
+            agent_id: "agent-1",
+            provider: "wecom",
+            catalog_id: "wecom",
+            access_token: null,
+            config: JSON.stringify({
+              mode: "both",
+              defaultAccount: {
+                label: "Main WeCom",
+                bot: {
+                  botId: "wx_bot_main",
+                  secret: "enc(bot-secret)",
+                  websocketUrl: "wss://openws.work.weixin.qq.com",
+                },
+                agent: {
+                  corpId: "ww123",
+                  corpSecret: "enc(corp-secret)",
+                  agentId: 1000002,
+                  token: "enc(agent-token)",
+                  encodingAESKey: "enc(aes-key)",
+                  callbackPath: "/plugins/wecom/agent/default",
+                },
+              },
+              accounts: [
+                {
+                  id: "sales",
+                  label: "Sales",
+                  bot: { botId: "wx_bot_sales", secret: "enc(sales-secret)" },
+                  agent: { agentId: 1000003 },
+                },
+              ],
+              activation: {
+                lifecycleStatus: "saved",
+                readiness: "pending_activation",
+              },
+            }),
+            status: "active",
+          },
+        ],
+      });
+
+    const result = await integrations.connectIntegration("agent-1", "wecom", null, {
+      mode: "both",
+      "defaultAccount.label": "Main WeCom",
+      "defaultAccount.bot.botId": "wx_bot_main",
+      "defaultAccount.bot.secret": "bot-secret",
+      "defaultAccount.agent.corpId": "ww123",
+      "defaultAccount.agent.corpSecret": "corp-secret",
+      "defaultAccount.agent.agentId": 1000002,
+      "defaultAccount.agent.token": "agent-token",
+      "defaultAccount.agent.encodingAESKey": "aes-key",
+      accountsJson:
+        '[{"id":"sales","label":"Sales","bot":{"botId":"wx_bot_sales","secret":"sales-secret"}}]',
+    });
+
+    expect(mockEnsureEncryptionConfigured).toHaveBeenCalledWith("Integration credential storage");
+    expect(mockEncrypt).toHaveBeenCalledWith("bot-secret");
+    expect(mockEncrypt).toHaveBeenCalledWith("corp-secret");
+    expect(mockEncrypt).toHaveBeenCalledWith("agent-token");
+    expect(mockEncrypt).toHaveBeenCalledWith("aes-key");
+    expect(result).toMatchObject({
+      id: "int-wecom",
+      provider: "wecom",
+      config: {
+        mode: "both",
+        defaultAccount: {
+          label: "Main WeCom",
+          bot: expect.objectContaining({
+            botId: "wx_bot_main",
+            secret: "[REDACTED]",
+          }),
+          agent: expect.objectContaining({
+            corpId: "ww123",
+            corpSecret: "[REDACTED]",
+            token: "[REDACTED]",
+            encodingAESKey: "[REDACTED]",
+          }),
+        },
+        accounts: [
+          expect.objectContaining({
+            label: "Sales",
+            bot: expect.objectContaining({
+              botId: "wx_bot_sales",
+              secret: "[REDACTED]",
+            }),
+          }),
+        ],
+      },
+    });
   });
 
   it("replaces an existing provider integration after creating a new one", async () => {
