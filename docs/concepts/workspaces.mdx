@@ -2,7 +2,7 @@
 
 > Learn how Nora workspaces let you group and organize agents by project, team, or environment, and how to create, populate, and delete them.
 
-A workspace in Nora is a named group that lets you organize your agents however makes sense for your team. Instead of managing a flat list of agents, you can create workspaces to reflect the structure of your projects, teams, or deployment environments — and add the relevant agents to each one. Workspaces are purely organizational: they do not change how agents run or affect their resources.
+A workspace in Nora is a named group that lets you organize and share agents with a team. Instead of managing a flat list of agents, you can create workspaces to reflect the structure of your projects, teams, or deployment environments, invite teammates, and add the relevant agents to each one. Workspaces do not move agents between runtimes, but they do grant team access to assigned agents according to each member's workspace role.
 
 ![Workspaces list — each workspace shows its agent count and member roles](/images/concepts/workspaces-list.png)
 
@@ -26,13 +26,26 @@ You can create a workspace from the dashboard at any time. Workspace names must 
 
 ## Adding agents to a workspace
 
-Once a workspace exists, you can add any agent you own to it. An agent can belong to more than one workspace, which is useful when a single agent is relevant to multiple projects or teams.
+Once a workspace exists, users with `editor`, `admin`, or `owner` access can add agents they directly own to it. An agent can belong to more than one workspace, which is useful when a single agent is relevant to multiple projects or teams.
 
 ![Workspace members — owner, editor, and viewer roles in one workspace](/images/concepts/workspaces-members.png)
 
 <Note>
-  You can only add agents that you own. Agents owned by other users cannot be added to your workspaces.
+  You can only add agents that you own. Once assigned, workspace members can see and operate the shared agent according to their workspace role. Only the direct agent owner can delete the underlying runtime and Nora record.
 </Note>
+
+## Sharing with teammates
+
+Workspace roles apply to assigned agents:
+
+| Role | Agent access |
+| ---- | ------------ |
+| `viewer` | View assigned agents, cost, metrics, logs, and details. |
+| `editor` | Operate and edit assigned agents, and add directly owned agents to the workspace. |
+| `admin` | Manage members, invitations, budgets, alert rules, API keys, and remove agent assignments. |
+| `owner` | Full workspace control, including deleting the workspace. |
+
+Removing an agent from a workspace only removes the assignment. The agent continues running and remains available to its direct owner and any other workspace where it is assigned.
 
 ## Workspace use cases
 

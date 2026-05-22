@@ -2,13 +2,13 @@
 
 > Create workspaces to group Nora agents by project or team, assign agent roles, list workspace members, and delete workspaces you own.
 
-Workspaces let you organise agents into logical groups — for example by project, team, or environment. You create a workspace, add agents to it with optional roles, and query which agents belong to a given workspace. Every workspace belongs to the user who created it, and only you can manage or delete your own workspaces.
+Workspaces let you organise agents into logical groups — for example by project, team, or environment. You create a workspace, invite teammates, add agents you own, and query which agents belong to a given workspace. Workspace roles control team access: viewers can read, editors can operate assigned agents, and admins or owners can manage assignments.
 
 ***
 
 ## List workspaces
 
-Return all workspaces belonging to the authenticated user.
+Return all workspaces where the authenticated user is a member.
 
 ```
 GET /workspaces
@@ -20,6 +20,9 @@ GET /workspaces
 <ResponseField name="name" type="string">Workspace display name.</ResponseField>
 <ResponseField name="user_id" type="string">UUID of the owning user.</ResponseField>
 <ResponseField name="created_at" type="string">ISO 8601 creation timestamp.</ResponseField>
+<ResponseField name="role" type="string">Caller role in the workspace.</ResponseField>
+<ResponseField name="agent_count" type="number">Number of assigned agents.</ResponseField>
+<ResponseField name="member_count" type="number">Number of workspace members.</ResponseField>
 
 <CodeGroup>
   ```bash curl theme={null}
@@ -34,7 +37,10 @@ GET /workspaces
     "id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
     "name": "Production",
     "user_id": "d4e5f6a7-b8c9-4d01-a234-56789bcdef01",
-    "created_at": "2025-02-15T14:00:00.000Z"
+    "created_at": "2025-02-15T14:00:00.000Z",
+    "role": "owner",
+    "agent_count": 3,
+    "member_count": 4
   }
 ]
 ```
@@ -88,7 +94,7 @@ POST /workspaces
 
 ## List agents in a workspace
 
-Return all agents that have been added to a specific workspace.
+Return all agents that have been added to a specific workspace. Requires `viewer` or higher.
 
 ```
 GET /workspaces/:id/agents
@@ -102,12 +108,13 @@ GET /workspaces/:id/agents
 
 ### Response
 
-Returns an array of agent records joined with their workspace membership details.
+Returns an array of agent records joined with their workspace assignment details.
 
-<ResponseField name="id" type="string">Agent UUID.</ResponseField>
-<ResponseField name="name" type="string">Agent display name.</ResponseField>
-<ResponseField name="status" type="string">Current agent status.</ResponseField>
+<ResponseField name="agentId" type="string">Agent UUID.</ResponseField>
+<ResponseField name="agentName" type="string">Agent display name.</ResponseField>
+<ResponseField name="agentStatus" type="string">Current agent status.</ResponseField>
 <ResponseField name="role" type="string">Role assigned to this agent in the workspace, if any.</ResponseField>
+<ResponseField name="isDirectOwner" type="boolean">Whether the caller owns the agent directly.</ResponseField>
 
 <CodeGroup>
   ```bash curl theme={null}
@@ -119,10 +126,11 @@ Returns an array of agent records joined with their workspace membership details
 ```json theme={null}
 [
   {
-    "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-    "name": "My Research Agent",
-    "status": "running",
-    "role": "primary"
+    "agentId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "agentName": "My Research Agent",
+    "agentStatus": "running",
+    "role": "member",
+    "isDirectOwner": true
   }
 ]
 ```
@@ -131,7 +139,7 @@ Returns an array of agent records joined with their workspace membership details
 
 ## Add an agent to a workspace
 
-Associate one of your agents with a workspace. The agent must belong to the same user as the workspace.
+Associate one of your directly owned agents with a workspace. Requires `editor` or higher.
 
 ```
 POST /workspaces/:id/agents
@@ -146,11 +154,11 @@ POST /workspaces/:id/agents
 ### Request body
 
 <ParamField body="agentId" type="string" required>
-  UUID of the agent to add. Must be one of your agents.
+  UUID of the agent to add. Must be directly owned by the caller.
 </ParamField>
 
 <ParamField body="role" type="string">
-  Optional role label for this agent within the workspace, e.g. `primary`, `observer`.
+  Optional assignment label for this agent within the workspace. Defaults to `member`.
 </ParamField>
 
 ### Response
@@ -182,6 +190,102 @@ Returns the workspace membership record.
 | ------ | ----------------------------------------- |
 | `400`  | Missing `agentId`                         |
 | `404`  | Agent not found or does not belong to you |
+
+***
+
+## List assignment candidates
+
+Return directly owned agents with an `assigned` flag for the target workspace. Requires `editor` or higher.
+
+```
+GET /workspaces/:id/agent-candidates
+```
+
+```json theme={null}
+[
+  {
+    "agentId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "name": "My Research Agent",
+    "status": "running",
+    "assigned": true
+  }
+]
+```
+
+***
+
+## Remove an agent assignment
+
+Remove an agent from a workspace without deleting the agent runtime or record. Requires `admin` or `owner`.
+
+```
+DELETE /workspaces/:id/agents/:agentId
+```
+
+```json theme={null}
+{ "success": true }
+```
+
+***
+
+## Cost dashboard
+
+Return workspace token-cost groups, per-agent token usage rows, unassigned owned agents, and a unique fleet total that avoids double-counting agents assigned to multiple workspaces. Cost rows include token usage grouped by model.
+
+```
+GET /workspaces/cost?period_days=30
+```
+
+Use `period_start` and `period_end` for a custom UTC date window:
+
+```
+GET /workspaces/cost?period_start=2026-05-01&period_end=2026-05-21
+```
+
+```json theme={null}
+{
+  "periodDays": 30,
+  "workspaceTotalUsd": 42.1,
+  "uniqueFleetTotalUsd": 31.55,
+  "workspaces": [
+    {
+      "workspaceId": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+      "workspaceName": "Production",
+      "totalUsd": 31.55,
+      "perAgent": [
+        {
+          "agentId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+          "agentName": "My Research Agent",
+          "token_cost": 7.64,
+          "total_cost": 7.64,
+          "input_tokens": 120000,
+          "output_tokens": 42000,
+          "total_tokens": 162000,
+          "cost_details": {
+            "tokens": {
+              "models": [
+                {
+                  "model": "openai/gpt-5.4",
+                  "provider": "openai",
+                  "input_tokens": 120000,
+                  "output_tokens": 42000,
+                  "total_tokens": 162000,
+                  "rate_source": "model",
+                  "token_cost": 7.64
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "unassigned": {
+    "totalUsd": 0,
+    "perAgent": []
+  }
+}
+```
 
 ***
 

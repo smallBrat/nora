@@ -1,6 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/router";
-import { DollarSign, Loader2, Save, AlertTriangle } from "lucide-react";
+import Link from "next/link";
+import {
+  AlertTriangle,
+  ArrowUpRight,
+  CalendarDays,
+  DollarSign,
+  Loader2,
+  Save,
+  Search,
+} from "lucide-react";
+import CostBreakdown from "../../../components/CostBreakdown";
 import Layout from "../../../components/layout/Layout";
 import { useToast } from "../../../components/Toast";
 import { useI18n } from "../../../lib/i18n";
@@ -20,6 +30,27 @@ function formatUsd(value: number): string {
   return `$${value.toFixed(2)}`;
 }
 
+function formatNumber(value?: number | null): string {
+  return Number(value || 0).toLocaleString();
+}
+
+function agentMatchesSearch(agent: WorkspaceCost["perAgent"][number], query: string) {
+  if (!query) return true;
+  const models = agent.cost_details?.tokens?.models || [];
+  return [
+    agent.agentName,
+    agent.agentId,
+    agent.status,
+    agent.runtime_family,
+    agent.backend_type,
+    ...models.flatMap((model) => [model.model, model.provider, model.rate_source]),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase()
+    .includes(query);
+}
+
 export default function WorkspaceCostPage() {
   const router = useRouter();
   const workspaceId = typeof router.query.id === "string" ? router.query.id : null;
@@ -27,6 +58,9 @@ export default function WorkspaceCostPage() {
   const toast = useToast();
 
   const [periodDays, setPeriodDays] = useState(30);
+  const [periodStart, setPeriodStart] = useState("");
+  const [periodEnd, setPeriodEnd] = useState("");
+  const [search, setSearch] = useState("");
   const [cost, setCost] = useState<WorkspaceCost | null>(null);
   const [budgets, setBudgets] = useState<WorkspaceBudget[]>([]);
   const [loading, setLoading] = useState(true);
@@ -34,13 +68,15 @@ export default function WorkspaceCostPage() {
   const [budgetPeriod, setBudgetPeriod] = useState<"daily" | "weekly" | "monthly">("monthly");
   const [budgetLimit, setBudgetLimit] = useState("");
   const [budgetThreshold, setBudgetThreshold] = useState("80");
+  const usingCustomRange = Boolean(periodStart || periodEnd);
+  const searchQuery = search.trim().toLowerCase();
 
   async function reload() {
     if (!workspaceId) return;
     setLoading(true);
     try {
       const [costRes, budgetsRes] = await Promise.all([
-        getWorkspaceCost(workspaceId, { periodDays }),
+        getWorkspaceCost(workspaceId, usingCustomRange ? { periodStart, periodEnd } : { periodDays }),
         listBudgets(workspaceId),
       ]);
       setCost(costRes);
@@ -54,7 +90,7 @@ export default function WorkspaceCostPage() {
 
   useEffect(() => {
     reload();
-  }, [workspaceId, periodDays]);
+  }, [workspaceId, periodDays, periodStart, periodEnd]);
 
   async function handleSaveBudget(event: React.FormEvent) {
     event.preventDefault();
@@ -88,8 +124,10 @@ export default function WorkspaceCostPage() {
 
   const sortedAgents = useMemo(() => {
     if (!cost) return [];
-    return [...cost.perAgent].sort((a, b) => b.total_cost - a.total_cost);
-  }, [cost]);
+    return [...cost.perAgent]
+      .filter((agent) => agentMatchesSearch(agent, searchQuery))
+      .sort((a, b) => b.total_cost - a.total_cost);
+  }, [cost, searchQuery]);
 
   return (
     <Layout>
@@ -113,9 +151,13 @@ export default function WorkspaceCostPage() {
               <button
                 key={days}
                 type="button"
-                onClick={() => setPeriodDays(days)}
+                onClick={() => {
+                  setPeriodStart("");
+                  setPeriodEnd("");
+                  setPeriodDays(days);
+                }}
                 className={`text-xs font-bold px-3 py-2 rounded-xl ${
-                  periodDays === days
+                  !usingCustomRange && periodDays === days
                     ? "bg-blue-600 text-white"
                     : "bg-slate-100 hover:bg-slate-200 text-slate-700"
                 }`}
@@ -125,6 +167,57 @@ export default function WorkspaceCostPage() {
             ))}
           </div>
         </header>
+
+        <section className="grid gap-3 rounded-[2rem] border border-slate-200 bg-white p-4 shadow-sm lg:grid-cols-[1fr_auto] lg:items-end">
+          <label className="flex min-w-0 flex-col gap-2">
+            <span className="text-xs font-black uppercase text-slate-400">Search</span>
+            <span className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+              <Search size={16} className="shrink-0 text-slate-400" />
+              <input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Agent, model, or provider"
+                className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-slate-900 outline-none placeholder:text-slate-400"
+              />
+            </span>
+          </label>
+          <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+            <label className="flex flex-col gap-2">
+              <span className="text-xs font-black uppercase text-slate-400">Start date</span>
+              <span className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+                <CalendarDays size={16} className="shrink-0 text-slate-400" />
+                <input
+                  type="date"
+                  value={periodStart}
+                  onChange={(event) => setPeriodStart(event.target.value)}
+                  className="bg-transparent text-sm font-semibold text-slate-900 outline-none"
+                />
+              </span>
+            </label>
+            <label className="flex flex-col gap-2">
+              <span className="text-xs font-black uppercase text-slate-400">End date</span>
+              <span className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+                <CalendarDays size={16} className="shrink-0 text-slate-400" />
+                <input
+                  type="date"
+                  value={periodEnd}
+                  onChange={(event) => setPeriodEnd(event.target.value)}
+                  className="bg-transparent text-sm font-semibold text-slate-900 outline-none"
+                />
+              </span>
+            </label>
+            <button
+              type="button"
+              onClick={() => {
+                setPeriodStart("");
+                setPeriodEnd("");
+              }}
+              className="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-50"
+            >
+              Clear dates
+            </button>
+          </div>
+        </section>
 
         {cost?.crossings && cost.crossings.length > 0 && (
           <div className="bg-amber-50 border border-amber-200 rounded-[2.5rem] p-6 shadow-sm flex items-start gap-3">
@@ -156,7 +249,11 @@ export default function WorkspaceCostPage() {
                 {formatUsd(cost?.totalUsd || 0)}
               </span>
               <span className="text-xs text-slate-500 font-bold">
-                {t("over the last")} {periodDays} {t("days")}
+                {usingCustomRange
+                  ? `${cost?.periodStart?.slice(0, 10) || "start"} to ${
+                      cost?.periodEnd?.slice(0, 10) || "now"
+                    }`
+                  : `${t("over the last")} ${periodDays} ${t("days")}`}
               </span>
             </div>
           )}
@@ -166,24 +263,41 @@ export default function WorkspaceCostPage() {
           <h2 className="text-lg font-black text-slate-900 mb-4">{t("Per-agent breakdown")}</h2>
           {sortedAgents.length === 0 ? (
             <div className="text-sm text-slate-500 py-8 text-center">
-              {t("No agents in this workspace.")}
+              {searchQuery ? "No agents match this search." : t("No agents in this workspace.")}
+              {!searchQuery ? (
+                <div className="mt-4">
+                  <Link
+                    href={`/workspaces/${workspaceId}/agents`}
+                    className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-700"
+                  >
+                    {t("Assign agents")}
+                    <ArrowUpRight size={15} />
+                  </Link>
+                </div>
+              ) : null}
             </div>
           ) : (
             <ul className="divide-y divide-slate-100">
               {sortedAgents.map((agent) => (
-                <li key={agent.agentId} className="py-3 flex items-center justify-between gap-4">
+                <li key={agent.agentId} className="py-3">
+                  <Link
+                    href={`/agents/${agent.agentId}`}
+                    className="flex items-center justify-between gap-4 rounded-xl px-2 py-2 hover:bg-slate-50"
+                  >
                   <div className="min-w-0 flex-1">
                     <div className="text-sm font-bold text-slate-900 truncate">
                       {agent.agentName}
                     </div>
                     <div className="text-xs text-slate-500">
-                      {t("Compute")} {formatUsd(agent.compute_cost)} · {t("Tokens")}{" "}
-                      {formatUsd(agent.token_cost)} · {agent.uptime_hours.toFixed(1)} {t("hrs")}
+                      {formatUsd(agent.token_cost)} token cost · {formatNumber(agent.total_tokens)} tokens
                     </div>
                   </div>
-                  <span className="text-sm font-black text-slate-900">
-                    {formatUsd(agent.total_cost)}
-                  </span>
+                    <span className="inline-flex items-center gap-2 text-sm font-black text-slate-900">
+                      {formatUsd(agent.total_cost)}
+                      <ArrowUpRight size={14} className="text-slate-400" />
+                    </span>
+                  </Link>
+                  <CostBreakdown agent={agent} />
                 </li>
               ))}
             </ul>

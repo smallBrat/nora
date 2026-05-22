@@ -64,6 +64,14 @@ jest.mock("../../workers/provisioner/backends/k8s", () => {
   }));
 });
 
+jest.mock("../kubernetesClusters", () => ({
+  getKubernetesClusterProfile: jest.fn().mockResolvedValue({
+    id: "test-cluster",
+    executionTargetId: "k8s:test-cluster",
+    namespace: "openclaw-agents",
+  }),
+}));
+
 describe("containerManager NemoClaw routing", () => {
   beforeEach(() => {
     jest.resetModules();
@@ -190,14 +198,26 @@ describe("containerManager NemoClaw routing", () => {
     const logs = await containerManager.logs(agent, { tail: 50 });
     const exec = await containerManager.exec(agent, { tty: true });
 
-    expect(mockK8sStart).toHaveBeenCalledWith("oclaw-agent-nemo-k8s");
-    expect(mockK8sStop).toHaveBeenCalledWith("oclaw-agent-nemo-k8s");
-    expect(mockK8sRestart).toHaveBeenCalledWith("oclaw-agent-nemo-k8s");
+    expect(mockK8sStart).toHaveBeenCalledWith(
+      "oclaw-agent-nemo-k8s",
+      expect.objectContaining({ host: null, runtimeFamily: "openclaw" }),
+    );
+    expect(mockK8sStop).toHaveBeenCalledWith(
+      "oclaw-agent-nemo-k8s",
+      expect.objectContaining({ host: null, runtimeFamily: "openclaw" }),
+    );
+    expect(mockK8sRestart).toHaveBeenCalledWith(
+      "oclaw-agent-nemo-k8s",
+      expect.objectContaining({ host: null, runtimeFamily: "openclaw" }),
+    );
     expect(mockK8sDestroy).toHaveBeenCalledWith(
       "oclaw-agent-nemo-k8s",
       expect.objectContaining({ host: null, runtimeFamily: "openclaw" }),
     );
-    expect(mockK8sStatus).toHaveBeenCalledWith("oclaw-agent-nemo-k8s");
+    expect(mockK8sStatus).toHaveBeenCalledWith(
+      "oclaw-agent-nemo-k8s",
+      expect.objectContaining({ host: null, runtimeFamily: "openclaw" }),
+    );
     expect(mockK8sStats).toHaveBeenCalledWith("oclaw-agent-nemo-k8s", agent);
     expect(mockK8sLogs).toHaveBeenCalledWith("oclaw-agent-nemo-k8s", { tail: 50 });
     expect(mockK8sExec).toHaveBeenCalledWith("oclaw-agent-nemo-k8s", { tty: true });
@@ -205,6 +225,82 @@ describe("containerManager NemoClaw routing", () => {
     expect(telemetry).toEqual(expect.objectContaining({ backend_type: "k8s" }));
     expect(logs).toBe("k8s-log-stream");
     expect(exec).toEqual({ exec: "k8s-exec", stream: "k8s-stream" });
+  });
+
+  it("uses container_name as a Kubernetes destroy fallback when container_id was cleared", async () => {
+    const containerManager = require("../containerManager");
+    const agent = {
+      id: "agent-k8s-fallback",
+      name: "K8s Fallback",
+      runtime_family: "openclaw",
+      deploy_target: "k8s",
+      execution_target_id: "k8s:test-cluster",
+      sandbox_profile: "standard",
+      container_id: null,
+      container_name: "nora-oclaw-k8s-fallback-abc123",
+      host: "nora-oclaw-k8s-fallback-abc123.openclaw-agents.svc.cluster.local",
+    };
+
+    expect(containerManager.canDestroy(agent)).toBe(true);
+    await containerManager.destroy(agent);
+
+    expect(mockK8sDestroy).toHaveBeenCalledWith(
+      "nora-oclaw-k8s-fallback-abc123",
+      expect.objectContaining({
+        agentId: "agent-k8s-fallback",
+        host: "nora-oclaw-k8s-fallback-abc123.openclaw-agents.svc.cluster.local",
+        runtimeFamily: "openclaw",
+      }),
+    );
+  });
+
+  it("uses container_name as a Kubernetes stop fallback when container_id was cleared", async () => {
+    const containerManager = require("../containerManager");
+    const agent = {
+      id: "agent-k8s-stop",
+      name: "K8s Stop",
+      runtime_family: "openclaw",
+      deploy_target: "k8s",
+      execution_target_id: "k8s:test-cluster",
+      sandbox_profile: "standard",
+      container_id: null,
+      container_name: "nora-oclaw-k8s-stop-abc123",
+      host: "nora-oclaw-k8s-stop-abc123.openclaw-agents.svc.cluster.local",
+    };
+
+    expect(containerManager.canMutate(agent)).toBe(true);
+    await containerManager.stop(agent);
+
+    expect(mockK8sStop).toHaveBeenCalledWith(
+      "nora-oclaw-k8s-stop-abc123",
+      expect.objectContaining({
+        agentId: "agent-k8s-stop",
+        host: "nora-oclaw-k8s-stop-abc123.openclaw-agents.svc.cluster.local",
+        runtimeFamily: "openclaw",
+      }),
+    );
+  });
+
+  it("uses the deterministic Kubernetes deploy name as a last-resort destroy fallback", async () => {
+    const containerManager = require("../containerManager");
+    const agent = {
+      id: "agent-legacy",
+      name: "Legacy Agent",
+      runtime_family: "hermes",
+      deploy_target: "k8s",
+      execution_target_id: "k8s:test-cluster",
+      sandbox_profile: "standard",
+      container_id: null,
+      container_name: null,
+    };
+
+    expect(containerManager.canDestroy(agent)).toBe(true);
+    await containerManager.destroy(agent);
+
+    expect(mockK8sDestroy).toHaveBeenCalledWith(
+      "nora-hermes-legacy-agent-agent-legacy",
+      expect.objectContaining({ agentId: "agent-legacy", runtimeFamily: "hermes" }),
+    );
   });
 
   // ─── Null-container invariant ────────────────────────────────
@@ -340,14 +436,26 @@ describe("containerManager NemoClaw routing", () => {
     const logs = await containerManager.logs(agent, { tail: 25 });
     const exec = await containerManager.exec(agent, { tty: true });
 
-    expect(mockK8sStart).toHaveBeenCalledWith("hermes-agent-k8s");
-    expect(mockK8sStop).toHaveBeenCalledWith("hermes-agent-k8s");
-    expect(mockK8sRestart).toHaveBeenCalledWith("hermes-agent-k8s");
+    expect(mockK8sStart).toHaveBeenCalledWith(
+      "hermes-agent-k8s",
+      expect.objectContaining({ host: null, runtimeFamily: "hermes" }),
+    );
+    expect(mockK8sStop).toHaveBeenCalledWith(
+      "hermes-agent-k8s",
+      expect.objectContaining({ host: null, runtimeFamily: "hermes" }),
+    );
+    expect(mockK8sRestart).toHaveBeenCalledWith(
+      "hermes-agent-k8s",
+      expect.objectContaining({ host: null, runtimeFamily: "hermes" }),
+    );
     expect(mockK8sDestroy).toHaveBeenCalledWith(
       "hermes-agent-k8s",
       expect.objectContaining({ host: null, runtimeFamily: "hermes" }),
     );
-    expect(mockK8sStatus).toHaveBeenCalledWith("hermes-agent-k8s");
+    expect(mockK8sStatus).toHaveBeenCalledWith(
+      "hermes-agent-k8s",
+      expect.objectContaining({ host: null, runtimeFamily: "hermes" }),
+    );
     expect(mockK8sStats).toHaveBeenCalledWith("hermes-agent-k8s", agent);
     expect(mockK8sLogs).toHaveBeenCalledWith("hermes-agent-k8s", { tail: 25 });
     expect(mockK8sExec).toHaveBeenCalledWith("hermes-agent-k8s", { tty: true });

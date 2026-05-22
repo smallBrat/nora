@@ -1,8 +1,8 @@
 # EKS Kubernetes provisioner backend
 
-> Provision Nora agents into Amazon EKS using Nora's generic Kubernetes adapter and the EKS Compose overlay.
+> Provision Nora agents into Amazon EKS using Nora's generic Kubernetes adapter and Admin cluster registry.
 
-EKS uses the same `k8s` backend id as every Kubernetes provider. Nora ships a single Kubernetes adapter (`workers/provisioner/backends/k8s.ts`) that serves Kind, K3s, AKS, GKE, and EKS — provider-specific overlays differ only in the kubeconfig they mount and the exposure mode they default to. The EKS overlay mounts an EKS kubeconfig and defaults agent Services to cloud `LoadBalancer` exposure.
+EKS uses the same Kubernetes adapter as every Kubernetes provider. Nora stores provider, namespace, exposure, and load-balancer settings on the Admin cluster row; `docker-compose.kubernetes.yml` only mounts kubeconfig files into the control-plane containers.
 
 ## Step-by-step setup
 
@@ -42,20 +42,15 @@ Confirm the node group reports `Ready` in the Console's **Compute** tab.
 
 ### 4. Configure Nora
 
-Set the EKS helper variables in `.env`:
+Set the generic Kubernetes mount variable in `.env`:
 
 ```bash theme={null}
-EKS_KUBECONFIG_PATH=./.secrets/eks-kubeconfig
-EKS_ENABLED_BACKENDS=k8s
-EKS_K8S_NAMESPACE=nora-openclaw-agents
-EKS_K8S_OPENCLAW_NAMESPACE=nora-openclaw-agents
-EKS_K8S_HERMES_NAMESPACE=nora-hermes-agents
-EKS_K8S_EXPOSURE_MODE=load-balancer
-EKS_K8S_LOAD_BALANCER_SOURCE_RANGES=<nora-control-plane-egress-cidr>
-EKS_K8S_LOAD_BALANCER_READY_TIMEOUT_MS=1200000
-EKS_DEPLOYMENT_JOB_TIMEOUT_MS=1800000
-EKS_PROVISION_TIMEOUT_MS=1740000
+mkdir -p ./.secrets/kubeconfigs
+cp ./.secrets/eks-kubeconfig ./.secrets/kubeconfigs/eks-us-east-1
+NORA_KUBECONFIGS_DIR=./.secrets/kubeconfigs
 ```
+
+For two or more EKS clusters, put each kubeconfig under `NORA_KUBECONFIGS_DIR` and use Admin paths such as `/kubeconfigs/eks-us-east-1` and `/kubeconfigs/eks-us-west-2`.
 
 Confirm the LB-creating add-on is present under **Add-ons** before continuing.
 
@@ -66,7 +61,7 @@ Confirm the LB-creating add-on is present under **Add-ons** before continuing.
 ### 5. Start the stack
 
 ```bash theme={null}
-docker compose -f docker-compose.yml -f docker-compose.eks.yml up -d --build
+docker compose -f docker-compose.yml -f docker-compose.kubernetes.yml up -d --build
 ```
 
 <Warning>
@@ -77,9 +72,31 @@ docker compose -f docker-compose.yml -f docker-compose.eks.yml up -d --build
   `/etc/letsencrypt` and Cloudflare can return 521 because the origin web server is down.
 </Warning>
 
-### 6. Deploy a test agent
+### 6. Register this cluster in Admin
 
-Open the dashboard at `http://127.0.0.1:8080`, sign in, and create an agent with **Backend = Kubernetes on EKS**.
+Open **Admin -> Kubernetes**, click **Add cluster**, and use these values:
+
+| Field                    | Value                                                                                                      |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------- |
+| Cluster id               | `eks-us-east-1`                                                                                            |
+| Label                    | `EKS US East 1`                                                                                            |
+| Provider                 | `EKS`                                                                                                      |
+| Actual cluster name      | The EKS cluster name from the AWS Console                                                                  |
+| Credential mode          | `Mounted kubeconfig path`                                                                                  |
+| Kubeconfig path          | `/kubeconfigs/eks-us-east-1`                                                                               |
+| Fallback namespace       | `nora-openclaw-agents`                                                                                     |
+| OpenClaw namespace       | `nora-openclaw-agents`                                                                                     |
+| Hermes namespace         | `nora-hermes-agents`                                                                                       |
+| Exposure mode            | `LoadBalancer`                                                                                             |
+| Service annotations JSON | Leave empty for EKS Auto Mode, or use the AWS Load Balancer Controller annotations that match your cluster |
+| Source ranges            | Your Nora control-plane egress CIDR when you can restrict access                                           |
+| Load balancer class      | `eks.amazonaws.com/nlb` for EKS Auto Mode NLB, otherwise leave empty if you use annotations                |
+
+Do not put `./.secrets/eks-kubeconfig` in the Admin Kubeconfig path when Nora runs in Docker Compose. That is the host-side path; the containers see files from `NORA_KUBECONFIGS_DIR` under `/kubeconfigs`.
+
+### 7. Deploy a test agent
+
+Open the dashboard at `http://127.0.0.1:8080`, sign in, and create an agent with the EKS cluster label you registered.
 
 <Frame caption="Nora deploy wizard — Backend dropdown showing Kubernetes on EKS">
   ![Deploy wizard backend
@@ -99,14 +116,12 @@ Open the dashboard at `http://127.0.0.1:8080`, sign in, and create an agent with
 
 For EKS Auto Mode NLB:
 
-```bash theme={null}
-EKS_K8S_LOAD_BALANCER_CLASS=eks.amazonaws.com/nlb
-```
+Set the Admin **Load balancer class** field to `eks.amazonaws.com/nlb`.
 
 For AWS Load Balancer Controller / NLB annotations:
 
-```bash theme={null}
-EKS_K8S_SERVICE_ANNOTATIONS_JSON='{"service.beta.kubernetes.io/aws-load-balancer-scheme":"internet-facing","service.beta.kubernetes.io/aws-load-balancer-nlb-target-type":"ip"}'
+```json theme={null}
+{"service.beta.kubernetes.io/aws-load-balancer-scheme":"internet-facing","service.beta.kubernetes.io/aws-load-balancer-nlb-target-type":"ip"}
 ```
 
 Your cluster must have the AWS load-balancing path you choose installed and configured. If Services stay pending, check the EKS controller events and IAM permissions for load balancer creation.
@@ -117,7 +132,7 @@ Your cluster must have the AWS load-balancing path you choose installed and conf
 kubectl --kubeconfig ./.secrets/eks-kubeconfig -n nora-openclaw-agents get deploy,svc,pods
 # If Hermes is enabled and deployed:
 kubectl --kubeconfig ./.secrets/eks-kubeconfig -n nora-hermes-agents get deploy,svc,pods
-docker compose -f docker-compose.yml -f docker-compose.eks.yml logs worker-provisioner
+docker compose -f docker-compose.yml -f docker-compose.kubernetes.yml logs worker-provisioner
 ```
 
 For real e2e, enable the Kubernetes matrix cell:
@@ -169,7 +184,7 @@ sudo ./infra/setup-tls.sh <your-domain>
 ### 3. Stop the smoke-mode stack
 
 ```bash theme={null}
-docker compose -f docker-compose.yml -f docker-compose.eks.yml down
+docker compose -f docker-compose.yml -f docker-compose.kubernetes.yml down
 ```
 
 ### 4. Start the prod-mode stack
@@ -178,7 +193,7 @@ docker compose -f docker-compose.yml -f docker-compose.eks.yml down
 docker compose \
   -f docker-compose.yml \
   -f infra/docker-compose.public-tls.yml \
-  -f docker-compose.eks.yml \
+  -f docker-compose.kubernetes.yml \
   up -d --build
 ```
 

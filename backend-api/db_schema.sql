@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS agents (
   sandbox_type VARCHAR(20) DEFAULT 'standard',
   runtime_family VARCHAR(20) NOT NULL DEFAULT 'openclaw',
   deploy_target VARCHAR(20) NOT NULL DEFAULT 'docker',
+  execution_target_id TEXT NOT NULL DEFAULT 'docker',
   sandbox_profile VARCHAR(20) NOT NULL DEFAULT 'standard',
   node TEXT,
   host TEXT,
@@ -46,6 +47,39 @@ CREATE TABLE IF NOT EXISTS agents (
   disk_gb INTEGER DEFAULT 10,
   created_at TIMESTAMP DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS kubernetes_clusters (
+  id TEXT PRIMARY KEY,
+  label TEXT NOT NULL,
+  provider TEXT NOT NULL DEFAULT 'kubernetes',
+  cluster_name TEXT NOT NULL DEFAULT '',
+  enabled BOOLEAN NOT NULL DEFAULT true,
+  is_default BOOLEAN NOT NULL DEFAULT false,
+  credential_mode TEXT NOT NULL DEFAULT 'mounted_path',
+  kubeconfig_path TEXT NOT NULL DEFAULT '',
+  kubeconfig_encrypted TEXT,
+  kube_context TEXT NOT NULL DEFAULT '',
+  namespace TEXT NOT NULL DEFAULT 'openclaw-agents',
+  openclaw_namespace TEXT NOT NULL DEFAULT '',
+  hermes_namespace TEXT NOT NULL DEFAULT '',
+  exposure_mode TEXT NOT NULL DEFAULT 'cluster-ip',
+  runtime_host TEXT NOT NULL DEFAULT '',
+  runtime_node_port INTEGER,
+  gateway_node_port INTEGER,
+  service_annotations JSONB NOT NULL DEFAULT '{}'::jsonb,
+  load_balancer_source_ranges TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+  load_balancer_class TEXT NOT NULL DEFAULT '',
+  load_balancer_ready_timeout_ms INTEGER NOT NULL DEFAULT 600000,
+  load_balancer_ready_interval_ms INTEGER NOT NULL DEFAULT 5000,
+  last_test_status TEXT,
+  last_test_message TEXT,
+  last_tested_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_kubernetes_clusters_enabled
+  ON kubernetes_clusters(enabled, is_default, label);
 
 CREATE TABLE IF NOT EXISTS deployments (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -269,8 +303,12 @@ CREATE TABLE IF NOT EXISTS workspace_agents (
   workspace_id UUID REFERENCES workspaces(id) ON DELETE CASCADE,
   agent_id UUID REFERENCES agents(id) ON DELETE CASCADE,
   role TEXT DEFAULT 'member',
-  created_at TIMESTAMP DEFAULT NOW()
+  created_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(workspace_id, agent_id)
 );
+
+CREATE INDEX IF NOT EXISTS idx_workspace_agents_agent
+  ON workspace_agents(agent_id);
 
 -- Per-workspace membership (Phase 0 of multi-tenant RBAC).
 -- workspaces.user_id remains as the creator denormalization; permission checks
@@ -519,6 +557,12 @@ CREATE INDEX IF NOT EXISTS idx_usage_metrics_user
 
 CREATE INDEX IF NOT EXISTS idx_usage_metrics_type
   ON usage_metrics(metric_type, recorded_at);
+
+CREATE INDEX IF NOT EXISTS idx_usage_metrics_token_model
+  ON usage_metrics(metric_type, (metadata->>'model'), recorded_at);
+
+CREATE INDEX IF NOT EXISTS idx_usage_metrics_token_source
+  ON usage_metrics(metric_type, (metadata->>'source'), recorded_at);
 
 CREATE TABLE IF NOT EXISTS container_stats (
   id BIGSERIAL PRIMARY KEY,

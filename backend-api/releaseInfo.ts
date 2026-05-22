@@ -1,5 +1,5 @@
 // @ts-nocheck
-const DEFAULT_MANUAL_UPGRADE_COMMAND = "git pull --ff-only && docker compose up -d --build";
+const DEFAULT_MANUAL_UPGRADE_COMMAND = "./setup.sh --update";
 const DEFAULT_RELEASE_CACHE_TTL_MS = 5 * 60 * 1000;
 const DEFAULT_UPGRADE_REPO = "https://github.com/solomon2773/nora.git";
 const DEFAULT_UPGRADE_REF = "master";

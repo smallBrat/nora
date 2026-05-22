@@ -8,6 +8,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { fetchWithAuth } from "../../../lib/api";
+import { markAgentValidated } from "../../../lib/activation";
 
 function formatMessageTime(value) {
   try {
@@ -88,6 +89,9 @@ export default function HermesChatPanel({
       }
 
       setSessionId(data.sessionId || "");
+      if (data.message) {
+        markAgentValidated(agentId, "hermes_chat");
+      }
       setMessages((current) => [
         ...current,
         {

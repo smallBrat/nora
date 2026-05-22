@@ -11,6 +11,8 @@ const {
 const scheduler = require("../scheduler");
 const containerManager = require("../containerManager");
 const monitoring = require("../monitoring");
+const metrics = require("../metrics");
+const workspaces = require("../workspaces");
 const {
   CLONE_MODES,
   buildTemplatePayloadFromAgent,
@@ -70,6 +72,7 @@ const { runContainerCommand, syncAuthToUserAgents } = require("../authSync");
 const { findAccessibleAgent } = require("../middleware/ownership");
 const { scopeByMethod } = require("../middleware/auth");
 const agentVersions = require("../agentVersions");
+const { assertKubernetesExecutionTargetAvailable } = require("../kubernetesClusters");
 
 const router = express.Router();
 router.use(createMutationFailureAuditMiddleware("agent"));
@@ -128,6 +131,17 @@ function assertRuntimeSelectionAvailable(runtimeFields) {
     error.statusCode = 400;
     throw error;
   }
+  return status;
+}
+
+function isIgnorableStopError(error) {
+  const message = String(error?.message || "");
+  return message.includes("already stopped") || message.includes("not running");
+}
+
+async function assertRuntimeTargetAvailable(runtimeFields) {
+  const status = assertRuntimeSelectionAvailable(runtimeFields);
+  await assertKubernetesExecutionTargetAvailable(runtimeFields);
   return status;
 }
 
@@ -239,11 +253,9 @@ function normalizeClawhubSkills(entries) {
 router.get(
   "/",
   asyncHandler(async (req, res) => {
-    const result = await db.query(
-      "SELECT * FROM agents WHERE user_id = $1 ORDER BY created_at DESC",
-      [req.user.id],
-    );
-    res.json(result.rows.map(serializeAgent));
+    const scope = req.query.scope === "owned" ? "owned" : "accessible";
+    const agents = await workspaces.listAccessibleAgents(req.user.id, { scope });
+    res.json(agents.map(serializeAgent));
   }),
 );
 
@@ -252,12 +264,17 @@ router.get(
   asyncHandler(async (req, res) => {
     const agent = await findAccessibleAgent(req.params.id, req.user.id, "viewer");
     if (!agent) return res.status(404).json({ error: "Agent not found" });
+    let runtimeStatus = null;
 
     // Live status reconciliation — check actual container state while preserving
     // warning as a first-class degraded state until the container actually stops.
-    if (agent.container_id && ["running", "warning", "error", "stopped"].includes(agent.status)) {
+    if (
+      containerManager.canMutate(agent) &&
+      ["running", "warning", "error", "stopped"].includes(agent.status)
+    ) {
       try {
         const live = await containerManager.status(agent);
+        runtimeStatus = live;
         const reconciledStatus = reconcileAgentStatus(agent.status, Boolean(live.running));
         if (reconciledStatus !== agent.status) {
           await db.query("UPDATE agents SET status = $1 WHERE id = $2", [
@@ -269,6 +286,10 @@ router.get(
       } catch {
         // Can't reach container runtime — leave DB status as-is
       }
+    }
+
+    if (runtimeStatus) {
+      agent.runtime_status = runtimeStatus;
     }
 
     res.json(serializeAgent(agent));
@@ -1003,12 +1024,28 @@ router.post(
         error: "Hermes chat returned an empty assistant message",
       });
     }
+    const responseSessionId = chatResponse.headers.get("x-hermes-session-id") || sessionId || null;
+    Promise.resolve(
+      metrics.recordMetric?.(agent.id, req.user.id, "messages_sent", 1, {
+        runtime_family: "hermes",
+        source: "hermes-ui",
+        ...(responseSessionId ? { session_id: responseSessionId } : {}),
+      }),
+    ).catch(() => {});
+    Promise.resolve(
+      metrics.recordTokenUsage?.(agent, req.user.id, chatResponse.data, {
+        runtimeFamily: "hermes",
+        source: "hermes-ui",
+        model: chatResponse.data?.model || requestedModel || null,
+        sessionId: responseSessionId,
+      }),
+    ).catch(() => {});
 
     res.json({
       message: assistantMessage,
       usage: chatResponse.data?.usage || null,
       model: chatResponse.data?.model || requestedModel || null,
-      sessionId: chatResponse.headers.get("x-hermes-session-id") || sessionId || null,
+      sessionId: responseSessionId,
     });
   }),
 );
@@ -1307,7 +1344,7 @@ router.post("/deploy", async (req, res) => {
       agentName: name,
       runtimeSelection: runtimeFields,
     });
-    const runtimeSelectionStatus = assertRuntimeSelectionAvailable(runtimeFields);
+    const runtimeSelectionStatus = await assertRuntimeTargetAvailable(runtimeFields);
     if (migrationDraft && runtimeFields.runtime_family !== migrationDraft.manifest.runtimeFamily) {
       return res.status(400).json({
         error: `Migration draft targets the ${migrationDraft.manifest.runtimeFamily} runtime family and cannot be deployed as ${runtimeFields.runtime_family}.`,
@@ -1370,8 +1407,8 @@ router.post("/deploy", async (req, res) => {
       `INSERT INTO agents(
          user_id, name, status, node, backend_type, sandbox_type, vcpu, ram_mb, disk_gb,
          container_name, image, template_payload, clawhub_skills, runtime_family, deploy_target,
-         sandbox_profile
-       ) VALUES($1, $2, 'queued', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13, $14, $15) RETURNING *`,
+         execution_target_id, sandbox_profile
+       ) VALUES($1, $2, 'queued', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13, $14, $15, $16) RETURNING *`,
       [
         req.user.id,
         name,
@@ -1387,6 +1424,7 @@ router.post("/deploy", async (req, res) => {
         JSON.stringify(clawhubSkills),
         runtimeFields.runtime_family,
         runtimeFields.deploy_target,
+        runtimeFields.execution_target_id,
         runtimeFields.sandbox_profile,
       ],
     );
@@ -1426,6 +1464,7 @@ router.post("/deploy", async (req, res) => {
       userId: req.user.id,
       plan: sub.plan,
       backend: runtimeFields.backend_type,
+      execution_target_id: runtimeFields.execution_target_id,
       sandbox: runtimeFields.sandbox_profile,
       specs,
       container_name: containerName,
@@ -1443,6 +1482,7 @@ router.post("/deploy", async (req, res) => {
         deploy: {
           runtimeFamily: runtimeFields.runtime_family,
           deployTarget: runtimeFields.deploy_target,
+          executionTargetId: runtimeFields.execution_target_id,
           sandboxProfile: runtimeFields.sandbox_profile,
           backend: runtimeFields.backend_type,
           type: deployType,
@@ -1529,7 +1569,7 @@ router.post(
       },
       fallback: sourceRuntime,
     });
-    assertRuntimeSelectionAvailable(runtimeFields);
+    await assertRuntimeTargetAvailable(runtimeFields);
     const node = await scheduler.selectNode({
       fallback: runtimeFields.deploy_target,
     });
@@ -1561,8 +1601,8 @@ router.post(
       `INSERT INTO agents(
        user_id, name, status, node, backend_type, sandbox_type, vcpu, ram_mb, disk_gb,
        container_name, image, template_payload, runtime_family, deploy_target,
-       sandbox_profile
-     ) VALUES($1, $2, 'queued', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING *`,
+       execution_target_id, sandbox_profile
+     ) VALUES($1, $2, 'queued', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING *`,
       [
         req.user.id,
         name,
@@ -1577,6 +1617,7 @@ router.post(
         JSON.stringify(templatePayload),
         runtimeFields.runtime_family,
         runtimeFields.deploy_target,
+        runtimeFields.execution_target_id,
         runtimeFields.sandbox_profile,
       ],
     );
@@ -1596,6 +1637,7 @@ router.post(
       userId: req.user.id,
       plan: limits.subscription.plan,
       backend: runtimeFields.backend_type,
+      execution_target_id: runtimeFields.execution_target_id,
       sandbox: runtimeFields.sandbox_profile,
       specs,
       container_name: containerName,
@@ -1613,6 +1655,7 @@ router.post(
           mode: cloneMode,
           runtimeFamily: runtimeFields.runtime_family,
           deployTarget: runtimeFields.deploy_target,
+          executionTargetId: runtimeFields.execution_target_id,
           sandboxProfile: runtimeFields.sandbox_profile,
         },
       }),
@@ -1629,7 +1672,7 @@ router.post("/:id/start", async (req, res) => {
     res.locals.auditContext = buildAgentContext(agent, {
       ownerEmail: req.user.email || null,
     });
-    if (!agent.container_id)
+    if (!containerManager.canMutate(agent))
       return res.status(400).json({ error: "No container — redeploy the agent first" });
 
     await containerManager.start(agent);
@@ -1673,12 +1716,15 @@ router.post("/:id/stop", async (req, res) => {
       ownerEmail: req.user.email || null,
     });
 
-    if (agent.container_id) {
+    if (containerManager.canMutate(agent)) {
       try {
         await containerManager.stop(agent);
       } catch (e) {
-        if (!e.message.includes("already stopped") && !e.message.includes("not running")) {
+        if (!isIgnorableStopError(e)) {
           console.error("Container stop error:", e.message);
+          if (containerManager.isKubernetesAgent(agent)) {
+            return res.status(e.statusCode || 500).json({ error: e.message });
+          }
         }
       }
     }
@@ -1701,17 +1747,29 @@ router.post("/:id/stop", async (req, res) => {
 });
 
 async function destroyAgent(agentId, userId, req, res) {
-  const agent = await findAccessibleAgent(agentId, userId, "admin");
+  const agent = await findAccessibleAgent(agentId, userId, "viewer");
   if (!agent) return res.status(404).json({ error: "Agent not found" });
+  if (agent.user_id !== userId) {
+    return res.status(403).json({
+      error: "Only the direct agent owner can delete this agent. Remove the workspace assignment instead.",
+    });
+  }
   res.locals.auditContext = buildAgentContext(agent, {
     ownerEmail: req.user.email || null,
   });
 
-  if (agent.container_id) {
+  if (containerManager.canDestroy(agent)) {
     try {
       await containerManager.destroy(agent);
     } catch (e) {
       console.error("Container cleanup error:", e.message);
+      if (containerManager.isKubernetesAgent(agent)) {
+        return res.status(e.statusCode || 500).json({
+          error:
+            e.message ||
+            "Failed to delete Kubernetes runtime resources; agent record was kept for retry.",
+        });
+      }
     }
   }
 
@@ -1749,7 +1807,7 @@ router.post("/:id/restart", async (req, res) => {
     res.locals.auditContext = buildAgentContext(agent, {
       ownerEmail: req.user.email || null,
     });
-    if (!agent.container_id)
+    if (!containerManager.canMutate(agent))
       return res.status(400).json({ error: "No container — redeploy the agent first" });
 
     await containerManager.restart(agent);
@@ -1797,7 +1855,7 @@ router.post("/:id/redeploy", async (req, res) => {
       },
       fallback: currentRuntimeFields,
     });
-    assertRuntimeSelectionAvailable(runtimeFields);
+    await assertRuntimeTargetAvailable(runtimeFields);
     const containerName = resolveContainerName({
       requestedName: requestBody.container_name,
       currentName: agent.container_name,
@@ -1826,9 +1884,10 @@ router.post("/:id/redeploy", async (req, res) => {
               sandbox_type = $3,
               runtime_family = $4,
               deploy_target = $5,
-              sandbox_profile = $6,
-              container_name = $7,
-              image = $8
+              execution_target_id = $6,
+              sandbox_profile = $7,
+              container_name = $8,
+              image = $9
         WHERE id = $1`,
       [
         agent.id,
@@ -1836,6 +1895,7 @@ router.post("/:id/redeploy", async (req, res) => {
         runtimeFields.sandbox_type,
         runtimeFields.runtime_family,
         runtimeFields.deploy_target,
+        runtimeFields.execution_target_id,
         runtimeFields.sandbox_profile,
         containerName,
         image,
@@ -1849,6 +1909,7 @@ router.post("/:id/redeploy", async (req, res) => {
       name: agent.name,
       userId: req.user.id,
       backend: runtimeFields.backend_type,
+      execution_target_id: runtimeFields.execution_target_id,
       sandbox: runtimeFields.sandbox_profile,
       specs: { vcpu: agent.vcpu || 2, ram_mb: agent.ram_mb || 2048, disk_gb: agent.disk_gb || 20 },
       container_name: containerName,
@@ -1858,6 +1919,7 @@ router.post("/:id/redeploy", async (req, res) => {
       previous_backend: currentRuntimeFields.backend_type,
       previous_runtime_family: currentRuntimeFields.runtime_family,
       previous_deploy_target: currentRuntimeFields.deploy_target,
+      previous_execution_target_id: currentRuntimeFields.execution_target_id,
       previous_sandbox_profile: currentRuntimeFields.sandbox_profile,
       image,
     });
@@ -1871,6 +1933,7 @@ router.post("/:id/redeploy", async (req, res) => {
           nextStatus: "queued",
           runtimeFamily: runtimeFields.runtime_family,
           deployTarget: runtimeFields.deploy_target,
+          executionTargetId: runtimeFields.execution_target_id,
           sandboxProfile: runtimeFields.sandbox_profile,
         },
       }),

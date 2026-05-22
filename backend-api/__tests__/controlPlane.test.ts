@@ -51,7 +51,6 @@ const CATALOG_ENV_KEYS = [
   "ENABLED_BACKENDS",
   "ENABLED_RUNTIME_FAMILIES",
   "ENABLED_SANDBOX_PROFILES",
-  "KUBECONFIG",
   "PROXMOX_API_URL",
   "PROXMOX_TOKEN_ID",
   "PROXMOX_TOKEN_SECRET",
@@ -59,6 +58,33 @@ const CATALOG_ENV_KEYS = [
   "PROXMOX_SSH_USER",
   "PROXMOX_SSH_PASSWORD",
 ];
+
+function kubernetesClusterRow(overrides = {}) {
+  return {
+    id: "aks-eastus2",
+    label: "AKS East US 2",
+    provider: "aks",
+    cluster_name: "nora-dns-vjb9kjjz",
+    enabled: true,
+    is_default: true,
+    credential_mode: "mounted_path",
+    kubeconfig_path: "/kubeconfigs/aks-eastus2",
+    kube_context: "",
+    namespace: "nora-openclaw-agents",
+    openclaw_namespace: "nora-openclaw-agents",
+    hermes_namespace: "nora-hermes-agents",
+    exposure_mode: "load-balancer",
+    runtime_host: "",
+    service_annotations: {},
+    load_balancer_source_ranges: [],
+    load_balancer_class: "",
+    load_balancer_ready_timeout_ms: 1200000,
+    load_balancer_ready_interval_ms: 5000,
+    last_test_status: "ok",
+    last_test_message: "Kubernetes API is reachable.",
+    ...overrides,
+  };
+}
 
 jest.mock("../db", () => mockDb);
 jest.mock("../redisQueue", () => ({
@@ -91,6 +117,9 @@ jest.mock("../workspaces", () => ({
   createWorkspace: jest.fn(),
   addAgent: jest.fn(),
   getWorkspaceAgents: jest.fn().mockResolvedValue([]),
+  listAgentCandidates: jest.fn().mockResolvedValue([]),
+  removeAgent: jest.fn(),
+  listAccessibleAgents: jest.fn().mockResolvedValue([]),
 }));
 jest.mock("../integrations", () => ({
   listIntegrations: jest.fn().mockResolvedValue([]),
@@ -141,9 +170,14 @@ jest.mock("../channels", () => ({
   handleInboundWebhook: jest.fn(),
 }));
 jest.mock("../metrics", () => ({
+  parseCostQuery: jest.fn((query = {}) => ({ periodDays: Number(query.period_days) || 30 })),
   getAgentMetrics: jest.fn().mockResolvedValue([]),
   getAgentSummary: jest.fn().mockResolvedValue({}),
   getAgentCost: jest.fn().mockResolvedValue(null),
+  getWorkspaceCost: jest.fn().mockResolvedValue({ totalUsd: 0, perAgent: [] }),
+  getAccessibleWorkspaceCosts: jest
+    .fn()
+    .mockResolvedValue({ workspaces: [], uniqueFleetTotalUsd: 0 }),
   recordApiMetric: jest.fn(),
 }));
 jest.mock("../platformSettings", () => ({
@@ -156,6 +190,7 @@ const app = require("../server");
 
 describe("public platform config", () => {
   beforeEach(() => {
+    mockDb.query.mockReset();
     mockGetDeploymentDefaults.mockReset().mockResolvedValue({
       vcpu: 1,
       ram_mb: 1024,
@@ -308,16 +343,16 @@ describe("public platform config", () => {
   });
 
   it("marks maturity tiers on deploy targets and surfaces Docker sandbox choices separately", async () => {
-    process.env.ENABLED_BACKENDS = "docker,k8s,proxmox";
+    process.env.ENABLED_BACKENDS = "docker,proxmox";
     process.env.ENABLED_SANDBOX_PROFILES = "standard,nemoclaw";
-    process.env.KUBECONFIG = "/tmp/test-kubeconfig";
+    mockDb.query.mockResolvedValueOnce({ rows: [kubernetesClusterRow()] });
 
     const res = await request(app).get("/config/backends");
 
     expect(res.status).toBe(200);
 
     const dockerTarget = res.body.executionTargets.find((target) => target.id === "docker");
-    const k8sTarget = res.body.executionTargets.find((target) => target.id === "k8s");
+    const k8sTarget = res.body.executionTargets.find((target) => target.id === "k8s:aks-eastus2");
     const proxmoxTarget = res.body.executionTargets.find((target) => target.id === "proxmox");
 
     expect(dockerTarget).toEqual(
@@ -367,6 +402,7 @@ describe("public platform config", () => {
 
   it("surfaces Hermes as a runtime family on execution targets when ENABLED_RUNTIME_FAMILIES enables it", async () => {
     process.env.ENABLED_RUNTIME_FAMILIES = "hermes";
+    process.env.ENABLED_BACKENDS = "docker,proxmox";
 
     const res = await request(app).get("/config/backends");
 
@@ -391,8 +427,21 @@ describe("public platform config", () => {
           id: "docker",
           runtimeFamily: "hermes",
           defaultSandboxProfile: "standard",
+          maturityTier: "ga",
         }),
       ]),
+    );
+    expect(res.body.executionTargets).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "proxmox",
+          runtimeFamily: "hermes",
+          maturityTier: "beta",
+        }),
+      ]),
+    );
+    expect(res.body.executionTargets.map((target) => target.maturityTier)).not.toContain(
+      "experimental",
     );
     expect(res.body.backends).toEqual(
       expect.arrayContaining([
@@ -420,51 +469,95 @@ describe("public platform config", () => {
 
   it("surfaces Kubernetes as a compatible target for OpenClaw and Hermes", async () => {
     process.env.ENABLED_RUNTIME_FAMILIES = "openclaw,hermes";
-    process.env.ENABLED_BACKENDS = "k8s";
-    process.env.KUBECONFIG = "/tmp/test-kubeconfig";
+    mockDb.query.mockResolvedValueOnce({ rows: [kubernetesClusterRow()] });
 
     const res = await request(app).get("/config/backends");
 
     expect(res.status).toBe(200);
-    expect(res.body.enabledBackends).toEqual(["k8s"]);
+    expect(res.body.enabledDeployTargets).toEqual(expect.arrayContaining(["k8s"]));
     expect(res.body.runtimeFamilies).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ id: "openclaw" }),
         expect.objectContaining({
           id: "hermes",
           available: true,
-          enabledDeployTargets: ["k8s"],
+          enabledDeployTargets: expect.arrayContaining(["k8s"]),
         }),
       ]),
     );
     expect(res.body.backends).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          id: "k8s",
+          id: "k8s:aks-eastus2",
           enabled: true,
-        }),
-        expect.objectContaining({
-          id: "docker",
-          enabled: false,
         }),
       ]),
     );
   });
 
-  it("normalizes K3s enabled-backend aliases to the Kubernetes target", async () => {
-    process.env.ENABLED_BACKENDS = "k3s";
-    process.env.KUBECONFIG = "/tmp/test-kubeconfig";
+  it("omits Kubernetes clusters without a passing connection test from OpenClaw and Hermes deploy catalogs", async () => {
+    process.env.ENABLED_RUNTIME_FAMILIES = "openclaw,hermes";
+    mockDb.query.mockResolvedValueOnce({
+      rows: [
+        kubernetesClusterRow({
+          id: "aks-failed",
+          last_test_status: "failed",
+          last_test_message: "Forbidden",
+        }),
+        kubernetesClusterRow({
+          id: "aks-untested",
+          last_test_status: null,
+          last_test_message: null,
+        }),
+      ],
+    });
 
     const res = await request(app).get("/config/backends");
 
     expect(res.status).toBe(200);
-    expect(res.body.enabledBackends).toEqual(["k8s"]);
+    expect(res.body.enabledDeployTargets).not.toContain("k8s");
+    expect(res.body.executionTargets.some((target) => String(target.id).startsWith("k8s:"))).toBe(
+      false,
+    );
+    for (const runtimeFamily of res.body.runtimeFamilies) {
+      expect(
+        runtimeFamily.executionTargets.some((target) => String(target.id).startsWith("k8s:")),
+      ).toBe(false);
+    }
+  });
+
+  it("does not create Kubernetes execution targets from K3s env aliases", async () => {
+    process.env.ENABLED_BACKENDS = "k3s";
+
+    const res = await request(app).get("/config/backends");
+
+    expect(res.status).toBe(200);
+    expect(res.body.enabledBackends).toEqual(["docker"]);
+    expect(res.body.executionTargets.some((target) => String(target.id).startsWith("k8s"))).toBe(
+      false,
+    );
+  });
+
+  it("expands admin-registered Kubernetes clusters into concrete execution targets", async () => {
+    mockDb.query.mockResolvedValueOnce({
+      rows: [kubernetesClusterRow()],
+    });
+
+    const res = await request(app).get("/config/backends");
+
+    expect(res.status).toBe(200);
+    expect(res.body.defaultExecutionTarget).toBe("k8s:aks-eastus2");
     expect(res.body.executionTargets).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          id: "k8s",
-          label: "Kubernetes on K3s",
-          enabled: true,
+          id: "k8s:aks-eastus2",
+          deployTarget: "k8s",
+          executionTargetId: "k8s:aks-eastus2",
+          label: "AKS East US 2",
+          providerLabel: "AKS",
+          clusterName: "nora-dns-vjb9kjjz",
+          namespace: "nora-openclaw-agents",
+          exposureMode: "load-balancer",
           available: true,
         }),
       ]),
@@ -497,7 +590,7 @@ describe("public platform config", () => {
         canAutoUpgrade: false,
         installMethod: "source",
         manualUpgrade: expect.objectContaining({
-          command: "git pull --ff-only && docker compose up -d --build",
+          command: "./setup.sh --update",
           steps: expect.arrayContaining([expect.stringContaining("repo root")]),
         }),
       }),

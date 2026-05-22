@@ -222,7 +222,7 @@ export default function Deploy() {
       .then((r) => r.json())
       .then(setSub)
       .catch((err) => console.error(err));
-    fetchWithAuth("/api/agents")
+    fetchWithAuth("/api/agents?scope=owned")
       .then((r) => r.json())
       .then((data) => setAgentCount(Array.isArray(data) ? data.length : 0))
       .catch((err) => console.error(err));
@@ -531,6 +531,7 @@ export default function Deploy() {
           name: nextDraft.name,
           runtime_family: nextDraft.runtimeFamily,
           deploy_target: nextDraft.deployTarget,
+          execution_target_id: nextDraft.deployTarget,
           sandbox_profile: nextDraft.sandboxProfile || "standard",
           ...(nextDraft.containerName.trim()
             ? { container_name: nextDraft.containerName.trim() }
@@ -746,6 +747,7 @@ export default function Deploy() {
         ];
 
   function executionTargetIcon(targetId) {
+    if (String(targetId || "").startsWith("k8s:")) return Boxes;
     switch (targetId) {
       case "k8s":
         return Boxes;
@@ -1414,10 +1416,26 @@ export default function Deploy() {
                         />
                       </div>
                       <p className="text-[11px] text-slate-500 leading-relaxed">{target.summary}</p>
+                      {target.clusterName || target.namespace || target.exposureMode ? (
+                        <p className="mt-2 text-[11px] font-semibold leading-relaxed text-slate-600">
+                          {[
+                            target.clusterName ? `Cluster ${target.clusterName}` : "",
+                            target.namespace ? `Namespace ${target.namespace}` : "",
+                            target.exposureMode || "",
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </p>
+                      ) : null}
                       <div className="flex flex-wrap gap-2 mt-3">
                         <span className="inline-flex items-center rounded-full bg-white/80 px-2 py-1 text-[10px] font-bold text-slate-600 border border-slate-200">
                           {target.runtimeFamilyLabel || "OpenClaw"}
                         </span>
+                        {target.providerLabel ? (
+                          <span className="inline-flex items-center rounded-full bg-white/80 px-2 py-1 text-[10px] font-bold text-slate-600 border border-slate-200">
+                            {target.providerLabel}
+                          </span>
+                        ) : null}
                         {target.supportsSandboxSelection ? (
                           <span className="inline-flex items-center rounded-full bg-white/80 px-2 py-1 text-[10px] font-bold text-slate-600 border border-slate-200">
                             Sandbox choice available

@@ -10,13 +10,14 @@ const mockMonitoring = {
   getUserEventsPage: jest.fn(),
 };
 const mockMetrics = {
+  parseCostQuery: jest.fn((query = {}) => ({ periodDays: Number(query.period_days) || 30 })),
   getAgentMetrics: jest.fn(),
   getAgentSummary: jest.fn(),
   getAgentCost: jest.fn(),
 };
 const mockOwnership = {
-  findOwnedAgent: jest.fn(),
-  requireOwnedAgent: jest.fn(() => (req, res, next) => next()),
+  findAccessibleAgent: jest.fn(),
+  requireAccessibleAgent: jest.fn(() => (req, res, next) => next()),
 };
 
 jest.mock("../db", () => mockDb);
@@ -36,7 +37,7 @@ describe("monitoring route ownership", () => {
     mockMonitoring.getRecentEvents.mockReset();
     mockMonitoring.getUserRecentEvents.mockReset();
     mockMonitoring.getUserEventsPage.mockReset();
-    mockOwnership.findOwnedAgent.mockReset();
+    mockOwnership.findAccessibleAgent.mockReset();
     currentUser = { id: "user-1", role: "user" };
 
     app = express();

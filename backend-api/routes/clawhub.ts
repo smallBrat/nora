@@ -160,7 +160,7 @@ function sendInstallError(res, error) {
 async function loadOwnedAgent(agentId, userId) {
   const result = await db.query(
     `SELECT id, user_id, name, status, host, container_id, backend_type, runtime_family,
-            deploy_target, sandbox_profile, clawhub_skills
+            deploy_target, execution_target_id, sandbox_profile, clawhub_skills
        FROM agents
       WHERE id = $1 AND user_id = $2
       LIMIT 1`,

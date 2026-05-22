@@ -21,7 +21,8 @@ The base `docker-compose.yml` runs dev mode (hot-reload, volume mounts). Overlay
 
 - `docker-compose.override.yml` — auto-loaded; switches to `Dockerfile.prod` and `npm start` for production-like runs
 - `docker-compose.e2e.yml` — E2E test stack
-- `docker-compose.kind.yml` — Kubernetes Kind smoke testing (`ENABLED_BACKENDS=k8s`, `K8S_EXPOSURE_MODE=node-port`)
+- `docker-compose.kubernetes.yml` — generic Kubernetes kubeconfig mounts for Admin-registered clusters
+- `docker-compose.kind.yml` — Kind network helper layered with `docker-compose.kubernetes.yml` for local K8s smoke testing
 
 One-liner installer: `./setup.sh` (macOS/Linux/WSL2) or `./setup.ps1` (Windows). Verifies Docker/OpenSSL, generates secrets, creates admin account, starts stack.
 
@@ -130,7 +131,7 @@ Note: the **active** nginx configs (`nginx.conf`, `nginx.e2e.conf`, `nginx.publi
 
 Copy `.env.example` to `.env`. Required: `JWT_SECRET`, `ENCRYPTION_KEY`, `NEXTAUTH_URL`.
 
-Commonly toggled: `PLATFORM_MODE` (`selfhosted` or `paas`), `ENABLED_RUNTIME_FAMILIES`, `ENABLED_BACKENDS`, `NGINX_CONFIG_FILE`, `NGINX_HTTP_PORT`, `BACKEND_API_PORT`, `K8S_EXPOSURE_MODE`, `NVIDIA_API_KEY` (required when `nemoclaw` is enabled), `CORS_ORIGINS`.
+Commonly toggled: `PLATFORM_MODE` (`selfhosted` or `paas`), `ENABLED_RUNTIME_FAMILIES`, `ENABLED_BACKENDS`, `NGINX_CONFIG_FILE`, `NGINX_HTTP_PORT`, `BACKEND_API_PORT`, `NORA_KUBECONFIGS_DIR`, `NVIDIA_API_KEY` (required when `nemoclaw` is enabled), `CORS_ORIGINS`.
 
 `.env.test` exists for test-mode overrides; `NORA_ENV_FILE` can point compose at an alternate env file.
 

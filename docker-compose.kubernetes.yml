@@ -1,0 +1,8 @@
+services:
+  backend-api:
+    volumes:
+      - ${NORA_KUBECONFIGS_DIR:-./.secrets/kubeconfigs}:/kubeconfigs:ro
+
+  worker-provisioner:
+    volumes:
+      - ${NORA_KUBECONFIGS_DIR:-./.secrets/kubeconfigs}:/kubeconfigs:ro

@@ -1,0 +1,77 @@
+# Upgrade Nora
+
+> Keep self-hosted Nora current with the manual host command or the Admin Settings one-click upgrade runner.
+
+Nora supports two upgrade paths for source-based self-hosted installs:
+
+| Path                    | Use when                                                                                                  |
+| ----------------------- | --------------------------------------------------------------------------------------------------------- |
+| Manual host command     | You want to run the update yourself from the host Nora checkout.                                          |
+| Admin one-click upgrade | You want an admin to start a temporary Docker runner from **Admin Settings** after preflight checks pass. |
+
+Both paths rebuild the same Docker Compose stack. For public TLS and Kubernetes backends, make sure the deploy env file and compose file list match the command you normally use.
+
+## Manual upgrade
+
+Run the manual upgrade from the Nora repo root on the host:
+
+```bash
+./setup.sh --update
+```
+
+For deployments that do not use `setup.sh`, run the same compose stack that started the instance. Public TLS plus any Kubernetes backend uses:
+
+```bash
+docker compose \
+  --env-file .env \
+  -f docker-compose.yml \
+  -f infra/docker-compose.public-tls.yml \
+  -f docker-compose.kubernetes.yml \
+  up -d --build
+```
+
+The Kubernetes overlay is shared by AKS, GKE, EKS, k3s, and other kubeconfig-based Kubernetes targets. Provider selection happens through the Admin Kubernetes cluster settings and mounted kubeconfigs, not through separate provider-specific compose files.
+
+## Enable one-click upgrades
+
+One-click upgrades are disabled by default. Enable them only on instances where the backend can reach the Docker socket and the host Nora checkout.
+
+```dotenv
+NORA_AUTO_UPGRADE_ENABLED=true
+NORA_HOST_REPO_DIR=/srv/nora
+NORA_ENV_FILE=.env
+NORA_UPGRADE_REPO=https://github.com/solomon2773/nora.git
+NORA_UPGRADE_REF=master
+```
+
+When the current Docker Compose container labels are available, Nora auto-detects the compose files used by the running `backend-api` container. Set `NORA_UPGRADE_COMPOSE_FILES` when you want an explicit stack:
+
+```dotenv
+NORA_UPGRADE_COMPOSE_FILES=docker-compose.yml:infra/docker-compose.public-tls.yml:docker-compose.kubernetes.yml
+NORA_UPGRADE_PUBLIC_HEALTH_URL=https://stage.example.com/api/health
+```
+
+The backend mounts the host checkout read-only at `/nora-host-repo` for preflight file checks. The temporary upgrade runner mounts `NORA_HOST_REPO_DIR` read-write so it can fetch the target release, update release tracking in the deploy env file, and rebuild the stack.
+
+## Admin flow
+
+Open **Admin Settings -> Platform Release**. The one-click panel shows:
+
+- Current and latest version metadata.
+- The exact deploy env file and compose files the runner will use.
+- Preflight checks for auto-upgrade enablement, target release, host repo path, source repo safety, Docker socket access, and file presence.
+- Recent runner logs and the current phase: queued, fetching source, applying release, rebuilding stack, checking health, succeeded, or failed.
+
+Click **Upgrade now** only after preflight is ready. If preflight is blocked, use the failed check message as the source of truth before retrying.
+
+## Recovery
+
+If an upgrade fails, Nora does not automatically roll back. Review the Admin log tail or the `nora_upgrade_state` volume, fix the reported issue, and rerun the manual command from the host repo.
+
+Before retrying, verify the host checkout is clean:
+
+```bash
+git status --short --untracked-files=no
+```
+
+The one-click runner refuses to continue when tracked files are dirty because it cannot safely fast-forward the checkout.

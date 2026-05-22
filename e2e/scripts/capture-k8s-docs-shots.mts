@@ -70,10 +70,10 @@ async function run() {
   console.log("[capture-k8s] wrote nora-deploy-backend-picker.png");
 
   // 2. Deploy wizard — Kubernetes selected. The picker is a grid of <button>
-  // cards; click the K3s / Kubernetes one. If the live stack doesn't have a
-  // KUBECONFIG (the card is disabled in that case), force-apply the selected
-  // visual state via direct class manipulation so the shot still shows what
-  // selection looks like.
+  // cards; click a Kubernetes cluster card. If the live stack has no
+  // Admin-registered Kubernetes target, force-apply the selected visual state
+  // via direct class manipulation so the shot still shows what selection looks
+  // like.
   try {
     const k8sCard = page
       .getByRole("button", { name: /kubernetes|k8s/i })

@@ -1,6 +1,6 @@
 import Layout from "../../components/layout/Layout";
 import { useEffect, useState } from "react";
-import { Loader2, Plus, FolderOpen, Trash2, Bot, Users } from "lucide-react";
+import { ArrowUpRight, Loader2, Plus, FolderOpen, Trash2, Bot, Users } from "lucide-react";
 import { useRouter } from "next/router";
 import { clsx } from "clsx";
 import { fetchWithAuth } from "../../lib/api";
@@ -135,24 +135,47 @@ export default function Workspaces() {
                     >
                       <Users size={18} />
                     </button>
-                    <button
-                      onClick={() => remove(w.id)}
-                      aria-label={`Delete workspace ${w.name}`}
-                      className="p-2.5 rounded-xl hover:bg-red-50 text-slate-400 hover:text-red-500 transition-all"
-                    >
-                      <Trash2 size={18} />
-                    </button>
+                    {w.role === "owner" && (
+                      <button
+                        onClick={() => remove(w.id)}
+                        aria-label={`Delete workspace ${w.name}`}
+                        className="p-2.5 rounded-xl hover:bg-red-50 text-slate-400 hover:text-red-500 transition-all"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    )}
                   </div>
                 </div>
-                {w.agents && w.agents.length > 0 && (
-                  <div className="flex items-center gap-2 text-xs font-bold text-slate-500">
+                <div className="flex flex-wrap items-center gap-3 text-xs font-bold text-slate-500">
+                  <span className="inline-flex items-center gap-2">
                     <Bot size={14} />
-                    {w.agents.length} agent{w.agents.length !== 1 ? "s" : ""} assigned
-                  </div>
-                )}
+                    {w.agent_count || w.agents?.length || 0} agent
+                    {(w.agent_count || w.agents?.length || 0) === 1 ? "" : "s"}
+                  </span>
+                  <span className="inline-flex items-center gap-2">
+                    <Users size={14} />
+                    {w.member_count || 0} member{(w.member_count || 0) === 1 ? "" : "s"}
+                  </span>
+                </div>
                 <span className="text-[10px] text-slate-400 font-medium">
                   Created {new Date(w.created_at).toLocaleDateString()}
                 </span>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={() => router.push(`/workspaces/${w.id}/agents`)}
+                    className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                  >
+                    <Bot size={14} />
+                    Agents
+                  </button>
+                  <button
+                    onClick={() => router.push(`/workspaces/${w.id}/members`)}
+                    className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                  >
+                    <ArrowUpRight size={14} />
+                    Members
+                  </button>
+                </div>
               </div>
             ))}
           </div>

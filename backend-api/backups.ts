@@ -669,6 +669,7 @@ async function createAgentBackup({ userId, agentId, actorId = userId, name = "" 
           name: agent.name,
           runtimeFamily: runtimeFields.runtime_family,
           deployTarget: runtimeFields.deploy_target,
+          executionTargetId: runtimeFields.execution_target_id,
           sandboxProfile: runtimeFields.sandbox_profile,
         },
       }),
@@ -984,11 +985,7 @@ async function updateBackupRunning(backupId) {
   );
 }
 
-async function completeBackup(
-  backup,
-  archiveBuffer,
-  { summary = {}, warnings = [], signal } = {},
-) {
+async function completeBackup(backup, archiveBuffer, { summary = {}, warnings = [], signal } = {}) {
   throwIfAborted(signal, "backup completion");
   await enforceBackupStorageCapacity(backup, archiveBuffer);
   const storageConfig = await backupStorageConfig();
@@ -1076,6 +1073,7 @@ function backupAgentMetadata(agent = {}) {
     name: agent.name,
     runtime_family: runtimeFields.runtime_family,
     deploy_target: runtimeFields.deploy_target,
+    execution_target_id: runtimeFields.execution_target_id,
     sandbox_profile: runtimeFields.sandbox_profile,
     backend_type: runtimeFields.backend_type,
     sandbox_type: runtimeFields.sandbox_type,
@@ -1417,7 +1415,7 @@ async function createRestoreDraft({ backupId, userId, agentId = null }) {
       name: draft.preview.name,
       containerName: "",
       runtimeFamily: runtimeFields.runtime_family,
-      deployTarget: runtimeFields.deploy_target,
+      deployTarget: runtimeFields.execution_target_id || runtimeFields.deploy_target,
       sandboxProfile: runtimeFields.sandbox_profile,
       model: "",
       deploymentMode: "migrate",

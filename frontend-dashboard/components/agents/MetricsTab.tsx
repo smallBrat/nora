@@ -205,6 +205,7 @@ export default function MetricsTab({ agentId, backendConfig = null }) {
   const [meta, setMeta] = useState<any>({
     backend_type: null,
     deploy_target: null,
+    execution_target_id: null,
     sandbox_profile: null,
     sandbox_type: null,
     capabilities: EMPTY_CAPABILITIES,
@@ -244,6 +245,8 @@ export default function MetricsTab({ agentId, backendConfig = null }) {
       setMeta({
         backend_type: currentData.backend_type || historyData.backend_type || null,
         deploy_target: currentData.deploy_target || historyData.deploy_target || null,
+        execution_target_id:
+          currentData.execution_target_id || historyData.execution_target_id || null,
         sandbox_profile: currentData.sandbox_profile || historyData.sandbox_profile || null,
         sandbox_type: currentData.sandbox_type || historyData.sandbox_type || null,
         capabilities: currentData.capabilities || historyData.capabilities || EMPTY_CAPABILITIES,
@@ -296,6 +299,7 @@ export default function MetricsTab({ agentId, backendConfig = null }) {
             setMeta({
               backend_type: message.payload.backend_type || null,
               deploy_target: message.payload.deploy_target || null,
+              execution_target_id: message.payload.execution_target_id || null,
               sandbox_profile: message.payload.sandbox_profile || null,
               sandbox_type: message.payload.sandbox_type || null,
               capabilities: message.payload.capabilities || EMPTY_CAPABILITIES,
@@ -354,6 +358,7 @@ export default function MetricsTab({ agentId, backendConfig = null }) {
     runtime_family: stats?.runtime_family || meta.runtime_family,
     backend_type: stats?.backend_type || meta.backend_type,
     deploy_target: stats?.deploy_target || meta.deploy_target,
+    execution_target_id: stats?.execution_target_id || meta.execution_target_id,
     sandbox_profile: stats?.sandbox_profile || meta.sandbox_profile,
     sandbox_type: stats?.sandbox_type || meta.sandbox_type,
   };
@@ -365,7 +370,7 @@ export default function MetricsTab({ agentId, backendConfig = null }) {
   );
   const sandboxProfile = resolveAgentSandboxProfile(runtimeMeta);
   const sandboxLabel = formatSandboxProfileLabel(sandboxProfile);
-  const showNetworkDiskCharts = executionTarget !== "k8s";
+  const showNetworkDiskCharts = !String(executionTarget || "").startsWith("k8s");
   const liveError = error || stats?.error || null;
   const liveStateLabel = streamState === "connected" ? "Live" : "Offline";
   const liveStateClass =

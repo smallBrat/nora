@@ -2,11 +2,18 @@ import { useEffect, useMemo, useState } from "react";
 import { ArrowRight, CheckCircle2, KeyRound, Loader2, MessagesSquare, Rocket, ShieldCheck } from "lucide-react";
 import { fetchWithAuth } from "../../lib/api";
 import { clsx } from "clsx";
+import {
+  hasValidatedAgent,
+  markAgentValidatedFromGatewayHistory,
+  subscribeAgentValidation,
+} from "../../lib/activation";
+import { runtimeSupportsGateway } from "../../lib/runtime";
 
 export default function ActivationChecklist({ compact = false, title = "Activation checklist", subtitle, showHeader = true }) {
   const [loading, setLoading] = useState(true);
   const [providerCount, setProviderCount] = useState(0);
   const [agents, setAgents] = useState([]);
+  const [validationVersion, setValidationVersion] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -31,10 +38,42 @@ export default function ActivationChecklist({ compact = false, title = "Activati
     };
   }, []);
 
+  useEffect(() => {
+    return subscribeAgentValidation(() => {
+      setValidationVersion((version) => version + 1);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!agents.length) return;
+
+    let cancelled = false;
+    const candidates = agents
+      .filter((agent) => agent?.id && runtimeSupportsGateway(agent) && !hasValidatedAgent(agent.id))
+      .slice(0, 5);
+
+    if (!candidates.length) return;
+
+    async function validateFromHistory() {
+      for (const agent of candidates) {
+        if (cancelled) return;
+        const validated = await markAgentValidatedFromGatewayHistory(agent.id);
+        if (validated) return;
+      }
+    }
+
+    validateFromHistory();
+    return () => {
+      cancelled = true;
+    };
+  }, [agents, validationVersion]);
+
   const steps = useMemo(() => {
     const hasProvider = providerCount > 0;
     const hasAgent = agents.length > 0;
     const firstAgent = agents[0];
+    const hasValidatedRuntime =
+      hasAgent && agents.some((agent) => hasValidatedAgent(agent?.id));
 
     return [
       {
@@ -61,7 +100,9 @@ export default function ActivationChecklist({ compact = false, title = "Activati
         key: "deploy",
         title: hasAgent ? "First agent deployed" : "Deploy your first OpenClaw agent",
         desc: hasAgent
-          ? `${agents.length} agent${agents.length === 1 ? " is" : "s are"} now in Nora. The next move is to validate one live runtime end-to-end.`
+          ? hasValidatedRuntime
+            ? `${agents.length} agent${agents.length === 1 ? " is" : "s are"} now in Nora, and one live runtime has passed chat validation.`
+            : `${agents.length} agent${agents.length === 1 ? " is" : "s are"} now in Nora. The next move is to validate one live runtime end-to-end.`
           : "Open Deploy and choose one enabled backend for the clearest first-run launch flow.",
         href: "/app/deploy",
         cta: hasAgent ? "Deploy Another Agent" : "Deploy First Agent",
@@ -70,21 +111,33 @@ export default function ActivationChecklist({ compact = false, title = "Activati
       },
       {
         key: "validate",
-        title: hasAgent ? "Validate the first live runtime" : "Validate chat, logs, and terminal",
-        desc: hasAgent
-          ? "Open one agent and prove the control plane works end-to-end: chat, logs, terminal, and runtime health."
+        title: hasValidatedRuntime
+          ? "Runtime validated"
+          : hasAgent
+            ? "Validate the first live runtime"
+            : "Validate chat, logs, and terminal",
+        desc: hasValidatedRuntime
+          ? "A successful chat has been recorded from a live agent. Logs, terminal, and runtime health remain available from the agent detail page."
+          : hasAgent
+            ? "Open one agent and prove the control plane works end-to-end: chat, logs, terminal, and runtime health."
           : "Once your first agent is live, validate the runtime immediately from the agent detail page.",
         href: firstAgent?.id ? `/app/agents/${firstAgent.id}` : "/app/agents",
-        cta: hasAgent ? "Open Validation View" : "View Agents",
+        cta: hasValidatedRuntime ? "Open Agent" : hasAgent ? "Open Validation View" : "View Agents",
         icon: MessagesSquare,
-        status: hasAgent ? "current" : "upcoming",
+        status: hasValidatedRuntime ? "complete" : hasAgent ? "current" : "upcoming",
       },
     ];
-  }, [providerCount, agents]);
+  }, [providerCount, agents, validationVersion]);
 
   const completed = steps.filter((step) => step.status === "complete").length;
   const progress = Math.round((completed / steps.length) * 100);
-  const nextStep = steps.find((step) => step.status === "current") || steps[steps.length - 1];
+  const nextStep =
+    steps.find((step) => step.status === "current") || {
+      title: "Activation complete",
+      desc: "Your first runtime passed chat validation. Continue from the fleet or deploy another agent when ready.",
+      href: "/app/agents",
+      cta: "View Agents",
+    };
 
   return (
     <div

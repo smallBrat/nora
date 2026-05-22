@@ -1,8 +1,8 @@
 # GKE Kubernetes provisioner backend
 
-> Provision Nora agents into Google Kubernetes Engine using Nora's generic Kubernetes adapter and the GKE Compose overlay.
+> Provision Nora agents into Google Kubernetes Engine using Nora's generic Kubernetes adapter and Admin cluster registry.
 
-GKE uses the same `k8s` backend id as every Kubernetes provider. Nora ships a single Kubernetes adapter (`workers/provisioner/backends/k8s.ts`) that serves Kind, K3s, AKS, GKE, and EKS — provider-specific overlays differ only in the kubeconfig they mount and the exposure mode they default to. The GKE overlay mounts a GKE kubeconfig and defaults agent Services to cloud `LoadBalancer` exposure.
+GKE uses the same Kubernetes adapter as every Kubernetes provider. Nora stores provider, namespace, exposure, and load-balancer settings on the Admin cluster row; `docker-compose.kubernetes.yml` only mounts kubeconfig files into the control-plane containers.
 
 ## Step-by-step setup
 
@@ -41,20 +41,15 @@ kubectl --kubeconfig ./.secrets/gke-kubeconfig get nodes
 
 ### 4. Configure Nora
 
-Set the GKE helper variables in `.env`:
+Set the generic Kubernetes mount variable in `.env`:
 
 ```bash theme={null}
-GKE_KUBECONFIG_PATH=./.secrets/gke-kubeconfig
-GKE_ENABLED_BACKENDS=k8s
-GKE_K8S_NAMESPACE=nora-openclaw-agents
-GKE_K8S_OPENCLAW_NAMESPACE=nora-openclaw-agents
-GKE_K8S_HERMES_NAMESPACE=nora-hermes-agents
-GKE_K8S_EXPOSURE_MODE=load-balancer
-GKE_K8S_LOAD_BALANCER_SOURCE_RANGES=<nora-control-plane-egress-cidr>
-GKE_K8S_LOAD_BALANCER_READY_TIMEOUT_MS=1200000
-GKE_DEPLOYMENT_JOB_TIMEOUT_MS=1800000
-GKE_PROVISION_TIMEOUT_MS=1740000
+mkdir -p ./.secrets/kubeconfigs
+cp ./.secrets/gke-kubeconfig ./.secrets/kubeconfigs/gke-us-central1
+NORA_KUBECONFIGS_DIR=./.secrets/kubeconfigs
 ```
+
+For two or more GKE clusters, put each kubeconfig under `NORA_KUBECONFIGS_DIR` and use Admin paths such as `/kubeconfigs/gke-us-central1` and `/kubeconfigs/gke-us-east1`.
 
 Confirm region / VPC alignment in the Console's **Networking** tab before exposing services to the public internet.
 
@@ -65,7 +60,7 @@ Confirm region / VPC alignment in the Console's **Networking** tab before exposi
 ### 5. Start the stack
 
 ```bash theme={null}
-docker compose -f docker-compose.yml -f docker-compose.gke.yml up -d --build
+docker compose -f docker-compose.yml -f docker-compose.kubernetes.yml up -d --build
 ```
 
 <Warning>
@@ -76,9 +71,31 @@ docker compose -f docker-compose.yml -f docker-compose.gke.yml up -d --build
   `/etc/letsencrypt` and Cloudflare can return 521 because the origin web server is down.
 </Warning>
 
-### 6. Deploy a test agent
+### 6. Register this cluster in Admin
 
-Open the dashboard at `http://127.0.0.1:8080`, sign in, and create an agent with **Backend = Kubernetes on GKE**.
+Open **Admin -> Kubernetes**, click **Add cluster**, and use these values:
+
+| Field                    | Value                                                                                                       |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------- |
+| Cluster id               | `gke-us-central1`                                                                                           |
+| Label                    | `GKE US Central 1`                                                                                          |
+| Provider                 | `GKE`                                                                                                       |
+| Actual cluster name      | The GKE cluster name from the Console                                                                       |
+| Credential mode          | `Mounted kubeconfig path`                                                                                   |
+| Kubeconfig path          | `/kubeconfigs/gke-us-central1`                                                                              |
+| Fallback namespace       | `nora-openclaw-agents`                                                                                      |
+| OpenClaw namespace       | `nora-openclaw-agents`                                                                                      |
+| Hermes namespace         | `nora-hermes-agents`                                                                                        |
+| Exposure mode            | `LoadBalancer`                                                                                              |
+| Service annotations JSON | Leave empty unless your cluster policy requires annotations such as `{"cloud.google.com/l4-rbs":"enabled"}` |
+| Source ranges            | Your Nora control-plane egress CIDR when you can restrict access                                            |
+| Load balancer class      | Leave empty by default, or use `networking.gke.io/l4-regional-external` when your cluster supports it       |
+
+Do not put `./.secrets/gke-kubeconfig` in the Admin Kubeconfig path when Nora runs in Docker Compose. That is the host-side path; the containers see files from `NORA_KUBECONFIGS_DIR` under `/kubeconfigs`.
+
+### 7. Deploy a test agent
+
+Open the dashboard at `http://127.0.0.1:8080`, sign in, and create an agent with the GKE cluster label you registered.
 
 <Frame caption="Nora deploy wizard — Backend dropdown showing Kubernetes on GKE">
   ![Deploy wizard backend
@@ -98,17 +115,15 @@ Open the dashboard at `http://127.0.0.1:8080`, sign in, and create an agent with
 
 The default GKE `LoadBalancer` Service path works without annotations. To request GKE's external passthrough Network Load Balancer with RBS on supported cluster versions, set:
 
-```bash theme={null}
-GKE_K8S_LOAD_BALANCER_CLASS=networking.gke.io/l4-regional-external
-```
+Set the Admin **Load balancer class** field to `networking.gke.io/l4-regional-external`.
 
 For clusters that use the annotation path instead of `loadBalancerClass`:
 
-```bash theme={null}
-GKE_K8S_SERVICE_ANNOTATIONS_JSON='{"cloud.google.com/l4-rbs":"enabled"}'
+```json theme={null}
+{"cloud.google.com/l4-rbs":"enabled"}
 ```
 
-Leave `GKE_K8S_SERVICE_ANNOTATIONS_JSON` empty unless your cluster policy requires provider-specific Service annotations.
+Leave **Service annotations JSON** empty unless your cluster policy requires provider-specific Service annotations.
 
 ## Verification
 
@@ -116,7 +131,7 @@ Leave `GKE_K8S_SERVICE_ANNOTATIONS_JSON` empty unless your cluster policy requir
 kubectl --kubeconfig ./.secrets/gke-kubeconfig -n nora-openclaw-agents get deploy,svc,pods
 # If Hermes is enabled and deployed:
 kubectl --kubeconfig ./.secrets/gke-kubeconfig -n nora-hermes-agents get deploy,svc,pods
-docker compose -f docker-compose.yml -f docker-compose.gke.yml logs worker-provisioner
+docker compose -f docker-compose.yml -f docker-compose.kubernetes.yml logs worker-provisioner
 ```
 
 For real e2e, enable the Kubernetes matrix cell:
@@ -168,7 +183,7 @@ sudo ./infra/setup-tls.sh <your-domain>
 ### 3. Stop the smoke-mode stack
 
 ```bash theme={null}
-docker compose -f docker-compose.yml -f docker-compose.gke.yml down
+docker compose -f docker-compose.yml -f docker-compose.kubernetes.yml down
 ```
 
 ### 4. Start the prod-mode stack
@@ -177,7 +192,7 @@ docker compose -f docker-compose.yml -f docker-compose.gke.yml down
 docker compose \
   -f docker-compose.yml \
   -f infra/docker-compose.public-tls.yml \
-  -f docker-compose.gke.yml \
+  -f docker-compose.kubernetes.yml \
   up -d --build
 ```
 

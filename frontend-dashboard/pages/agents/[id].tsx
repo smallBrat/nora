@@ -16,6 +16,7 @@ import BackupsTab from "../../components/agents/BackupsTab";
 import StatusBadge from "../../components/agents/StatusBadge";
 import { useToast } from "../../components/Toast";
 import { fetchWithAuth } from "../../lib/api";
+import { hasValidatedAgent, markAgentValidated, subscribeAgentValidation } from "../../lib/activation";
 import {
   activeExecutionTargetFromConfig,
   activeSandboxOptionFromTarget,
@@ -71,6 +72,7 @@ export default function AgentDetail() {
   const [backendConfig, setBackendConfig] = useState(null);
   const [agentHubSettings, setAgentHubSettings] = useState(null);
   const [viewerRole, setViewerRole] = useState("user");
+  const [agentValidated, setAgentValidated] = useState(false);
   const toast = useToast();
 
   // Persistent history refs — survive tab switches
@@ -88,6 +90,17 @@ export default function AgentDetail() {
       .then(setAgent)
       .catch(() => {});
   };
+
+  useEffect(() => {
+    if (!id) return;
+    const agentId = String(id);
+    setAgentValidated(hasValidatedAgent(agentId));
+    return subscribeAgentValidation((record) => {
+      if (!record || record.agentId === agentId) {
+        setAgentValidated(hasValidatedAgent(agentId));
+      }
+    });
+  }, [id]);
 
   useEffect(() => {
     if (!id) return;
@@ -276,6 +289,7 @@ export default function AgentDetail() {
           runtime_family:
             duplicateRuntimeFamily || runtimeFamilyFromConfig(backendConfig)?.id || "openclaw",
           deploy_target: duplicateExecutionTarget,
+          execution_target_id: duplicateExecutionTarget,
           sandbox_profile: duplicateSandboxProfile || "standard",
         }),
       });
@@ -312,6 +326,7 @@ export default function AgentDetail() {
           runtime_family:
             redeployRuntimeFamily || runtimeFamilyFromConfig(backendConfig)?.id || "openclaw",
           deploy_target: redeployExecutionTarget,
+          execution_target_id: redeployExecutionTarget,
           sandbox_profile: redeploySandboxProfile || "standard",
         }),
       });
@@ -331,6 +346,7 @@ export default function AgentDetail() {
                   current.runtime_family ||
                   "openclaw",
                 deploy_target: nextExecutionTarget,
+                execution_target_id: nextExecutionTarget,
                 sandbox_profile: nextSandboxProfile,
                 backend_type: resolveBackendTypeForSelection({
                   runtimeFamily: redeployRuntimeFamily || current.runtime_family || "openclaw",
@@ -457,6 +473,50 @@ export default function AgentDetail() {
   const supportsGateway = runtimeSupportsGateway(runtimeFamily);
 
   useEffect(() => {
+    if (!id || !agent || agentValidated || !supportsGateway) return;
+    if (!["running", "warning"].includes(agent.status)) return;
+
+    let cancelled = false;
+    const agentId = String(id);
+
+    async function markFromExistingChatHistory() {
+      try {
+        const sessionsRes = await fetchWithAuth(`/api/agents/${agentId}/gateway/sessions`);
+        if (!sessionsRes.ok) return;
+        const data = await sessionsRes.json().catch(() => null);
+        const sessions = Array.isArray(data) ? data : data?.sessions || [];
+        const main = sessions.find((session) => session.key === "main") || sessions[0];
+        const key = main?.key || main?.id || null;
+        if (!key) return;
+
+        const sessionRes = await fetchWithAuth(`/api/agents/${agentId}/gateway/sessions/${key}`);
+        if (!sessionRes.ok) return;
+        const session = await sessionRes.json().catch(() => null);
+        const history = session?.messages || session?.history || session?.conversation || [];
+        if (!Array.isArray(history)) return;
+
+        const hasUser = history.some((message) =>
+          ["user", "human"].includes(String(message?.role || message?.type || "").toLowerCase()),
+        );
+        const hasAssistant = history.some((message) =>
+          ["assistant", "ai"].includes(String(message?.role || message?.type || "").toLowerCase()),
+        );
+
+        if (!cancelled && hasUser && hasAssistant) {
+          markAgentValidated(agentId, "chat_history");
+        }
+      } catch {
+        // Gateway session history is best-effort and should never block the page.
+      }
+    }
+
+    markFromExistingChatHistory();
+    return () => {
+      cancelled = true;
+    };
+  }, [id, agent?.status, agentValidated, supportsGateway]);
+
+  useEffect(() => {
     if (runtimeFamily === "hermes" && (activeTab === "openclaw" || activeTab === "nemoclaw")) {
       setActiveTab("overview");
       return;
@@ -559,83 +619,85 @@ export default function AgentDetail() {
           </div>
         </div>
 
-        <div
-          className={`rounded-2xl border px-5 py-4 flex flex-col gap-4 md:flex-row md:items-center md:justify-between ${agent.status === "running" || agent.status === "warning" ? "bg-blue-50 border-blue-100" : "bg-amber-50 border-amber-100"}`}
-        >
-          <div>
-            <p
-              className={`text-[10px] font-black uppercase tracking-[0.2em] ${agent.status === "running" || agent.status === "warning" ? "text-blue-700" : "text-amber-700"}`}
-            >
-              Step 3 of 3 — Validate
-            </p>
-            <p className="text-sm font-bold text-slate-900 mt-1">
-              {agent.status === "running" || agent.status === "warning"
-                ? "Use this agent detail view to prove the runtime works end-to-end."
-                : "This agent still needs to finish starting before the full validation pass."}
-            </p>
-            <p
-              className={`text-sm mt-1 ${agent.status === "running" || agent.status === "warning" ? "text-blue-700/80" : "text-amber-700/80"}`}
-            >
-              {agent.status === "running" || agent.status === "warning"
-                ? supportsGateway
-                  ? "Check chat, logs, terminal, and the OpenClaw surface from this page before scaling the fleet."
-                  : "Check Hermes WebUI, logs, and terminal from this page before scaling the fleet."
-                : supportsGateway
-                  ? "Watch the logs first, then validate chat, terminal, and the OpenClaw surface as soon as the agent is live."
-                  : "Watch the logs first, then validate Hermes WebUI and terminal access as soon as the agent is live."}
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {supportsGateway ? (
-              <button
-                onClick={() => setActiveTab("openclaw")}
-                className="inline-flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-800 hover:bg-slate-50 transition-all"
+        {!agentValidated ? (
+          <div
+            className={`rounded-2xl border px-5 py-4 flex flex-col gap-4 md:flex-row md:items-center md:justify-between ${agent.status === "running" || agent.status === "warning" ? "bg-blue-50 border-blue-100" : "bg-amber-50 border-amber-100"}`}
+          >
+            <div>
+              <p
+                className={`text-[10px] font-black uppercase tracking-[0.2em] ${agent.status === "running" || agent.status === "warning" ? "text-blue-700" : "text-amber-700"}`}
               >
-                <Zap size={14} />
-                OpenClaw
-              </button>
-            ) : (
-              <button
-                onClick={() => setActiveTab("hermes-webui")}
-                className="inline-flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-800 hover:bg-slate-50 transition-all"
+                Step 3 of 3 — Validate
+              </p>
+              <p className="text-sm font-bold text-slate-900 mt-1">
+                {agent.status === "running" || agent.status === "warning"
+                  ? "Use this agent detail view to prove the runtime works end-to-end."
+                  : "This agent still needs to finish starting before the full validation pass."}
+              </p>
+              <p
+                className={`text-sm mt-1 ${agent.status === "running" || agent.status === "warning" ? "text-blue-700/80" : "text-amber-700/80"}`}
               >
-                <Bot size={14} />
-                Hermes WebUI
-              </button>
-            )}
-            <button
-              onClick={() => setActiveTab("logs")}
-              className="inline-flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-800 hover:bg-slate-50 transition-all"
-            >
-              <ScrollText size={14} />
-              Logs
-            </button>
-            <button
-              onClick={() => setActiveTab("files")}
-              className="inline-flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-800 hover:bg-slate-50 transition-all"
-            >
-              <FolderTree size={14} />
-              Files
-            </button>
-            <button
-              onClick={() =>
-                setActiveTab(
-                  agent.status === "running" ? "terminal" : supportsGateway ? "openclaw" : "logs",
-                )
-              }
-              className="inline-flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-800 hover:bg-slate-50 transition-all"
-            >
-              {agent.status === "running" ? (
-                <Terminal size={14} />
-              ) : supportsGateway ? (
-                <MessagesSquare size={14} />
+                {agent.status === "running" || agent.status === "warning"
+                  ? supportsGateway
+                    ? "Check chat, logs, terminal, and the OpenClaw surface from this page before scaling the fleet."
+                    : "Check Hermes WebUI, logs, and terminal from this page before scaling the fleet."
+                  : supportsGateway
+                    ? "Watch the logs first, then validate chat, terminal, and the OpenClaw surface as soon as the agent is live."
+                    : "Watch the logs first, then validate Hermes WebUI and terminal access as soon as the agent is live."}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {supportsGateway ? (
+                <button
+                  onClick={() => setActiveTab("openclaw")}
+                  className="inline-flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-800 hover:bg-slate-50 transition-all"
+                >
+                  <Zap size={14} />
+                  OpenClaw
+                </button>
               ) : (
-                <ScrollText size={14} />
+                <button
+                  onClick={() => setActiveTab("hermes-webui")}
+                  className="inline-flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-800 hover:bg-slate-50 transition-all"
+                >
+                  <Bot size={14} />
+                  Hermes WebUI
+                </button>
               )}
-              {agent.status === "running" ? "Terminal" : supportsGateway ? "Chat" : "Logs"}
-            </button>
+              <button
+                onClick={() => setActiveTab("logs")}
+                className="inline-flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-800 hover:bg-slate-50 transition-all"
+              >
+                <ScrollText size={14} />
+                Logs
+              </button>
+              <button
+                onClick={() => setActiveTab("files")}
+                className="inline-flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-800 hover:bg-slate-50 transition-all"
+              >
+                <FolderTree size={14} />
+                Files
+              </button>
+              <button
+                onClick={() =>
+                  setActiveTab(
+                    agent.status === "running" ? "terminal" : supportsGateway ? "openclaw" : "logs",
+                  )
+                }
+                className="inline-flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-800 hover:bg-slate-50 transition-all"
+              >
+                {agent.status === "running" ? (
+                  <Terminal size={14} />
+                ) : supportsGateway ? (
+                  <MessagesSquare size={14} />
+                ) : (
+                  <ScrollText size={14} />
+                )}
+                {agent.status === "running" ? "Terminal" : supportsGateway ? "Chat" : "Logs"}
+              </button>
+            </div>
           </div>
-        </div>
+        ) : null}
 
         {/* Tab Bar */}
         {showRestartBanner ? (

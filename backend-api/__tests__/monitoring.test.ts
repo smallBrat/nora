@@ -103,7 +103,7 @@ describe("monitoring metrics", () => {
 
     expect(db.query).toHaveBeenNthCalledWith(
       1,
-      "SELECT status, count(*)::int FROM agents WHERE user_id = $1 GROUP BY status",
+      expect.stringContaining("LEFT JOIN workspace_agents"),
       ["user-1"],
     );
     expect(db.query).toHaveBeenNthCalledWith(2, expect.stringContaining("FROM deployments d"), [

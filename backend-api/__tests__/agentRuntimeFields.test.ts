@@ -9,7 +9,6 @@ const ENV_KEYS = [
   "ENABLED_BACKENDS",
   "ENABLED_RUNTIME_FAMILIES",
   "ENABLED_SANDBOX_PROFILES",
-  "KUBECONFIG",
 ];
 
 function clearRuntimeEnv() {
@@ -58,7 +57,7 @@ describe("agent runtime fields", () => {
     expect(
       buildAgentRuntimeFields({
         runtime_family: "openclaw",
-        deploy_target: "k8s",
+        deploy_target: "k8s:test-cluster",
         sandbox_profile: "standard",
         backend_type: "nemoclaw",
         sandbox_type: "nemoclaw",
@@ -67,6 +66,7 @@ describe("agent runtime fields", () => {
       expect.objectContaining({
         runtime_family: "openclaw",
         deploy_target: "k8s",
+        execution_target_id: "k8s:test-cluster",
         sandbox_profile: "standard",
         backend_type: "k8s",
         sandbox_type: "standard",
@@ -128,12 +128,12 @@ describe("agent runtime fields", () => {
   });
 
   it("treats a redeploy target override as a standard sandbox unless NemoClaw is explicitly requested", () => {
-    process.env.ENABLED_BACKENDS = "docker,k8s";
+    process.env.ENABLED_BACKENDS = "docker";
 
     expect(
       resolveRequestedRuntimeFields({
         request: {
-          deploy_target: "k8s",
+          deploy_target: "k8s:test-cluster",
         },
         fallback: {
           runtime_family: "openclaw",
@@ -145,6 +145,7 @@ describe("agent runtime fields", () => {
       expect.objectContaining({
         runtime_family: "openclaw",
         deploy_target: "k8s",
+        execution_target_id: "k8s:test-cluster",
         sandbox_profile: "standard",
         backend_type: "k8s",
         sandbox_type: "standard",
@@ -162,7 +163,7 @@ describe("agent runtime fields", () => {
         },
         fallback: {
           runtime_family: "openclaw",
-          deploy_target: "k8s",
+          deploy_target: "k8s:test-cluster",
           sandbox_profile: "standard",
         },
       }),
@@ -179,20 +180,19 @@ describe("agent runtime fields", () => {
 
   it("keeps an explicitly requested Hermes Kubernetes target", () => {
     process.env.ENABLED_RUNTIME_FAMILIES = "openclaw,hermes";
-    process.env.ENABLED_BACKENDS = "docker,k8s";
-    process.env.KUBECONFIG = "/tmp/test-kubeconfig";
 
     expect(
       resolveRequestedRuntimeFields({
         request: {
           runtime_family: "hermes",
-          deploy_target: "k8s",
+          deploy_target: "k8s:aks-eastus2",
         },
       }),
     ).toEqual(
       expect.objectContaining({
         runtime_family: "hermes",
         deploy_target: "k8s",
+        execution_target_id: "k8s:aks-eastus2",
         sandbox_profile: "standard",
         backend_type: "k8s",
         sandbox_type: "standard",
@@ -228,7 +228,7 @@ describe("agent runtime fields", () => {
     );
   });
 
-  it("treats deploy-target aliases and explicit runtime metadata for the same path as equivalent", () => {
+  it("does not treat deprecated deploy-target aliases as Kubernetes selections", () => {
     expect(
       isSameRuntimePath(
         {
@@ -237,11 +237,11 @@ describe("agent runtime fields", () => {
         },
         {
           runtime_family: "openclaw",
-          deploy_target: "k8s",
+          deploy_target: "k8s:test-cluster",
           sandbox_profile: "standard",
         },
       ),
-    ).toBe(true);
+    ).toBe(false);
 
     expect(
       isSameRuntimePath(
@@ -258,20 +258,18 @@ describe("agent runtime fields", () => {
     ).toBe(false);
   });
 
-  it("treats K3s as a Kubernetes deploy-target alias", () => {
-    process.env.ENABLED_BACKENDS = "docker,k3s";
-    process.env.KUBECONFIG = "/tmp/test-kubeconfig";
-
+  it("requires concrete Kubernetes execution target ids instead of K3s aliases", () => {
     expect(
       buildAgentRuntimeFields({
         runtime_family: "openclaw",
-        deploy_target: "k3s",
+        deploy_target: "k8s:k3s-local",
         sandbox_profile: "nemoclaw",
       }),
     ).toEqual(
       expect.objectContaining({
         runtime_family: "openclaw",
         deploy_target: "k8s",
+        execution_target_id: "k8s:k3s-local",
         sandbox_profile: "nemoclaw",
         backend_type: "k8s",
         sandbox_type: "nemoclaw",
@@ -281,13 +279,14 @@ describe("agent runtime fields", () => {
     expect(
       resolveRequestedRuntimeFields({
         request: {
-          deploy_target: "k3s",
+          deploy_target: "k8s:k3s-local",
           sandbox_profile: "nemoclaw",
         },
       }),
     ).toEqual(
       expect.objectContaining({
         deploy_target: "k8s",
+        execution_target_id: "k8s:k3s-local",
         sandbox_profile: "nemoclaw",
         backend_type: "k8s",
       }),

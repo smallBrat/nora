@@ -1,8 +1,8 @@
 # Azure Kubernetes Service (AKS) provisioner backend
 
-> Provision Nora agents into Azure Kubernetes Service (AKS) using Nora's generic Kubernetes adapter and the AKS Compose overlay.
+> Provision Nora agents into Azure Kubernetes Service (AKS) using Nora's generic Kubernetes adapter and Admin cluster registry.
 
-AKS uses the same `k8s` backend id as every Kubernetes provider. Nora ships a single Kubernetes adapter (`workers/provisioner/backends/k8s.ts`) that serves Kind, K3s, AKS, GKE, and EKS — provider-specific overlays differ only in the kubeconfig they mount and the exposure mode they default to. The AKS overlay mounts an AKS kubeconfig and defaults agent Services to cloud `LoadBalancer` exposure.
+AKS uses the same Kubernetes adapter as every Kubernetes provider. Nora stores provider, namespace, exposure, and load-balancer settings on the Admin cluster row; `docker-compose.kubernetes.yml` only mounts kubeconfig files into the control-plane containers.
 
 ## Step-by-step setup
 
@@ -95,25 +95,20 @@ kubectl --kubeconfig ./.secrets/aks-kubeconfig get nodes
 
 ### 6. Configure Nora
 
-Set the AKS helper variables in `.env`:
+Set the generic Kubernetes mount variable in `.env`:
 
 ```bash theme={null}
-AKS_KUBECONFIG_PATH=./.secrets/aks-kubeconfig
-AKS_ENABLED_BACKENDS=k8s
-AKS_K8S_NAMESPACE=nora-openclaw-agents
-AKS_K8S_OPENCLAW_NAMESPACE=nora-openclaw-agents
-AKS_K8S_HERMES_NAMESPACE=nora-hermes-agents
-AKS_K8S_EXPOSURE_MODE=load-balancer
-AKS_K8S_LOAD_BALANCER_SOURCE_RANGES=<nora-control-plane-egress-cidr>
-AKS_K8S_LOAD_BALANCER_READY_TIMEOUT_MS=1200000
-AKS_DEPLOYMENT_JOB_TIMEOUT_MS=1800000
-AKS_PROVISION_TIMEOUT_MS=1740000
+mkdir -p ./.secrets/kubeconfigs
+cp ./.secrets/aks-kubeconfig ./.secrets/kubeconfigs/aks-eastus2
+NORA_KUBECONFIGS_DIR=./.secrets/kubeconfigs
 ```
+
+For two or more AKS clusters, put each kubeconfig under `NORA_KUBECONFIGS_DIR` and use Admin paths such as `/kubeconfigs/aks-eastus2` and `/kubeconfigs/aks-westus2`.
 
 ### 7. Start the stack
 
 ```bash theme={null}
-docker compose -f docker-compose.yml -f docker-compose.aks.yml up -d --build
+docker compose -f docker-compose.yml -f docker-compose.kubernetes.yml up -d --build
 ```
 
 <Warning>
@@ -124,9 +119,31 @@ docker compose -f docker-compose.yml -f docker-compose.aks.yml up -d --build
   `/etc/letsencrypt` and Cloudflare can return 521 because the origin web server is down.
 </Warning>
 
-### 8. Deploy test agents
+### 8. Register this cluster in Admin
 
-Open the dashboard at `http://127.0.0.1:8080`, sign in, and create an OpenClaw agent with **Backend = Kubernetes on AKS**. To validate Hermes on AKS, create a second agent with **Runtime = Hermes** and **Backend = Kubernetes on AKS**.
+Open **Admin -> Kubernetes**, click **Add cluster**, and use these values:
+
+| Field                    | Value                                                                                                                               |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Cluster id               | `aks-eastus2`                                                                                                                       |
+| Label                    | `AKS East US 2`                                                                                                                     |
+| Provider                 | `AKS`                                                                                                                               |
+| Actual cluster name      | The Azure AKS cluster name, for example `nora-dns-vjb9kjjz`                                                                         |
+| Credential mode          | `Mounted kubeconfig path`                                                                                                           |
+| Kubeconfig path          | `/kubeconfigs/aks-eastus2`                                                                                                          |
+| Fallback namespace       | `nora-openclaw-agents`                                                                                                              |
+| OpenClaw namespace       | `nora-openclaw-agents`                                                                                                              |
+| Hermes namespace         | `nora-hermes-agents`                                                                                                                |
+| Exposure mode            | `LoadBalancer`                                                                                                                      |
+| Service annotations JSON | `{}` for public load balancers, or `{"service.beta.kubernetes.io/azure-load-balancer-internal":"true"}` for internal load balancers |
+| Source ranges            | Your Nora control-plane egress CIDR when you can restrict access                                                                    |
+| Load balancer class      | Leave empty for normal AKS Services                                                                                                 |
+
+Do not put `./.secrets/aks-kubeconfig` in the Admin Kubeconfig path when Nora runs in Docker Compose. That is the host-side path; the containers see files from `NORA_KUBECONFIGS_DIR` under `/kubeconfigs`.
+
+### 9. Deploy test agents
+
+Open the dashboard at `http://127.0.0.1:8080`, sign in, and create an OpenClaw agent with the AKS cluster label you registered. To validate Hermes on AKS, create a second agent with **Runtime = Hermes** and the same AKS execution target.
 
 <Frame caption="Nora deploy wizard — Backend dropdown showing Kubernetes on AKS">
   ![Backend picker](/images/provisioner-backends/k8s/_nora/nora-deploy-backend-picker.png)
@@ -142,12 +159,12 @@ Open the dashboard at `http://127.0.0.1:8080`, sign in, and create an OpenClaw a
 
 ## AKS Service options
 
-For a public load balancer, leave `AKS_K8S_SERVICE_ANNOTATIONS_JSON` empty and restrict access with `AKS_K8S_LOAD_BALANCER_SOURCE_RANGES` when possible.
+For a public load balancer, leave **Service annotations JSON** empty and restrict access with **Source ranges** when possible.
 
 For an internal AKS load balancer:
 
-```bash theme={null}
-AKS_K8S_SERVICE_ANNOTATIONS_JSON='{"service.beta.kubernetes.io/azure-load-balancer-internal":"true"}'
+```json theme={null}
+{"service.beta.kubernetes.io/azure-load-balancer-internal":"true"}
 ```
 
 Confirm the LoadBalancer SKU in the Azure Portal under **Settings → Networking** matches what your subnet policies allow.
@@ -156,7 +173,7 @@ Confirm the LoadBalancer SKU in the Azure Portal under **Settings → Networking
   ![AKS networking](/images/provisioner-backends/k8s/aks/networking.svg)
 </Frame>
 
-Do not set `K8S_RUNTIME_HOST` to the AKS API server address. Nora uses the Kubernetes API through kubeconfig, and agent gateway/runtime traffic uses the per-agent Service address.
+Do not set the Admin **Runtime host** to the AKS API server address. Nora uses the Kubernetes API through kubeconfig, and agent gateway/runtime traffic uses the per-agent Service address.
 
 ## Verification
 
@@ -164,7 +181,7 @@ Do not set `K8S_RUNTIME_HOST` to the AKS API server address. Nora uses the Kuber
 kubectl --kubeconfig ./.secrets/aks-kubeconfig -n nora-openclaw-agents get deploy,svc,pods
 # If Hermes is enabled and deployed:
 kubectl --kubeconfig ./.secrets/aks-kubeconfig -n nora-hermes-agents get deploy,svc,pods
-docker compose -f docker-compose.yml -f docker-compose.aks.yml logs worker-provisioner
+docker compose -f docker-compose.yml -f docker-compose.kubernetes.yml logs worker-provisioner
 ```
 
 For real e2e, enable the Kubernetes matrix cell:
@@ -218,7 +235,7 @@ sudo ./infra/setup-tls.sh <your-domain>
 ### 3. Stop the smoke-mode stack
 
 ```bash theme={null}
-docker compose -f docker-compose.yml -f docker-compose.aks.yml down
+docker compose -f docker-compose.yml -f docker-compose.kubernetes.yml down
 ```
 
 ### 4. Start the prod-mode stack
@@ -227,7 +244,7 @@ docker compose -f docker-compose.yml -f docker-compose.aks.yml down
 docker compose \
   -f docker-compose.yml \
   -f infra/docker-compose.public-tls.yml \
-  -f docker-compose.aks.yml \
+  -f docker-compose.kubernetes.yml \
   up -d --build
 ```
 

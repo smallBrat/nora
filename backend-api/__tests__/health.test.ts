@@ -36,6 +36,9 @@ jest.mock("../workspaces", () => ({
   createWorkspace: jest.fn(),
   addAgent: jest.fn(),
   getWorkspaceAgents: jest.fn().mockResolvedValue([]),
+  listAgentCandidates: jest.fn().mockResolvedValue([]),
+  removeAgent: jest.fn(),
+  listAccessibleAgents: jest.fn().mockResolvedValue([]),
 }));
 jest.mock("../integrations", () => ({
   listIntegrations: jest.fn().mockResolvedValue([]),
@@ -86,9 +89,12 @@ jest.mock("../channels", () => ({
   handleInboundWebhook: jest.fn(),
 }));
 jest.mock("../metrics", () => ({
+  parseCostQuery: jest.fn((query = {}) => ({ periodDays: Number(query.period_days) || 30 })),
   getAgentMetrics: jest.fn().mockResolvedValue([]),
   getAgentSummary: jest.fn().mockResolvedValue({}),
   getAgentCost: jest.fn().mockResolvedValue(null),
+  getWorkspaceCost: jest.fn().mockResolvedValue({ totalUsd: 0, perAgent: [] }),
+  getAccessibleWorkspaceCosts: jest.fn().mockResolvedValue({ workspaces: [], uniqueFleetTotalUsd: 0 }),
   recordApiMetric: jest.fn(),
 }));
 

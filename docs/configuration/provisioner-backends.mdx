@@ -2,7 +2,7 @@
 
 > Compare Docker, Proxmox, and Kubernetes provisioner backends to pick the right agent isolation and scaling strategy for your Nora deployment.
 
-Nora provisions agent runtimes onto execution targets selected through `ENABLED_BACKENDS`. Docker is the default path. Proxmox and Kubernetes add stronger placement options without changing the operator workflow.
+Nora provisions agent runtimes onto execution targets selected in the Deploy flow. Docker is the default path. Proxmox is enabled through `.env`, while Kubernetes clusters are registered in **Admin -> Kubernetes** so one Nora control plane can manage several clusters at once.
 
 ![Deploy wizard — Execution Target picker rendering the enabled backends](/images/configuration/deploy-backend-picker.png)
 
@@ -40,11 +40,15 @@ ENABLED_BACKENDS=docker
 ENABLED_SANDBOX_PROFILES=standard
 ```
 
-Use `ENABLED_BACKENDS=docker,k3s` when you want both local Docker and K3s visible in the deploy flow. Use `ENABLED_BACKENDS=docker,k8s` for cloud Kubernetes. Set `K8S_PROVIDER=aks`, `gke`, `eks`, or `k3s` so the dashboard labels the target as the real connected backend, such as **Kubernetes on AKS**.
+Use `ENABLED_BACKENDS=docker,proxmox` when you want both local Docker and Proxmox visible in the deploy flow. Do not add Kubernetes labels to `ENABLED_BACKENDS`; the Kubernetes deploy targets come only from the Admin cluster registry.
+
+Register Kubernetes clusters in **Admin -> Kubernetes**. Each enabled registry row with a passing **Test** result becomes a separate deploy target with an id like `k8s:aks-eastus2`, while persisted agents still use the base `k8s` adapter internally. Failed, untested, or disabled clusters stay visible in Admin but are hidden from the Deploy page for both OpenClaw and Hermes. The Deploy page shows the cluster label, provider, actual cluster name, namespace, and exposure mode so operators can tell AKS, GKE, EKS, K3s, Kind, or generic clusters apart.
+
+Each Kubernetes provider guide includes the Admin registry values for that backend. Put kubeconfig files under `NORA_KUBECONFIGS_DIR`; `docker-compose.kubernetes.yml` mounts that directory at `/kubeconfigs`, so Admin rows can point to paths such as `/kubeconfigs/aks-eastus2` and `/kubeconfigs/aks-westus2`.
 
 ## Kubernetes providers
 
-The Kubernetes adapter is provider-neutral. Nora talks to the Kubernetes API through `KUBECONFIG`, then creates Deployments and Services for each OpenClaw or Hermes agent. Cloud overlays label the shared `k8s` target as AKS, GKE, or EKS in the deploy flow.
+The Kubernetes adapter is provider-neutral. Nora talks to the Kubernetes API through the kubeconfig stored on each Admin-registered cluster, then creates Deployments and Services for each OpenClaw or Hermes agent. Compose overlays only mount kubeconfig files into the containers; provider, namespace, exposure, Service annotation, and load-balancer options are saved on the Admin cluster row.
 
 <CardGroup cols={2}>
   <Card title="Generic Kubernetes" icon="boxes-stacked" href="/configuration/provisioner-backends/kubernetes">
@@ -52,19 +56,19 @@ The Kubernetes adapter is provider-neutral. Nora talks to the Kubernetes API thr
   </Card>
 
 <Card title="K3s" icon="server" href="/configuration/provisioner-backends/kubernetes-k3s">
-  Lightweight self-hosted Kubernetes setup through `docker-compose.k3s.yml`.
+  Lightweight self-hosted Kubernetes setup through the generic Kubernetes overlay.
 </Card>
 
 <Card title="AKS" icon="microsoft" href="/configuration/provisioner-backends/kubernetes-aks">
-  Azure Kubernetes Service setup through `docker-compose.aks.yml`.
+  Azure Kubernetes Service setup through the generic Kubernetes overlay.
 </Card>
 
 <Card title="GKE" icon="google" href="/configuration/provisioner-backends/kubernetes-gke">
-  Google Kubernetes Engine setup through `docker-compose.gke.yml`.
+  Google Kubernetes Engine setup through the generic Kubernetes overlay.
 </Card>
 
   <Card title="EKS" icon="aws" href="/configuration/provisioner-backends/kubernetes-eks">
-    Amazon EKS setup through `docker-compose.eks.yml`.
+    Amazon EKS setup through the generic Kubernetes overlay.
   </Card>
 </CardGroup>
 

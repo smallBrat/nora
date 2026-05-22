@@ -20,6 +20,7 @@ type AgentRuntimeMeta = {
   runtime_family?: string;
   backend_type?: string;
   deploy_target?: string;
+  execution_target_id?: string;
   sandbox_profile?: string;
   sandbox_type?: string;
 };
@@ -36,9 +37,30 @@ export function normalizeDeployTarget(value) {
   const normalized = String(value || "")
     .trim()
     .toLowerCase();
+  if (normalized.startsWith("k8s:") || normalized.startsWith("kubernetes:")) return "k8s";
   if (normalized === "kubernetes" || normalized === "k3s") return "k8s";
   if (["docker", "k8s", "proxmox"].includes(normalized)) return normalized;
   return null;
+}
+
+export function normalizeExecutionTargetId(value) {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase();
+  if (!normalized) return null;
+  if (normalized === "kubernetes" || normalized === "k3s") return "k8s";
+  if (normalized.startsWith("kubernetes:")) {
+    return `k8s:${normalized.slice("kubernetes:".length)}`;
+  }
+  if (normalized.startsWith("k8s:")) {
+    const clusterId = normalized
+      .slice(4)
+      .replace(/[^a-z0-9-]+/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "");
+    return clusterId ? `k8s:${clusterId}` : "k8s";
+  }
+  return normalizeDeployTarget(normalized);
 }
 
 export function normalizeSandboxProfile(value) {
@@ -143,7 +165,7 @@ export function activeExecutionTargetFromConfig(
   const runtimeFamily = maybeExecutionTarget === undefined ? "" : runtimeFamilyOrExecutionTarget;
   const executionTarget =
     maybeExecutionTarget === undefined ? runtimeFamilyOrExecutionTarget : maybeExecutionTarget;
-  const normalizedExecutionTarget = normalizeDeployTarget(executionTarget);
+  const normalizedExecutionTarget = normalizeExecutionTargetId(executionTarget);
 
   return (
     enabledExecutionTargetsFromConfig(backendConfig, runtimeFamily).find(
@@ -157,7 +179,7 @@ function executionTargetMetadataFromConfig(
   executionTarget = "",
   runtimeFamily = "",
 ) {
-  const normalizedExecutionTarget = normalizeDeployTarget(executionTarget);
+  const normalizedExecutionTarget = normalizeExecutionTargetId(executionTarget);
   if (!normalizedExecutionTarget) return null;
 
   const candidates = executionTargetsForRuntimeFamily(backendConfig, runtimeFamily);
@@ -197,7 +219,7 @@ export function pickExecutionTargetSelection(
   runtimeFamily = "",
 ) {
   const candidates = visibleExecutionTargetsFromConfig(backendConfig, viewerRole, runtimeFamily);
-  const normalizedExecutionTarget = normalizeDeployTarget(currentExecutionTarget);
+  const normalizedExecutionTarget = normalizeExecutionTargetId(currentExecutionTarget);
   const current = candidates.find((target) => target.id === normalizedExecutionTarget);
   const nextTarget =
     current ||
@@ -235,6 +257,9 @@ export function resolveAgentRuntimeFamily(agent: AgentRuntimeMeta = {}) {
 }
 
 export function resolveAgentExecutionTarget(agent: AgentRuntimeMeta = {}) {
+  const explicitExecutionTarget = normalizeExecutionTargetId(agent.execution_target_id);
+  if (explicitExecutionTarget) return explicitExecutionTarget;
+
   const explicitDeployTarget = normalizeDeployTarget(agent.deploy_target);
   if (explicitDeployTarget) return explicitDeployTarget;
 

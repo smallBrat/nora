@@ -102,27 +102,32 @@ OAuth login is disabled by default. Set `OAUTH_LOGIN_ENABLED=true` and `NEXT_PUB
 
 Drives the admin "release available" banner and the one-click upgrade runner. Setting `NORA_GITHUB_REPO` enables Nora to compare the running version against the latest published GitHub release.
 
-| Variable                      | Required | Default                                   | Description                                                                  |
-| ----------------------------- | -------- | ----------------------------------------- | ---------------------------------------------------------------------------- |
-| `NORA_CURRENT_VERSION`        | No       | —                                         | Current running version, set by your deploy pipeline.                        |
-| `NORA_CURRENT_COMMIT`         | No       | —                                         | Commit SHA of the running build.                                             |
-| `NORA_GITHUB_REPO`            | No       | `solomon2773/nora`                        | `owner/repo` used to query the GitHub Releases API.                          |
-| `NORA_GITHUB_TOKEN`           | No       | —                                         | Optional PAT to raise the GitHub API rate limit.                             |
-| `NORA_RELEASE_CACHE_TTL_MS`   | No       | `300000`                                  | How long to cache the latest-release lookup, in milliseconds.                |
-| `NORA_LATEST_VERSION`         | No       | —                                         | Manual override for the latest version. Skips the GitHub query when set.     |
-| `NORA_LATEST_PUBLISHED_AT`    | No       | —                                         | Manual override for the latest release timestamp.                            |
-| `NORA_RELEASE_NOTES_URL`      | No       | —                                         | URL displayed alongside the upgrade banner.                                  |
-| `NORA_LATEST_SEVERITY`        | No       | `warning`                                 | Severity of the upgrade banner. One of `info`, `warning`, `critical`.        |
-| `NORA_UPGRADE_REQUIRED`       | No       | `false`                                   | Set to `true` to display a hard-required upgrade banner.                     |
-| `NORA_AUTO_UPGRADE_ENABLED`   | No       | `false`                                   | Opt-in to one-click upgrades from Admin Settings.                            |
-| `NORA_HOST_REPO_DIR`          | No       | —                                         | Absolute Linux host path to this Nora checkout. Auto-filled by `setup.sh`.   |
-| `NORA_UPGRADE_REPO`           | No       | `https://github.com/solomon2773/nora.git` | Git URL used by the upgrade runner.                                          |
-| `NORA_UPGRADE_REF`            | No       | `master`                                  | Branch or ref the upgrade runner pulls.                                      |
-| `NORA_UPGRADE_RUNNER_IMAGE`   | No       | `docker:29-cli`                           | Container image the upgrade runner executes inside.                          |
-| `NORA_UPGRADE_STATE_VOLUME`   | No       | `nora_upgrade_state`                      | Docker volume that persists upgrade state between runs.                      |
-| `NORA_INSTALL_METHOD`         | No       | `source`                                  | Install method shown in admin UI. One of `source`, `docker_image`, `custom`. |
-| `NORA_MANUAL_UPGRADE_COMMAND` | No       | `./setup.sh --update`                     | Command displayed when auto-upgrade is disabled.                             |
-| `NORA_MANUAL_UPGRADE_STEPS`   | No       | —                                         | Optional override for the displayed manual-upgrade steps.                    |
+| Variable                                    | Required | Default                                   | Description                                                                                                                                  |
+| ------------------------------------------- | -------- | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NORA_CURRENT_VERSION`                      | No       | —                                         | Current running version, set by your deploy pipeline.                                                                                        |
+| `NORA_CURRENT_COMMIT`                       | No       | —                                         | Commit SHA of the running build.                                                                                                             |
+| `NORA_GITHUB_REPO`                          | No       | `solomon2773/nora`                        | `owner/repo` used to query the GitHub Releases API.                                                                                          |
+| `NORA_GITHUB_TOKEN`                         | No       | —                                         | Optional PAT to raise the GitHub API rate limit.                                                                                             |
+| `NORA_RELEASE_CACHE_TTL_MS`                 | No       | `300000`                                  | How long to cache the latest-release lookup, in milliseconds.                                                                                |
+| `NORA_LATEST_VERSION`                       | No       | —                                         | Manual override for the latest version. Skips the GitHub query when set.                                                                     |
+| `NORA_LATEST_PUBLISHED_AT`                  | No       | —                                         | Manual override for the latest release timestamp.                                                                                            |
+| `NORA_RELEASE_NOTES_URL`                    | No       | —                                         | URL displayed alongside the upgrade banner.                                                                                                  |
+| `NORA_LATEST_SEVERITY`                      | No       | `warning`                                 | Severity of the upgrade banner. One of `info`, `warning`, `critical`.                                                                        |
+| `NORA_UPGRADE_REQUIRED`                     | No       | `false`                                   | Set to `true` to display a hard-required upgrade banner.                                                                                     |
+| `NORA_AUTO_UPGRADE_ENABLED`                 | No       | `false`                                   | Opt-in to one-click upgrades from Admin Settings.                                                                                            |
+| `NORA_HOST_REPO_DIR`                        | No       | —                                         | Absolute Linux host path to this Nora checkout. Auto-filled by `setup.sh`.                                                                   |
+| `NORA_UPGRADE_REPO`                         | No       | `https://github.com/solomon2773/nora.git` | Git URL used by the upgrade runner.                                                                                                          |
+| `NORA_UPGRADE_REF`                          | No       | `master`                                  | Branch or ref the upgrade runner pulls.                                                                                                      |
+| `NORA_UPGRADE_RUNNER_IMAGE`                 | No       | `docker:29-cli`                           | Container image the upgrade runner executes inside.                                                                                          |
+| `NORA_UPGRADE_STATE_VOLUME`                 | No       | `nora_upgrade_state`                      | Docker volume that persists upgrade state between runs.                                                                                      |
+| `NORA_ENV_FILE`                             | No       | `.env`                                    | Deploy env file passed to Docker Compose during one-click upgrades.                                                                          |
+| `NORA_UPGRADE_COMPOSE_FILES`                | No       | auto-detected                             | Colon-separated compose file list used by the upgrade runner. Leave blank to reuse Docker Compose labels from the running backend container. |
+| `NORA_UPGRADE_PUBLIC_HEALTH_URL`            | No       | —                                         | Optional public health URL checked after the stack rebuilds, for example `https://stage.example.com/api/health`.                             |
+| `NORA_UPGRADE_HEALTHCHECK_ATTEMPTS`         | No       | `40`                                      | Number of backend health attempts before a one-click upgrade is marked failed.                                                               |
+| `NORA_UPGRADE_HEALTHCHECK_INTERVAL_SECONDS` | No       | `3`                                       | Seconds to wait between one-click upgrade health checks.                                                                                     |
+| `NORA_INSTALL_METHOD`                       | No       | `source`                                  | Install method shown in admin UI. One of `source`, `docker_image`, `custom`.                                                                 |
+| `NORA_MANUAL_UPGRADE_COMMAND`               | No       | `./setup.sh --update`                     | Command displayed when auto-upgrade is disabled.                                                                                             |
+| `NORA_MANUAL_UPGRADE_STEPS`                 | No       | —                                         | Optional override for the displayed manual-upgrade steps.                                                                                    |
 
 ## System banner
 
@@ -163,55 +168,26 @@ These variables are only read when `PLATFORM_MODE=paas`. See [Platform modes](/c
 
 Runtime selection is three-dimensional: **runtime family × deploy target × sandbox profile**. Each enabled-list variable accepts a comma-separated list. The first id in each list is the default for new deployments. See [Provisioner backends](/configuration/provisioner-backends) for details.
 
-| Variable                   | Required | Default    | Description                                                                                                                  |
-| -------------------------- | -------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `ENABLED_RUNTIME_FAMILIES` | No       | `openclaw` | Runtime families enabled. Supported ids: `openclaw`, `hermes`.                                                               |
-| `ENABLED_BACKENDS`         | No       | `docker`   | Deploy targets enabled. Supported ids: `docker`, `k3s`, `k8s`, `proxmox`. `k3s` and `k8s` share the same Kubernetes adapter. |
-| `ENABLED_SANDBOX_PROFILES` | No       | `standard` | Sandbox profiles enabled. Supported ids: `standard`, `nemoclaw`.                                                             |
+| Variable                   | Required | Default    | Description                                                                                                             |
+| -------------------------- | -------- | ---------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `ENABLED_RUNTIME_FAMILIES` | No       | `openclaw` | Runtime families enabled. Supported ids: `openclaw`, `hermes`.                                                          |
+| `ENABLED_BACKENDS`         | No       | `docker`   | Env-configured deploy targets enabled. Supported ids: `docker`, `proxmox`. Kubernetes clusters are registered in Admin. |
+| `ENABLED_SANDBOX_PROFILES` | No       | `standard` | Sandbox profiles enabled. Supported ids: `standard`, `nemoclaw`.                                                        |
 
-## Kubernetes / K3s
+## Kubernetes registry and Compose mount helpers
 
-Read when `ENABLED_BACKENDS` includes `k3s` or `k8s`. Requires a kubeconfig mounted into backend-api and worker-provisioner, or in-cluster credentials.
+Nora no longer creates Kubernetes execution targets from `.env` labels. Register every Kubernetes cluster in **Admin -> Kubernetes**. Each enabled row becomes a concrete execution target such as `k8s:aks-eastus2` and stores its provider, actual cluster name, kubeconfig, namespaces, exposure mode, Service annotations, load-balancer source ranges, and load-balancer class.
 
-| Variable                              | Required | Default           | Description                                                                                                                                                      |
-| ------------------------------------- | -------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `KUBECONFIG`                          | No       | —                 | Path to kubeconfig visible inside `backend-api` and `worker-provisioner`; cloud Compose overlays set this to `/kubeconfig/config`.                               |
-| `K8S_PROVIDER`                        | No       | `kubernetes`      | Dashboard label for the connected Kubernetes backend. Supported values include `kubernetes`, `k3s`, `aks`, `gke`, and `eks`.                                     |
-| `K8S_NAMESPACE`                       | No       | `openclaw-agents` | Fallback namespace where agent workloads are created when runtime-specific namespace variables are not set.                                                      |
-| `K8S_OPENCLAW_NAMESPACE`              | No       | `K8S_NAMESPACE`   | Namespace for OpenClaw and NemoClaw workloads. Cloud overlays default to `nora-openclaw-agents`.                                                                 |
-| `K8S_HERMES_NAMESPACE`                | No       | `K8S_NAMESPACE`   | Namespace for Hermes workloads. Cloud overlays default to `nora-hermes-agents`.                                                                                  |
-| `K8S_EXPOSURE_MODE`                   | No       | `cluster-ip`      | How agent services are exposed. Use `cluster-ip` for in-cluster access, `node-port` for K3s/self-hosted clusters reached through node ports, or `load-balancer`. |
-| `K8S_RUNTIME_NODE_PORT`               | No       | —                 | Node port for the agent runtime service (`node-port` mode only).                                                                                                 |
-| `K8S_GATEWAY_NODE_PORT`               | No       | —                 | Node port for the OpenClaw gateway or Hermes dashboard service (`node-port` mode only).                                                                          |
-| `K8S_RUNTIME_HOST`                    | No       | —                 | Hostname or IP the control plane uses to reach agent runtimes in `node-port` mode.                                                                               |
-| `K8S_SERVICE_ANNOTATIONS_JSON`        | No       | —                 | JSON object of annotations applied to agent Services (e.g. cloud LB annotations).                                                                                |
-| `K8S_LOAD_BALANCER_SOURCE_RANGES`     | No       | —                 | Comma-separated CIDRs for `loadBalancerSourceRanges` on `load-balancer` mode.                                                                                    |
-| `K8S_LOAD_BALANCER_CLASS`             | No       | —                 | `loadBalancerClass` value passed through to created Services.                                                                                                    |
-| `K8S_LOAD_BALANCER_READY_TIMEOUT_MS`  | No       | `600000`          | Max time to wait for a load-balancer Service to become ready.                                                                                                    |
-| `K8S_LOAD_BALANCER_READY_INTERVAL_MS` | No       | `5000`            | Polling interval while waiting for the load-balancer.                                                                                                            |
+`docker-compose.kubernetes.yml` only mounts a kubeconfig directory into the Nora containers. Put one or more kubeconfig files under `NORA_KUBECONFIGS_DIR`, then enter `/kubeconfigs/<file>` as each Admin **Kubeconfig path**. The Admin path must be the path visible inside `backend-api` and `worker-provisioner`, not the host path.
 
-### K3s and cloud Kubernetes Compose overlays
+For more than one cluster, put multiple kubeconfig files under `NORA_KUBECONFIGS_DIR`. The Kubernetes overlay mounts that directory at `/kubeconfigs`, so two AKS clusters can use Admin paths such as `/kubeconfigs/aks-eastus2` and `/kubeconfigs/aks-westus2` while both still run through `docker-compose.kubernetes.yml`.
 
-`docker-compose.k3s.yml`, `docker-compose.aks.yml`, `docker-compose.gke.yml`, and `docker-compose.eks.yml` are examples for running the Nora control plane in Compose while provisioning agents into Kubernetes. These variables are Compose helper inputs; the overlays translate them into `KUBECONFIG` and `K8S_*` inside `backend-api` and `worker-provisioner`.
+| Variable                    | Required | Default                               | Description                                                                                             |
+| --------------------------- | -------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `NORA_KUBECONFIGS_DIR`      | No       | `./.secrets/kubeconfigs`              | Host directory mounted at `/kubeconfigs` by the Kubernetes overlay for single- or multi-cluster setups. |
+| `CONTAINER_KUBECONFIG_PATH` | No       | `/tmp/nora-kind.container.kubeconfig` | Kind smoke helper file; its parent directory is mounted as `NORA_KUBECONFIGS_DIR`.                      |
 
-| Variable pattern                                 | Description                                                                                                                       |
-| ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
-| `<PROVIDER>_KUBECONFIG_PATH`                     | Host path to the kubeconfig mounted at `/kubeconfig/config` inside Nora containers. Providers: `K3S`, `AKS`, `GKE`, `EKS`.        |
-| `<PROVIDER>_ENABLED_BACKENDS`                    | Enabled deploy targets for that overlay. K3s defaults to `k3s`; cloud overlays default to `k8s`.                                  |
-| `<PROVIDER>_K8S_NAMESPACE`                       | Fallback namespace used for agent workloads. K3s defaults to `openclaw-agents`; cloud overlays default to `nora-openclaw-agents`. |
-| `<PROVIDER>_K8S_OPENCLAW_NAMESPACE`              | Namespace for OpenClaw and NemoClaw workloads in cloud overlays. Defaults to `nora-openclaw-agents` for AKS, GKE, and EKS.        |
-| `<PROVIDER>_K8S_HERMES_NAMESPACE`                | Namespace for Hermes workloads in cloud overlays. Defaults to `nora-hermes-agents` for AKS, GKE, and EKS.                         |
-| `<PROVIDER>_K8S_EXPOSURE_MODE`                   | Exposure mode passed to `K8S_EXPOSURE_MODE`. K3s defaults to `node-port`; managed-cloud overlays default to `load-balancer`.      |
-| `<PROVIDER>_K8S_RUNTIME_HOST`                    | Hostname or IP Nora uses for NodePort runtime and gateway access. Used by the K3s overlay.                                        |
-| `<PROVIDER>_K8S_RUNTIME_NODE_PORT`               | Optional fixed runtime NodePort. Leave empty for dynamic per-agent allocation. Used by the K3s overlay.                           |
-| `<PROVIDER>_K8S_GATEWAY_NODE_PORT`               | Optional fixed gateway NodePort. Leave empty for dynamic per-agent allocation. Used by the K3s overlay.                           |
-| `<PROVIDER>_K8S_SERVICE_ANNOTATIONS_JSON`        | JSON object of provider-specific Service annotations.                                                                             |
-| `<PROVIDER>_K8S_LOAD_BALANCER_SOURCE_RANGES`     | Comma-separated CIDRs allowed to reach the per-agent cloud load balancers.                                                        |
-| `<PROVIDER>_K8S_LOAD_BALANCER_CLASS`             | Provider-specific `loadBalancerClass`, such as `networking.gke.io/l4-regional-external` or `eks.amazonaws.com/nlb`.               |
-| `<PROVIDER>_K8S_LOAD_BALANCER_READY_TIMEOUT_MS`  | Load-balancer readiness timeout. Defaults to `600000` for K3s and `1200000` in the cloud overlays.                                |
-| `<PROVIDER>_K8S_LOAD_BALANCER_READY_INTERVAL_MS` | Load-balancer readiness polling interval. Defaults to `5000`.                                                                     |
-| `<PROVIDER>_DEPLOYMENT_JOB_TIMEOUT_MS`           | Deployment queue job timeout. Defaults to `900000` for K3s and `1800000` in the cloud overlays.                                   |
-| `<PROVIDER>_PROVISION_TIMEOUT_MS`                | Worker-side provision timeout. Defaults to `840000` for K3s and `1740000` in the cloud overlays.                                  |
+Admin-registered encrypted kubeconfigs require `ENCRYPTION_KEY` because Nora stores pasted kubeconfig content encrypted at rest.
 
 ## Gateway proxy SSRF guard
 
@@ -370,13 +346,20 @@ Optional; only relevant when nginx terminates TLS directly inside the stack.
 
 ## Cost reporting
 
-These optional rates drive the Cost panels on agent detail pages. Leave unset to hide cost figures.
+These optional rates drive the Cost dashboards. Nora estimates spend from token usage recorded by OpenClaw, Hermes, and future runtime chat paths.
 
-| Variable               | Required | Default | Description                                                               |
-| ---------------------- | -------- | ------- | ------------------------------------------------------------------------- |
-| `COST_PER_VCPU_HOUR`   | No       | —       | Cost in your currency per vCPU per hour. Used for compute cost rollups.   |
-| `COST_PER_GB_RAM_HOUR` | No       | —       | Cost per GB of RAM per hour.                                              |
-| `COST_PER_1K_TOKENS`   | No       | —       | Fallback LLM token cost when a provider's per-model rate isn't available. |
+| Variable                | Required | Default | Description                                                                                         |
+| ----------------------- | -------- | ------- | --------------------------------------------------------------------------------------------------- |
+| `COST_PER_1K_TOKENS`    | No       | `0.002` | Fallback LLM token cost when a per-model rate is unavailable or historical usage has no model data. |
+| `COST_MODEL_RATES_JSON` | No       | —       | JSON object mapping model ids or `provider/model` ids to token rates.                               |
+
+Example:
+
+```env
+COST_MODEL_RATES_JSON={"openai/gpt-5.4":{"input_per_1k":0.002,"output_per_1k":0.008},"claude-sonnet-4-5":{"input_per_1k":0.003,"output_per_1k":0.015},"flat-model":{"per_1k":0.004}}
+```
+
+Use `input_per_1k` and `output_per_1k` when Nora records prompt/completion token splits. Use `per_1k` for total-token-only pricing.
 
 ## Legacy AWS backup variables
 

@@ -12,6 +12,7 @@ const { getAgentHubSettings, getAgentHubSourceApiKey } = require("../platformSet
 const snapshots = require("../snapshots");
 const scheduler = require("../scheduler");
 const monitoring = require("../monitoring");
+const { assertKubernetesExecutionTargetAvailable } = require("../kubernetesClusters");
 const {
   buildTemplatePayloadFromAgent,
   extractTemplateDefaultsFromSnapshot,
@@ -173,6 +174,12 @@ function assertRuntimeSelectionAvailable(runtimeFields) {
     error.statusCode = 400;
     throw error;
   }
+  return status;
+}
+
+async function assertRuntimeTargetAvailable(runtimeFields) {
+  const status = assertRuntimeSelectionAvailable(runtimeFields);
+  await assertKubernetesExecutionTargetAvailable(runtimeFields);
   return status;
 }
 
@@ -662,14 +669,16 @@ router.post(
       },
       fallback: {
         backend_type: defaults.backend || null,
+        execution_target_id: defaults.executionTargetId || null,
         sandbox_type: defaults.sandbox || "standard",
       },
     });
     const fallbackRuntimeFields = buildAgentRuntimeFields({
       backend_type: defaults.backend || null,
+      execution_target_id: defaults.executionTargetId || null,
       sandbox_type: defaults.sandbox || "standard",
     });
-    assertRuntimeSelectionAvailable(runtimeFields);
+    await assertRuntimeTargetAvailable(runtimeFields);
 
     const specs = resolveTemplateSpecs(defaults, limits.subscription || {});
     const image = resolveRequestedImage({
@@ -691,8 +700,8 @@ router.post(
       `INSERT INTO agents(
          user_id, name, status, node, backend_type, sandbox_type, vcpu, ram_mb, disk_gb,
          container_name, image, template_payload, runtime_family, deploy_target,
-         sandbox_profile
-       ) VALUES($1, $2, 'queued', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+         execution_target_id, sandbox_profile
+       ) VALUES($1, $2, 'queued', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
        RETURNING *`,
       [
         req.user.id,
@@ -708,6 +717,7 @@ router.post(
         JSON.stringify(templatePayload),
         runtimeFields.runtime_family,
         runtimeFields.deploy_target,
+        runtimeFields.execution_target_id,
         runtimeFields.sandbox_profile,
       ],
     );
@@ -724,6 +734,7 @@ router.post(
       userId: req.user.id,
       plan: limits.subscription.plan,
       backend: runtimeFields.backend_type,
+      execution_target_id: runtimeFields.execution_target_id,
       sandbox: runtimeFields.sandbox_profile,
       specs,
       container_name: containerName,
@@ -750,6 +761,7 @@ router.post(
         deploy: {
           runtimeFamily: runtimeFields.runtime_family,
           deployTarget: runtimeFields.deploy_target,
+          executionTargetId: runtimeFields.execution_target_id,
           sandboxProfile: runtimeFields.sandbox_profile,
         },
       }),

@@ -120,6 +120,7 @@ function buildAgentContext(agent = {}, overrides = {}) {
     runtimeFamily,
     deployTarget,
     sandboxProfile,
+    executionTargetId,
     backendType,
     sandboxType,
     node,
@@ -136,6 +137,10 @@ function buildAgentContext(agent = {}, overrides = {}) {
       runtimeFamily:
         runtimeFamily !== undefined ? runtimeFamily : runtimeFields.runtime_family || null,
       deployTarget: deployTarget !== undefined ? deployTarget : runtimeFields.deploy_target || null,
+      executionTargetId:
+        executionTargetId !== undefined
+          ? executionTargetId
+          : runtimeFields.execution_target_id || null,
       sandboxProfile:
         sandboxProfile !== undefined ? sandboxProfile : runtimeFields.sandbox_profile || null,
       backendType: backendType !== undefined ? backendType : runtimeFields.backend_type || null,

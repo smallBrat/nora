@@ -70,12 +70,21 @@ const mockDockerPull = jest.fn();
 const mockDockerFollowProgress = jest.fn();
 const mockDockerCreateContainer = jest.fn();
 const mockDockerContainerStart = jest.fn();
+const mockDockerPing = jest.fn();
+const mockDockerGetContainer = jest.fn();
+const mockDockerContainerInspect = jest.fn();
+const mockAssertKubernetesExecutionTargetAvailable = jest.fn().mockResolvedValue();
 
 jest.mock("../db", () => mockDb);
 jest.mock("../redisQueue", () => ({
   addDeploymentJob: mockAddDeploymentJob,
   getDLQJobs: mockGetDLQJobs,
   retryDLQJob: mockRetryDLQJob,
+}));
+jest.mock("../kubernetesClusters", () => ({
+  assertKubernetesExecutionTargetAvailable: mockAssertKubernetesExecutionTargetAvailable,
+  listKubernetesExecutionTargets: jest.fn().mockResolvedValue([]),
+  listKubernetesClusters: jest.fn().mockResolvedValue([]),
 }));
 jest.mock("../scheduler", () => ({
   selectNode: jest.fn().mockResolvedValue({ name: "worker-01" }),
@@ -85,6 +94,16 @@ jest.mock("../containerManager", () => ({
   stop: jest.fn().mockResolvedValue({}),
   restart: jest.fn().mockResolvedValue({}),
   destroy: jest.fn().mockResolvedValue({}),
+  canMutate: jest.fn(
+    (agent) =>
+      Boolean(agent?.container_id) ||
+      ((agent?.backend_type === "k8s" || agent?.deploy_target === "k8s") &&
+        Boolean(agent?.container_name || agent?.name || agent?.id)),
+  ),
+  canDestroy: jest.fn((agent) => Boolean(agent?.container_id || agent?.container_name)),
+  isKubernetesAgent: jest.fn(
+    (agent) => agent?.backend_type === "k8s" || agent?.deploy_target === "k8s",
+  ),
   status: jest.fn().mockResolvedValue({ running: true }),
   stats: jest.fn(),
 }));
@@ -136,6 +155,9 @@ jest.mock("../workspaces", () => ({
   createWorkspace: jest.fn(),
   addAgent: jest.fn(),
   getWorkspaceAgents: jest.fn().mockResolvedValue([]),
+  listAgentCandidates: jest.fn().mockResolvedValue([]),
+  removeAgent: jest.fn(),
+  listAccessibleAgents: jest.fn().mockResolvedValue([]),
 }));
 jest.mock("../integrations", () => ({
   listIntegrations: jest.fn().mockResolvedValue([]),
@@ -211,9 +233,14 @@ jest.mock("../channels", () => ({
   handleInboundWebhook: jest.fn(),
 }));
 jest.mock("../metrics", () => ({
+  parseCostQuery: jest.fn((query = {}) => ({ periodDays: Number(query.period_days) || 30 })),
   getAgentMetrics: jest.fn().mockResolvedValue([]),
   getAgentSummary: jest.fn().mockResolvedValue({}),
   getAgentCost: jest.fn().mockResolvedValue(null),
+  getWorkspaceCost: jest.fn().mockResolvedValue({ totalUsd: 0, perAgent: [] }),
+  getAccessibleWorkspaceCosts: jest
+    .fn()
+    .mockResolvedValue({ workspaces: [], uniqueFleetTotalUsd: 0 }),
   recordApiMetric: jest.fn(),
 }));
 jest.mock("../agentTelemetry", () => ({
@@ -243,6 +270,8 @@ jest.mock("dockerode", () =>
       followProgress: mockDockerFollowProgress,
     },
     createContainer: mockDockerCreateContainer,
+    ping: mockDockerPing,
+    getContainer: mockDockerGetContainer,
   })),
 );
 
@@ -279,6 +308,11 @@ const RELEASE_ENV_KEYS = [
   "NORA_UPGRADE_RUNNER_IMAGE",
   "NORA_UPGRADE_STATE_VOLUME",
   "NORA_UPGRADE_STATE_DIR",
+  "NORA_ENV_FILE",
+  "NORA_UPGRADE_COMPOSE_FILES",
+  "NORA_UPGRADE_PUBLIC_HEALTH_URL",
+  "NORA_UPGRADE_HEALTHCHECK_ATTEMPTS",
+  "NORA_UPGRADE_HEALTHCHECK_INTERVAL_SECONDS",
   "NORA_UPGRADE_LOG_TAIL_LINES",
   "NORA_INSTALL_METHOD",
   "NORA_MANUAL_UPGRADE_COMMAND",
@@ -305,6 +339,9 @@ beforeEach(() => {
     id: "runner-1",
     start: mockDockerContainerStart,
   });
+  mockDockerPing.mockReset().mockImplementation((callback) => callback(null));
+  mockDockerContainerInspect.mockReset().mockResolvedValue({ Config: { Labels: {} } });
+  mockDockerGetContainer.mockReset().mockReturnValue({ inspect: mockDockerContainerInspect });
   mockGetDeploymentDefaults.mockReset().mockResolvedValue({
     vcpu: 1,
     ram_mb: 1024,
@@ -633,9 +670,9 @@ describe("admin routes", () => {
           enabled: false,
           available: false,
           mode: "github_direct",
-          disabledReason: expect.stringContaining("Auto-upgrade is disabled"),
+          disabledReason: expect.stringContaining("NORA_AUTO_UPGRADE_ENABLED=true"),
         }),
-        runnerReachable: null,
+        runnerReachable: true,
         job: null,
         logTail: [],
       }),
@@ -667,7 +704,41 @@ describe("admin routes", () => {
           mode: "github_direct",
           disabledReason: expect.stringContaining("NORA_HOST_REPO_DIR"),
         }),
-        runnerReachable: null,
+        runnerReachable: true,
+      }),
+    );
+  });
+
+  it("returns direct GitHub release upgrade preflight checks for admins", async () => {
+    process.env.NORA_CURRENT_VERSION = "1.0.0";
+    process.env.NORA_LATEST_VERSION = "1.1.0";
+    process.env.NORA_AUTO_UPGRADE_ENABLED = "true";
+    process.env.NORA_HOST_REPO_DIR = "/srv/nora";
+    process.env.NORA_UPGRADE_COMPOSE_FILES =
+      "docker-compose.yml:infra/docker-compose.public-tls.yml:docker-compose.kubernetes.yml";
+
+    const res = await withToken(request(app).get("/admin/release-upgrade/preflight"), adminToken);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual(
+      expect.objectContaining({
+        ok: true,
+        command:
+          "docker compose --env-file .env -f docker-compose.yml -f infra/docker-compose.public-tls.yml -f docker-compose.kubernetes.yml up -d --build",
+        config: expect.objectContaining({
+          hostRepoDir: "/srv/nora",
+          envFile: ".env",
+          composeFiles: [
+            "docker-compose.yml",
+            "infra/docker-compose.public-tls.yml",
+            "docker-compose.kubernetes.yml",
+          ],
+        }),
+        checks: expect.arrayContaining([
+          expect.objectContaining({ id: "auto_upgrade_enabled", status: "pass" }),
+          expect.objectContaining({ id: "target_release", status: "pass" }),
+          expect.objectContaining({ id: "docker_socket", status: "pass" }),
+        ]),
       }),
     );
   });
@@ -690,7 +761,7 @@ describe("admin routes", () => {
         disabledReason: expect.stringContaining("public HTTPS GitHub repository URL"),
       }),
     );
-    expect(res.body.runnerReachable).toBe(null);
+    expect(res.body.runnerReachable).toBe(true);
   });
 
   it("starts a direct GitHub release upgrade runner for admins", async () => {
@@ -703,6 +774,10 @@ describe("admin routes", () => {
     process.env.NORA_UPGRADE_REPO = "https://github.com/solomon2773/nora.git";
     process.env.NORA_UPGRADE_REF = "master";
     process.env.NORA_UPGRADE_RUNNER_IMAGE = "docker:29-cli";
+    process.env.NORA_ENV_FILE = "deploy.env";
+    process.env.NORA_UPGRADE_COMPOSE_FILES =
+      "docker-compose.yml:infra/docker-compose.public-tls.yml:docker-compose.kubernetes.yml";
+    process.env.NORA_UPGRADE_PUBLIC_HEALTH_URL = "https://nora.test/api/health";
 
     const res = await withToken(request(app).post("/admin/release-upgrade"), adminToken);
 
@@ -717,6 +792,14 @@ describe("admin routes", () => {
           "NORA_UPGRADE_REF=master",
           "NORA_UPGRADE_TARGET_VERSION=1.1.0",
           "NORA_HOST_REPO_DIR=/srv/nora",
+          "NORA_ENV_FILE=deploy.env",
+          "NORA_UPGRADE_COMPOSE_FILES=docker-compose.yml:infra/docker-compose.public-tls.yml:docker-compose.kubernetes.yml",
+          "NORA_UPGRADE_PUBLIC_HEALTH_URL=https://nora.test/api/health",
+        ]),
+        Cmd: expect.arrayContaining([
+          "sh",
+          "-c",
+          expect.stringContaining("infra/run-release-upgrade.sh"),
         ]),
         WorkingDir: "/srv/nora",
         HostConfig: expect.objectContaining({
@@ -733,10 +816,18 @@ describe("admin routes", () => {
       expect.objectContaining({
         runnerReachable: true,
         job: expect.objectContaining({
-          phase: "running",
+          phase: "queued",
           targetVersion: "1.1.0",
           containerId: "runner-1",
           sourceRepo: "https://github.com/solomon2773/nora.git",
+          envFile: "deploy.env",
+          composeFiles: [
+            "docker-compose.yml",
+            "infra/docker-compose.public-tls.yml",
+            "docker-compose.kubernetes.yml",
+          ],
+          command:
+            "docker compose --env-file deploy.env -f docker-compose.yml -f infra/docker-compose.public-tls.yml -f docker-compose.kubernetes.yml up -d --build",
         }),
         logTail: expect.arrayContaining([expect.stringContaining("Queued direct GitHub upgrade")]),
       }),
@@ -757,7 +848,7 @@ describe("admin routes", () => {
     const res = await withToken(request(app).post("/admin/release-upgrade"), adminToken);
 
     expect(res.status).toBe(409);
-    expect(res.body.error).toMatch(/latest release/i);
+    expect(res.body.error).toMatch(/latest announced release/i);
     expect(mockDockerCreateContainer).not.toHaveBeenCalled();
   });
 
@@ -1523,6 +1614,42 @@ describe("admin routes", () => {
     expect(res.body.samples).toHaveLength(1);
   });
 
+  it("stops a Kubernetes deployment by container_name from admin when container_id is missing", async () => {
+    const containerManager = require("../containerManager");
+    mockDb.query
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: "agent-k8s-stop",
+            user_id: "user-k8s",
+            name: "K8s Stop",
+            status: "running",
+            runtime_family: "openclaw",
+            backend_type: "k8s",
+            deploy_target: "k8s",
+            execution_target_id: "k8s:test-cluster",
+            sandbox_profile: "standard",
+            container_id: null,
+            container_name: "nora-oclaw-admin-k8s-stop",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        rows: [{ id: "agent-k8s-stop", status: "stopped" }],
+      });
+
+    const res = await withToken(request(app).post("/admin/agents/agent-k8s-stop/stop"), adminToken);
+
+    expect(res.status).toBe(200);
+    expect(containerManager.stop).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "agent-k8s-stop",
+        container_name: "nora-oclaw-admin-k8s-stop",
+      }),
+    );
+    expect(res.body).toEqual(expect.objectContaining({ status: "stopped" }));
+  });
+
   it("requeues an agent redeploy with the owning user id", async () => {
     const monitoring = require("../monitoring");
     mockDb.query
@@ -1638,6 +1765,7 @@ describe("admin routes", () => {
       "nemoclaw",
       "openclaw",
       "docker",
+      "docker",
       "nemoclaw",
       "standard-agent",
       getDefaultAgentImage({
@@ -1652,6 +1780,7 @@ describe("admin routes", () => {
         id: "agent-3",
         userId: "user-3",
         backend: "docker",
+        execution_target_id: "docker",
         sandbox: "nemoclaw",
         image: getDefaultAgentImage({
           runtime_family: "openclaw",
@@ -1664,8 +1793,7 @@ describe("admin routes", () => {
   });
 
   it("recomputes the default image when admin redeploy switches execution targets", async () => {
-    process.env.ENABLED_BACKENDS = "docker,k8s";
-    process.env.KUBECONFIG = "/tmp/test-kubeconfig";
+    process.env.ENABLED_BACKENDS = "docker";
 
     mockDb.query
       .mockResolvedValueOnce({
@@ -1691,18 +1819,19 @@ describe("admin routes", () => {
 
     const res = await withToken(
       request(app).post("/admin/agents/agent-4/redeploy").send({
-        deploy_target: "k8s",
+        deploy_target: "k8s:test-cluster",
       }),
       adminToken,
     );
 
     expect(res.status).toBe(200);
-    expect(mockDb.query).toHaveBeenNthCalledWith(2, expect.stringContaining("image = $8"), [
+    expect(mockDb.query).toHaveBeenNthCalledWith(2, expect.stringContaining("image = $9"), [
       "agent-4",
       "k8s",
       "standard",
       "openclaw",
       "k8s",
+      "k8s:test-cluster",
       "standard",
       "docker-agent",
       "node:24-slim",
@@ -1712,8 +1841,61 @@ describe("admin routes", () => {
         id: "agent-4",
         userId: "user-4",
         backend: "k8s",
+        execution_target_id: "k8s:test-cluster",
         sandbox: "standard",
         image: "node:24-slim",
+      }),
+    );
+  });
+
+  it("passes previous Kubernetes runtime refs for admin redeploy cleanup", async () => {
+    process.env.ENABLED_BACKENDS = "docker";
+
+    mockDb.query
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: "agent-k8s-admin",
+            user_id: "user-k8s",
+            name: "Admin K8s Agent",
+            status: "stopped",
+            runtime_family: "openclaw",
+            backend_type: "k8s",
+            deploy_target: "k8s",
+            execution_target_id: "k8s:test-cluster",
+            sandbox_profile: "standard",
+            vcpu: 2,
+            ram_mb: 2048,
+            disk_gb: 20,
+            container_id: "nora-oclaw-admin-k8s-old",
+            container_name: "nora-oclaw-admin-k8s-old",
+            host: "nora-oclaw-admin-k8s-old.openclaw-agents.svc.cluster.local",
+            image: "node:24-slim",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const res = await withToken(
+      request(app).post("/admin/agents/agent-k8s-admin/redeploy"),
+      adminToken,
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockAddDeploymentJob).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "agent-k8s-admin",
+        userId: "user-k8s",
+        backend: "k8s",
+        previous_container_id: "nora-oclaw-admin-k8s-old",
+        previous_container_name: "nora-oclaw-admin-k8s-old",
+        previous_host: "nora-oclaw-admin-k8s-old.openclaw-agents.svc.cluster.local",
+        previous_backend: "k8s",
+        previous_runtime_family: "openclaw",
+        previous_deploy_target: "k8s",
+        previous_execution_target_id: "k8s:test-cluster",
+        previous_sandbox_profile: "standard",
       }),
     );
   });
@@ -1768,6 +1950,41 @@ describe("admin routes", () => {
       expect.objectContaining({ id: "agent-9" }),
     );
     expect(res.body).toEqual({ success: true });
+  });
+
+  it("destroys Kubernetes resources by container_name before admin agent deletion", async () => {
+    const containerManager = require("../containerManager");
+    mockDb.query
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: "agent-k8s-delete",
+            user_id: "user-k8s",
+            name: "K8s Delete",
+            runtime_family: "openclaw",
+            backend_type: "k8s",
+            deploy_target: "k8s",
+            execution_target_id: "k8s:test-cluster",
+            sandbox_profile: "standard",
+            container_id: null,
+            container_name: "nora-oclaw-k8s-delete",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const res = await withToken(request(app).delete("/admin/agents/agent-k8s-delete"), adminToken);
+
+    expect(res.status).toBe(200);
+    expect(containerManager.destroy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "agent-k8s-delete",
+        container_name: "nora-oclaw-k8s-delete",
+      }),
+    );
+    expect(mockDb.query).toHaveBeenLastCalledWith("DELETE FROM agents WHERE id = $1", [
+      "agent-k8s-delete",
+    ]);
   });
 
   it("returns paginated audit results with date and type filters", async () => {

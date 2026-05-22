@@ -4,12 +4,12 @@ const db = require("../db");
 const monitoring = require("../monitoring");
 const metricsModule = require("../metrics");
 const { asyncHandler } = require("../middleware/errorHandler");
-const { findOwnedAgent, requireOwnedAgent } = require("../middleware/ownership");
+const { findAccessibleAgent, requireAccessibleAgent } = require("../middleware/ownership");
 const { requireAdmin, scopeByMethod } = require("../middleware/auth");
 
 const router = express.Router();
 
-router.use("/agents/:id", requireOwnedAgent("id"));
+router.use("/agents/:id", requireAccessibleAgent("viewer", "id"));
 // Monitoring is read-only via API keys. We scope-gate the specific path
 // prefixes the router handles — applying scopeByMethod at the router root
 // would block unrelated requests because this router is mounted at "/".
@@ -98,7 +98,7 @@ router.get(
     let scopedAgent = null;
 
     if (scopedAgentId) {
-      scopedAgent = await findOwnedAgent(scopedAgentId, req.user.id);
+      scopedAgent = await findAccessibleAgent(scopedAgentId, req.user.id, "viewer");
       if (!scopedAgent) return res.status(404).json({ error: "Agent not found" });
     }
 
@@ -176,7 +176,7 @@ router.get(
 router.get(
   "/agents/:id/cost",
   asyncHandler(async (req, res) => {
-    const cost = await metricsModule.getAgentCost(req.params.id);
+    const cost = await metricsModule.getAgentCost(req.params.id, metricsModule.parseCostQuery(req.query));
     if (!cost) return res.status(404).json({ error: "Agent not found" });
     res.json(cost);
   }),

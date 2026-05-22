@@ -43,6 +43,7 @@ services:
       - "127.0.0.1:4100:4000"
     restart: unless-stopped
     volumes: !override
+      - ${NORA_HOST_REPO_DIR:-.}:/nora-host-repo:ro
       - /var/run/docker.sock:/var/run/docker.sock
       - nora_upgrade_state:/var/lib/nora-upgrade
       - nora_backups:/var/lib/nora-backups

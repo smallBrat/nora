@@ -105,7 +105,20 @@ function normalizeTelemetry(telemetry, agent = {}) {
       ...(telemetry?.capabilities || {}),
     }),
     current: normalizeCurrentSample(telemetry?.current || {}),
+    replicas: normalizeReplicaSnapshot(telemetry?.replicas),
   };
+}
+
+function normalizeReplicaSnapshot(snapshot) {
+  if (!snapshot) return null;
+  const normalized = {
+    specReplicas: toFiniteInteger(snapshot.specReplicas ?? snapshot.desiredReplicas ?? snapshot.desired),
+    replicas: toFiniteInteger(snapshot.replicas ?? snapshot.currentReplicas ?? snapshot.current),
+    availableReplicas: toFiniteInteger(snapshot.availableReplicas ?? snapshot.available),
+    readyReplicas: toFiniteInteger(snapshot.readyReplicas ?? snapshot.ready),
+    updatedReplicas: toFiniteInteger(snapshot.updatedReplicas ?? snapshot.updated),
+  };
+  return Object.values(normalized).some((value) => value != null) ? normalized : null;
 }
 
 function normalizeHistorySample(sample = {}) {
@@ -166,9 +179,7 @@ function deriveLiveRates(currentSample, previousSample) {
   const currentTime = parseTimestamp(current.recorded_at);
   const previousTime = parseTimestamp(previousSample?.recorded_at);
   const elapsedSeconds =
-    currentTime != null && previousTime != null
-      ? (currentTime - previousTime) / 1000
-      : null;
+    currentTime != null && previousTime != null ? (currentTime - previousTime) / 1000 : null;
 
   for (const [totalKey, rateKey] of Object.entries(TOTAL_TO_RATE_KEYS)) {
     const currentTotal = toFiniteNumber(current[totalKey]);
@@ -259,7 +270,7 @@ async function getLatestStoredSample(agentId) {
       WHERE agent_id = $1
       ORDER BY recorded_at DESC
       LIMIT 1`,
-    [agentId]
+    [agentId],
   );
 
   return result.rows[0] ? normalizeHistorySample(result.rows[0]) : null;
@@ -276,7 +287,7 @@ async function getHistorySamples(agentId, fromTime, toTime) {
           AND recorded_at BETWEEN $2 AND $3
         ORDER BY recorded_at ASC
         LIMIT 5000`,
-      [agentId, fromTime, toTime]
+      [agentId, fromTime, toTime],
     );
     return result.rows.map((row) => normalizeHistorySample(row));
   }
@@ -302,7 +313,7 @@ async function getHistorySamples(agentId, fromTime, toTime) {
       GROUP BY 1
       ORDER BY 1 ASC
       LIMIT 4000`,
-    [agentId, fromTime, toTime, bucketSeconds]
+    [agentId, fromTime, toTime, bucketSeconds],
   );
 
   return result.rows.map((row) => normalizeHistorySample(row));
@@ -372,7 +383,7 @@ async function persistTelemetrySample(agentId, telemetry) {
       numericOrZero(enriched.disk_read_rate_mbps),
       numericOrZero(enriched.disk_write_rate_mbps),
       integerOrZero(enriched.pids),
-    ]
+    ],
   );
 
   return enriched;
@@ -465,11 +476,16 @@ async function buildAgentStatsResponse(agent, liveTelemetry = null) {
   const response = {
     runtime_family: telemetry.runtime_family,
     deploy_target: telemetry.deploy_target,
+    execution_target_id: telemetry.execution_target_id,
     sandbox_profile: telemetry.sandbox_profile,
     backend_type: telemetry.backend_type,
     capabilities: telemetry.capabilities,
     current,
   };
+
+  if (telemetry.replicas) {
+    response.replicas = telemetry.replicas;
+  }
 
   if (telemetry.error) {
     response.error = telemetry.error;
@@ -498,6 +514,7 @@ async function buildAgentHistoryResponse(agent, fromTime, toTime) {
   return {
     runtime_family: telemetry.runtime_family,
     deploy_target: telemetry.deploy_target,
+    execution_target_id: telemetry.execution_target_id,
     sandbox_profile: telemetry.sandbox_profile,
     backend_type: telemetry.backend_type,
     capabilities: telemetry.capabilities,

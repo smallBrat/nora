@@ -323,13 +323,30 @@ function sleep(ms) {
 }
 
 class K8sBackend extends ProvisionerBackend {
-  constructor() {
+  constructor(profile = null) {
     super();
+    this.profile = profile || {};
+    this.executionTargetId = String(this.profile.executionTargetId || "").trim().toLowerCase();
+    if (!this.executionTargetId.startsWith("k8s:")) {
+      throw new Error("Kubernetes backend requires an Admin-registered cluster profile.");
+    }
+    this.clusterId = this.profile.id || this.executionTargetId.slice(4);
+    this.executionTargetLabelValue = safeK8sName(
+      String(this.executionTargetId).replace(/:/g, "-"),
+      this.clusterId,
+    );
     this.kc = new k8s.KubeConfig();
-    if (process.env.KUBECONFIG) {
-      this.kc.loadFromFile(process.env.KUBECONFIG);
+    if (this.profile.kubeconfigContent) {
+      this.kc.loadFromString(this.profile.kubeconfigContent);
+    } else if (this.profile.kubeconfigPath) {
+      this.kc.loadFromFile(this.profile.kubeconfigPath);
     } else {
-      this.kc.loadFromCluster(); // in-cluster config
+      throw new Error(
+        `${this.profile.label || this.executionTargetId} requires kubeconfig content or a mounted kubeconfig path.`,
+      );
+    }
+    if (this.profile.kubeContext && typeof this.kc.setCurrentContext === "function") {
+      this.kc.setCurrentContext(this.profile.kubeContext);
     }
     this.coreApi = this.kc.makeApiClient(k8s.CoreV1Api);
     this.appsApi = this.kc.makeApiClient(k8s.AppsV1Api);
@@ -341,25 +358,34 @@ class K8sBackend extends ProvisionerBackend {
     } catch {
       this.metricsApi = null;
     }
-    this.namespace = process.env.K8S_NAMESPACE || "openclaw-agents";
+    this.namespace = this.profile.namespace || "openclaw-agents";
     this.runtimeNamespaces = {
-      openclaw: process.env.K8S_OPENCLAW_NAMESPACE || this.namespace,
-      hermes: process.env.K8S_HERMES_NAMESPACE || this.namespace,
+      openclaw:
+        this.profile.openclawNamespace ||
+        this.profile.runtimeNamespaces?.openclaw ||
+        this.namespace,
+      hermes:
+        this.profile.hermesNamespace ||
+        this.profile.runtimeNamespaces?.hermes ||
+        this.namespace,
     };
-    this.exposureMode = this._normalizeExposureMode(process.env.K8S_EXPOSURE_MODE);
-    this.serviceAnnotations = this._parseServiceAnnotations(
-      process.env.K8S_SERVICE_ANNOTATIONS_JSON,
-    );
-    this.loadBalancerSourceRanges = this._parseCsv(process.env.K8S_LOAD_BALANCER_SOURCE_RANGES);
-    this.loadBalancerClass = String(process.env.K8S_LOAD_BALANCER_CLASS || "").trim();
+    this.exposureMode = this._normalizeExposureMode(this.profile.exposureMode);
+    this.serviceAnnotations = this._parseServiceAnnotations(this.profile.serviceAnnotations);
+    this.loadBalancerSourceRanges = Array.isArray(this.profile.loadBalancerSourceRanges)
+      ? this.profile.loadBalancerSourceRanges
+      : this._parseCsv(this.profile.loadBalancerSourceRanges);
+    this.loadBalancerClass = String(this.profile.loadBalancerClass || "").trim();
     this.loadBalancerReadyTimeoutMs = this._normalizePositiveInt(
-      process.env.K8S_LOAD_BALANCER_READY_TIMEOUT_MS,
+      this.profile.loadBalancerReadyTimeoutMs,
       600000,
     );
     this.loadBalancerReadyIntervalMs = this._normalizePositiveInt(
-      process.env.K8S_LOAD_BALANCER_READY_INTERVAL_MS,
+      this.profile.loadBalancerReadyIntervalMs,
       5000,
     );
+    this.runtimeHost = String(this.profile.runtimeHost || "").trim();
+    this.configuredGatewayNodePort = this._normalizePort(this.profile.gatewayNodePort);
+    this.configuredRuntimeNodePort = this._normalizePort(this.profile.runtimeNodePort);
   }
 
   _normalizeExposureMode(value) {
@@ -418,6 +444,10 @@ class K8sBackend extends ProvisionerBackend {
     return namespaces;
   }
 
+  _candidateNamespacesForRuntimeOperation(deployName, options = {}) {
+    return this._candidateNamespacesForDestroy(deployName, options);
+  }
+
   _normalizePositiveInt(value, fallback) {
     const parsed = Number.parseInt(value, 10);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
@@ -436,6 +466,11 @@ class K8sBackend extends ProvisionerBackend {
   }
 
   _parseServiceAnnotations(rawValue) {
+    if (rawValue && typeof rawValue === "object" && !Array.isArray(rawValue)) {
+      return Object.fromEntries(
+        Object.entries(rawValue).map(([key, value]) => [key, String(value)]),
+      );
+    }
     const raw = String(rawValue || "").trim();
     if (!raw) return {};
 
@@ -443,11 +478,11 @@ class K8sBackend extends ProvisionerBackend {
     try {
       parsed = JSON.parse(raw);
     } catch (error) {
-      throw new Error(`K8S_SERVICE_ANNOTATIONS_JSON must be valid JSON: ${error.message}`);
+      throw new Error(`Kubernetes service annotations must be valid JSON: ${error.message}`);
     }
 
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      throw new Error("K8S_SERVICE_ANNOTATIONS_JSON must be a JSON object");
+      throw new Error("Kubernetes service annotations must be a JSON object");
     }
 
     return Object.fromEntries(Object.entries(parsed).map(([key, value]) => [key, String(value)]));
@@ -499,8 +534,8 @@ class K8sBackend extends ProvisionerBackend {
       return ports;
     }
 
-    const configuredGatewayNodePort = this._normalizePort(process.env.K8S_GATEWAY_NODE_PORT);
-    const configuredRuntimeNodePort = this._normalizePort(process.env.K8S_RUNTIME_NODE_PORT);
+    const configuredGatewayNodePort = this.configuredGatewayNodePort;
+    const configuredRuntimeNodePort = this.configuredRuntimeNodePort;
 
     if (runtimeFamily !== "hermes" && configuredGatewayNodePort) {
       ports[0].nodePort = configuredGatewayNodePort;
@@ -605,6 +640,8 @@ class K8sBackend extends ProvisionerBackend {
         labels: {
           "nora.agent.id": this._agentIdFromDeployName(deployName),
           "nora.bootstrap": "true",
+          "nora.execution.target": this.executionTargetLabelValue,
+          "nora.kubernetes.cluster": this.clusterId,
           ...labels,
         },
       },
@@ -675,6 +712,8 @@ class K8sBackend extends ProvisionerBackend {
         "nora.agent.id": String(resolvedAgentId),
         "nora.deployment.name": deployName,
         "nora.runtime.family": runtimeFamily,
+        "nora.execution.target": this.executionTargetLabelValue,
+        "nora.kubernetes.cluster": this.clusterId,
       },
     };
     if (Object.keys(this.serviceAnnotations).length > 0) {
@@ -787,8 +826,7 @@ class K8sBackend extends ProvisionerBackend {
         );
       }
 
-      const nodePortHost =
-        process.env.K8S_RUNTIME_HOST || process.env.GATEWAY_HOST || "host.docker.internal";
+      const nodePortHost = this.runtimeHost || "host.docker.internal";
 
       console.log(
         `[k8s] Deployment ${deployName} created -> ${host} ` +
@@ -994,6 +1032,8 @@ class K8sBackend extends ProvisionerBackend {
           "nora.agent.id": String(id),
           "nora.deployment.name": deployName,
           "nora.runtime.family": "hermes",
+          "nora.execution.target": this.executionTargetLabelValue,
+          "nora.kubernetes.cluster": this.clusterId,
         },
       },
       spec: {
@@ -1008,6 +1048,8 @@ class K8sBackend extends ProvisionerBackend {
               "nora.agent.id": String(id),
               "nora.deployment.name": deployName,
               "nora.runtime.family": "hermes",
+              "nora.execution.target": this.executionTargetLabelValue,
+              "nora.kubernetes.cluster": this.clusterId,
             },
           },
           spec: {
@@ -1219,6 +1261,8 @@ class K8sBackend extends ProvisionerBackend {
         "nora.agent.id": String(id),
         "nora.deployment.name": deployName,
         "nora.runtime.family": "openclaw",
+        "nora.execution.target": this.executionTargetLabelValue,
+        "nora.kubernetes.cluster": this.clusterId,
         "openclaw.agent.id": String(id),
       },
       namespace,
@@ -1236,6 +1280,8 @@ class K8sBackend extends ProvisionerBackend {
           "nora.agent.id": String(id),
           "nora.deployment.name": deployName,
           "nora.runtime.family": "openclaw",
+          "nora.execution.target": this.executionTargetLabelValue,
+          "nora.kubernetes.cluster": this.clusterId,
           "openclaw.agent.id": String(id),
         },
       },
@@ -1251,6 +1297,8 @@ class K8sBackend extends ProvisionerBackend {
               "nora.agent.id": String(id),
               "nora.deployment.name": deployName,
               "nora.runtime.family": "openclaw",
+              "nora.execution.target": this.executionTargetLabelValue,
+              "nora.kubernetes.cluster": this.clusterId,
               "openclaw.agent.id": String(id),
             },
           },
@@ -1337,37 +1385,32 @@ class K8sBackend extends ProvisionerBackend {
     );
   }
 
-  async status(containerId) {
+  async status(containerId, options = {}) {
     const deployName = containerId;
-    const namespace = this._namespaceForDeployName(deployName);
     try {
-      const res = await this.appsApi.readNamespacedDeployment({
-        name: deployName,
-        namespace,
-      });
-      // v1.x returns the object directly; fall back to `.body` for belt-and-braces.
-      const status = res?.status || res?.body?.status || {};
-      const running = (status.availableReplicas || 0) > 0;
-      return { running, uptime: null, cpu: null, memory: null };
+      const { deployment } = await this._readDeploymentInCandidateNamespace(deployName, options);
+      const replicas = this._deploymentReplicaSnapshot(deployment);
+      const running = replicas.specReplicas > 0 && replicas.availableReplicas > 0;
+      return { running, uptime: null, cpu: null, memory: null, replicas };
     } catch {
-      return { running: false, uptime: 0, cpu: null, memory: null };
+      return { running: false, uptime: 0, cpu: null, memory: null, replicas: null };
     }
   }
 
-  async stats(containerId) {
+  async stats(containerId, options = {}) {
     const deployName = containerId;
-    const namespace = this._namespaceForDeployName(deployName);
+    let namespace = this._namespaceForDeployName(deployName);
     let deployment = null;
+    let replicas = null;
     let running = false;
     let uptimeSeconds = 0;
 
     try {
-      const res = await this.appsApi.readNamespacedDeployment({
-        name: deployName,
-        namespace,
-      });
-      deployment = res?.body || res || null;
-      running = (deployment?.status?.availableReplicas || 0) > 0;
+      const deploymentRead = await this._readDeploymentInCandidateNamespace(deployName, options);
+      deployment = deploymentRead.deployment;
+      namespace = deploymentRead.namespace;
+      replicas = this._deploymentReplicaSnapshot(deployment);
+      running = replicas.specReplicas > 0 && replicas.availableReplicas > 0;
     } catch {
       // Keep the same best-effort behavior as status(); callers still get a stable payload.
     }
@@ -1376,7 +1419,7 @@ class K8sBackend extends ProvisionerBackend {
     try {
       runningPod = await this._findRunningPod(deployName, namespace);
       if (runningPod) {
-        running = true;
+        running = replicas ? replicas.specReplicas > 0 : true;
         uptimeSeconds = podUptimeSeconds(runningPod);
       }
     } catch {
@@ -1384,12 +1427,14 @@ class K8sBackend extends ProvisionerBackend {
     }
 
     if (!running || !runningPod) {
-      return buildUnavailableTelemetry({
+      const telemetry = buildUnavailableTelemetry({
         backendType: "k8s",
         running,
         uptime_seconds: uptimeSeconds,
         capabilities: K8S_UNAVAILABLE_CAPABILITIES,
       });
+      telemetry.replicas = replicas;
+      return telemetry;
     }
 
     try {
@@ -1401,7 +1446,7 @@ class K8sBackend extends ProvisionerBackend {
         uptimeSeconds,
       });
 
-      return buildTelemetry({
+      const telemetry = buildTelemetry({
         backendType: "k8s",
         capabilities: {
           ...K8S_METRICS_CAPABILITIES,
@@ -1410,13 +1455,17 @@ class K8sBackend extends ProvisionerBackend {
         },
         current,
       });
+      telemetry.replicas = replicas;
+      return telemetry;
     } catch {
-      return buildUnavailableTelemetry({
+      const telemetry = buildUnavailableTelemetry({
         backendType: "k8s",
         running,
         uptime_seconds: uptimeSeconds,
         capabilities: K8S_UNAVAILABLE_CAPABILITIES,
       });
+      telemetry.replicas = replicas;
+      return telemetry;
     }
   }
 
@@ -1500,48 +1549,152 @@ class K8sBackend extends ProvisionerBackend {
     );
   }
 
-  async stop(containerId) {
+  async _patchDeploymentReplicas(deployName, replicas, namespace) {
+    await this.appsApi.patchNamespacedDeployment({
+      name: deployName,
+      namespace,
+      body: [{ op: "replace", path: "/spec/replicas", value: replicas }],
+    });
+  }
+
+  _deploymentReplicaSnapshot(deployment) {
+    const body = deployment?.body || deployment || {};
+    const specReplicas = Number(body?.spec?.replicas ?? 1);
+    const status = body?.status || {};
+    return {
+      specReplicas,
+      replicas: Number(status.replicas || 0),
+      availableReplicas: Number(status.availableReplicas || 0),
+      readyReplicas: Number(status.readyReplicas || 0),
+      updatedReplicas: Number(status.updatedReplicas || 0),
+    };
+  }
+
+  async _readDeploymentInCandidateNamespace(deployName, options = {}) {
+    const namespaces = this._candidateNamespacesForRuntimeOperation(deployName, options);
+    let lastNotFound = null;
+
+    for (const namespace of namespaces) {
+      try {
+        const res = await this.appsApi.readNamespacedDeployment({
+          name: deployName,
+          namespace,
+        });
+        return { deployment: res?.body || res || {}, namespace };
+      } catch (error) {
+        if (this._isNotFoundError(error) && namespace !== namespaces[namespaces.length - 1]) {
+          lastNotFound = error;
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    if (lastNotFound) throw lastNotFound;
+    throw new Error(`Unable to read Kubernetes deployment ${deployName}`);
+  }
+
+  async _waitForDeploymentStopped(deployName, namespace, timeoutMs = 60000) {
+    const deadline = Date.now() + timeoutMs;
+    let lastSnapshot = null;
+
+    while (Date.now() < deadline) {
+      const deployment = await this.appsApi.readNamespacedDeployment({
+        name: deployName,
+        namespace,
+      });
+      const snapshot = this._deploymentReplicaSnapshot(deployment);
+      lastSnapshot = snapshot;
+
+      if (
+        snapshot.specReplicas === 0 &&
+        snapshot.replicas === 0 &&
+        snapshot.availableReplicas === 0 &&
+        snapshot.readyReplicas === 0
+      ) {
+        return snapshot;
+      }
+
+      await sleep(1000);
+    }
+
+    throw new Error(
+      `Timed out waiting for K8s Deployment ${deployName} in ${namespace} to stop` +
+        (lastSnapshot
+          ? ` (spec=${lastSnapshot.specReplicas}, replicas=${lastSnapshot.replicas}, ready=${lastSnapshot.readyReplicas}, available=${lastSnapshot.availableReplicas})`
+          : ""),
+    );
+  }
+
+  async _patchDeploymentInCandidateNamespace(deployName, options, description, patchFn) {
+    const namespaces = this._candidateNamespacesForRuntimeOperation(deployName, options);
+    let lastNotFound = null;
+
+    for (const namespace of namespaces) {
+      try {
+        await patchFn(namespace);
+        return namespace;
+      } catch (error) {
+        if (this._isNotFoundError(error) && namespace !== namespaces[namespaces.length - 1]) {
+          lastNotFound = error;
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    if (lastNotFound) throw lastNotFound;
+    throw new Error(`Unable to ${description} Kubernetes deployment ${deployName}`);
+  }
+
+  async stop(containerId, options = {}) {
     const deployName = containerId;
-    const namespace = this._namespaceForDeployName(deployName);
     console.log(`[k8s] Stopping deployment ${deployName} (scaling to 0)`);
     // v1.x's auto-selected Content-Type for patch is application/json-patch+json,
     // so the body MUST be a JSON Patch ops array (RFC 6902), not a merge object.
-    await this.appsApi.patchNamespacedDeployment({
-      name: deployName,
-      namespace,
-      body: [{ op: "replace", path: "/spec/replicas", value: 0 }],
-    });
-    console.log(`[k8s] Deployment ${deployName} scaled to 0`);
+    const namespace = await this._patchDeploymentInCandidateNamespace(
+      deployName,
+      options,
+      "stop",
+      (candidateNamespace) => this._patchDeploymentReplicas(deployName, 0, candidateNamespace),
+    );
+    await this._waitForDeploymentStopped(deployName, namespace);
+    console.log(`[k8s] Deployment ${deployName} scaled to 0 in ${namespace}`);
   }
 
-  async start(containerId) {
+  async start(containerId, options = {}) {
     const deployName = containerId;
-    const namespace = this._namespaceForDeployName(deployName);
     console.log(`[k8s] Starting deployment ${deployName} (scaling to 1)`);
-    await this.appsApi.patchNamespacedDeployment({
-      name: deployName,
-      namespace,
-      body: [{ op: "replace", path: "/spec/replicas", value: 1 }],
-    });
-    console.log(`[k8s] Deployment ${deployName} scaled to 1`);
+    const namespace = await this._patchDeploymentInCandidateNamespace(
+      deployName,
+      options,
+      "start",
+      (candidateNamespace) => this._patchDeploymentReplicas(deployName, 1, candidateNamespace),
+    );
+    console.log(`[k8s] Deployment ${deployName} scaled to 1 in ${namespace}`);
   }
 
-  async restart(containerId) {
+  async restart(containerId, options = {}) {
     const deployName = containerId;
-    const namespace = this._namespaceForDeployName(deployName);
     console.log(`[k8s] Restarting deployment ${deployName}`);
-    await this.appsApi.patchNamespacedDeployment({
-      name: deployName,
-      namespace,
-      body: [
-        {
-          op: "add",
-          path: "/spec/template/metadata/annotations",
-          value: { "kubectl.kubernetes.io/restartedAt": new Date().toISOString() },
-        },
-      ],
-    });
-    console.log(`[k8s] Deployment ${deployName} rollout restart triggered`);
+    const namespace = await this._patchDeploymentInCandidateNamespace(
+      deployName,
+      options,
+      "restart",
+      (candidateNamespace) =>
+        this.appsApi.patchNamespacedDeployment({
+          name: deployName,
+          namespace: candidateNamespace,
+          body: [
+            {
+              op: "add",
+              path: "/spec/template/metadata/annotations",
+              value: { "kubectl.kubernetes.io/restartedAt": new Date().toISOString() },
+            },
+          ],
+        }),
+    );
+    console.log(`[k8s] Deployment ${deployName} rollout restart triggered in ${namespace}`);
   }
 
   /**

@@ -4,6 +4,7 @@ import {
   Bot,
   Rocket,
   BarChart3,
+  FolderOpen,
   ListChecks,
   Settings,
   ScrollText,
@@ -35,6 +36,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse, onClose }
     { name: "Agents", icon: Bot, href: "/app/agents" },
     { name: "Agent Hub", icon: ShoppingBag, href: "/app/agent-hub" },
     { name: "Deploy", icon: Rocket, href: "/app/deploy" },
+    { name: "Workspaces", icon: FolderOpen, href: "/app/workspaces" },
     { name: "Monitoring", icon: BarChart3, href: "/app/monitoring" },
     { name: "Logs", icon: ScrollText, href: "/app/logs" },
   ];

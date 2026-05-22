@@ -8,6 +8,8 @@ const db = require("./db");
 const {
   getRuntimeSelectionStatus,
   isKnownRuntimeFamily,
+  normalizeDeployTargetName,
+  normalizeExecutionTargetId,
 } = require("../agent-runtime/lib/backendCatalog");
 const agentVersions = require("./agentVersions");
 
@@ -22,14 +24,28 @@ function normalizeSelection(value, label) {
     error.statusCode = 400;
     throw error;
   }
-  const deployTarget = sel.deploy_target || sel.deployTarget;
-  if (deployTarget && !ALLOWED_TARGETS.has(deployTarget)) {
+  const explicitExecutionTargetId = normalizeExecutionTargetId(
+    sel.execution_target_id || sel.executionTargetId || sel.executionTarget,
+  );
+  const rawDeployTarget = sel.deploy_target || sel.deployTarget || explicitExecutionTargetId;
+  const normalizedTargetFromDeployTarget = rawDeployTarget
+    ? normalizeExecutionTargetId(rawDeployTarget)
+    : null;
+  if (rawDeployTarget && !normalizedTargetFromDeployTarget) {
     const error = new Error(
       `${label}.deploy_target must be one of: ${[...ALLOWED_TARGETS].join(", ")}`,
     );
     error.statusCode = 400;
     throw error;
   }
+  const deployTarget = rawDeployTarget
+    ? normalizeDeployTargetName(normalizedTargetFromDeployTarget)
+    : null;
+  const executionTargetId =
+    explicitExecutionTargetId ||
+    (normalizedTargetFromDeployTarget && normalizedTargetFromDeployTarget !== deployTarget
+      ? normalizedTargetFromDeployTarget
+      : null);
   const sandboxProfile = sel.sandbox_profile || sel.sandboxProfile;
   if (sandboxProfile && !ALLOWED_SANDBOXES.has(sandboxProfile)) {
     const error = new Error(
@@ -38,11 +54,15 @@ function normalizeSelection(value, label) {
     error.statusCode = 400;
     throw error;
   }
-  return {
+  const normalizedSelection = {
     runtime_family: runtimeFamily || null,
     deploy_target: deployTarget || null,
     sandbox_profile: sandboxProfile || null,
   };
+  if (executionTargetId) {
+    normalizedSelection.execution_target_id = executionTargetId;
+  }
+  return normalizedSelection;
 }
 
 function selectionWhereClause(selection) {
@@ -57,6 +77,10 @@ function selectionWhereClause(selection) {
     conditions.push(`deploy_target = $${next++}`);
     params.push(selection.deploy_target);
   }
+  if (selection.execution_target_id) {
+    conditions.push(`execution_target_id = $${next++}`);
+    params.push(selection.execution_target_id);
+  }
   if (selection.sandbox_profile) {
     conditions.push(`sandbox_profile = $${next++}`);
     params.push(selection.sandbox_profile);
@@ -67,7 +91,8 @@ function selectionWhereClause(selection) {
 async function findCandidateAgents(source, agentIds) {
   if (Array.isArray(agentIds) && agentIds.length > 0) {
     const result = await db.query(
-      `SELECT id, name, user_id, status, runtime_family, deploy_target, sandbox_profile,
+      `SELECT id, name, user_id, status, runtime_family, deploy_target, execution_target_id,
+              sandbox_profile,
               backend_type, sandbox_type, container_id, container_name, image,
               vcpu, ram_mb, disk_gb, template_payload
          FROM agents
@@ -78,7 +103,8 @@ async function findCandidateAgents(source, agentIds) {
   }
   const { where, params } = selectionWhereClause(source);
   const result = await db.query(
-    `SELECT id, name, user_id, status, runtime_family, deploy_target, sandbox_profile,
+    `SELECT id, name, user_id, status, runtime_family, deploy_target, execution_target_id,
+            sandbox_profile,
             backend_type, sandbox_type, container_id, container_name, image,
             vcpu, ram_mb, disk_gb, template_payload
        FROM agents
@@ -92,6 +118,11 @@ function evaluateAgent(agent, target) {
   const desired = {
     runtime_family: target.runtime_family || agent.runtime_family,
     deploy_target: target.deploy_target || agent.deploy_target,
+    execution_target_id:
+      target.execution_target_id ||
+      agent.execution_target_id ||
+      target.deploy_target ||
+      agent.deploy_target,
     sandbox_profile: target.sandbox_profile || agent.sandbox_profile,
   };
   const status = getRuntimeSelectionStatus(desired);
@@ -101,6 +132,7 @@ function evaluateAgent(agent, target) {
     current: {
       runtime_family: agent.runtime_family,
       deploy_target: agent.deploy_target,
+      execution_target_id: agent.execution_target_id || agent.deploy_target,
       sandbox_profile: agent.sandbox_profile,
     },
     desired,
@@ -113,6 +145,7 @@ function captureBeforeState(agent) {
   return {
     runtime_family: agent.runtime_family,
     deploy_target: agent.deploy_target,
+    execution_target_id: agent.execution_target_id || agent.deploy_target,
     sandbox_profile: agent.sandbox_profile,
     backend_type: agent.backend_type,
     sandbox_type: agent.sandbox_type,

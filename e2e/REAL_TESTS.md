@@ -73,7 +73,7 @@ up.
 | Cell                | Enabled by                                | Extra host requirements                                                                                                                |
 | ------------------- | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
 | OpenClaw + Docker   | `REAL_ENABLE_OPENCLAW_DOCKER=1` (default) | Docker socket reachable from `backend-api` / `worker-provisioner` (already wired in the default compose)                               |
-| OpenClaw + K8s      | `REAL_ENABLE_OPENCLAW_K8S=1`              | Control plane started with `docker-compose.kind.yml` for local Kind, or `docker-compose.aks.yml` / `docker-compose.gke.yml` / `docker-compose.eks.yml` for managed Kubernetes |
+| OpenClaw + K8s      | `REAL_ENABLE_OPENCLAW_K8S=1`              | Control plane started with `docker-compose.kubernetes.yml`; add `docker-compose.kind.yml` only for local Kind networking |
 | OpenClaw + NemoClaw | `REAL_ENABLE_OPENCLAW_NEMOCLAW=1`         | `NVIDIA_API_KEY` set in `.env` for the stack                                                                                           |
 | Hermes + Docker     | `REAL_ENABLE_HERMES_DOCKER=1`             | First run pulls a large Hermes image — warm the cache or raise `REAL_PROVISION_TIMEOUT_MS`                                             |
 
@@ -103,7 +103,8 @@ If either passes the SSRF guard, the assertion will flip red.
 - **Cells skip immediately.** Check `/api/config/platform.enabledBackends` —
   only cells matching what your stack was booted with will run. If you want
   all current execution targets and runtime choices, boot with
-  `ENABLED_BACKENDS=docker,k8s,proxmox`,
+  `ENABLED_BACKENDS=docker,proxmox`, register Kubernetes clusters in
+  **Admin -> Kubernetes**,
   `ENABLED_RUNTIME_FAMILIES=openclaw,hermes`, and
   `ENABLED_SANDBOX_PROFILES=standard,nemoclaw`.
 - **`[L2] reach running` times out.** `docker compose logs worker-provisioner`

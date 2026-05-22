@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { fetchWithAuth } from "../../../lib/api";
+import { markAgentValidated } from "../../../lib/activation";
 import {
   Send,
   Loader2,
@@ -134,6 +135,13 @@ export default function ChatPanel({ agentId }) {
         setMessages(formatted.slice(recentStart));
         setDisplayOffset(recentStart);
         setHasMoreHistory(recentStart > 0);
+
+        if (
+          formatted.some((message) => message.role === "user") &&
+          formatted.some((message) => message.role === "assistant")
+        ) {
+          markAgentValidated(agentId, "chat_history");
+        }
       })
       .catch(() => {}) // gateway might not support session history
       .finally(() => setLoadingHistory(false));
@@ -201,6 +209,8 @@ export default function ChatPanel({ agentId }) {
     try {
       const controller = new AbortController();
       abortRef.current = controller;
+      let hadStreamError = false;
+      let receivedAssistantContent = false;
 
       // Send single message string — OpenClaw gateway uses sessionKey for context,
       // not an OpenAI-style messages array
@@ -262,6 +272,7 @@ export default function ChatPanel({ agentId }) {
             }
             // Handle error from proxy or gateway
             if (chunk.type === "error" || chunk.state === "error") {
+              hadStreamError = true;
               const errMsg = chunk.error || chunk.errorMessage || "Unknown error";
               setMessages((prev) =>
                 prev.map((m) =>
@@ -319,6 +330,7 @@ export default function ChatPanel({ agentId }) {
             const isDelta = state === "delta" || state === "final";
 
             if (state === "final") {
+              if (rawText) receivedAssistantContent = true;
               // Final event — set complete content and stop streaming
               setMessages((prev) =>
                 prev.map((m) => {
@@ -335,6 +347,7 @@ export default function ChatPanel({ agentId }) {
                 const updated = { ...m };
 
                 if (rawText) {
+                  receivedAssistantContent = true;
                   // Gateway deltas send accumulated text, not incremental
                   updated.content = isDelta ? rawText : updated.content + rawText;
                 }
@@ -374,6 +387,9 @@ export default function ChatPanel({ agentId }) {
       setMessages((prev) =>
         prev.map((m) => (m.ts === assistantId ? { ...m, streaming: false } : m)),
       );
+      if (!hadStreamError && receivedAssistantContent) {
+        markAgentValidated(agentId, "openclaw_chat");
+      }
     } catch (err) {
       if (err.name !== "AbortError") {
         setMessages((prev) =>
