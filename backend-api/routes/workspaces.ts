@@ -37,7 +37,9 @@ router.use("/:id/alert-rules", alertRulesRouter);
 
 router.get("/cost", async (req, res) => {
   try {
-    res.json(await metrics.getAccessibleWorkspaceCosts(req.user.id, metrics.parseCostQuery(req.query)));
+    res.json(
+      await metrics.getAccessibleWorkspaceCosts(req.user.id, metrics.parseCostQuery(req.query)),
+    );
   } catch (e) {
     res.status(e.statusCode || 500).json({ error: e.message });
   }

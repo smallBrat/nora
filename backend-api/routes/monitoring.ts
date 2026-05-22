@@ -176,7 +176,10 @@ router.get(
 router.get(
   "/agents/:id/cost",
   asyncHandler(async (req, res) => {
-    const cost = await metricsModule.getAgentCost(req.params.id, metricsModule.parseCostQuery(req.query));
+    const cost = await metricsModule.getAgentCost(
+      req.params.id,
+      metricsModule.parseCostQuery(req.query),
+    );
     if (!cost) return res.status(404).json({ error: "Agent not found" });
     res.json(cost);
   }),

@@ -115,10 +115,7 @@ export async function assignWorkspaceAgent(
   return jsonOrThrow<{ id: string; workspace_id: string; agent_id: string; role: string }>(res);
 }
 
-export async function removeWorkspaceAgent(
-  workspaceId: string,
-  agentId: string,
-): Promise<void> {
+export async function removeWorkspaceAgent(workspaceId: string, agentId: string): Promise<void> {
   const res = await fetchWithAuth(`/api/workspaces/${workspaceId}/agents/${agentId}`, {
     method: "DELETE",
   });

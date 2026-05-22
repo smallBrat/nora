@@ -5,11 +5,7 @@ const {
   resolveRequestedRuntimeFields,
 } = require("../agentRuntimeFields");
 
-const ENV_KEYS = [
-  "ENABLED_BACKENDS",
-  "ENABLED_RUNTIME_FAMILIES",
-  "ENABLED_SANDBOX_PROFILES",
-];
+const ENV_KEYS = ["ENABLED_BACKENDS", "ENABLED_RUNTIME_FAMILIES", "ENABLED_SANDBOX_PROFILES"];
 
 function clearRuntimeEnv() {
   for (const key of ENV_KEYS) delete process.env[key];

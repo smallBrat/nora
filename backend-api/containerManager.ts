@@ -206,7 +206,9 @@ module.exports = {
   async start(agent) {
     const id = resolveKubernetesRuntimeId(agent, "start");
     const backend = await backendFor(agent);
-    return isKubernetesAgent(agent) ? backend.start(id, lifecycleOptions(agent)) : backend.start(id);
+    return isKubernetesAgent(agent)
+      ? backend.start(id, lifecycleOptions(agent))
+      : backend.start(id);
   },
 
   async stop(agent) {
@@ -218,7 +220,9 @@ module.exports = {
   async restart(agent) {
     const id = resolveKubernetesRuntimeId(agent, "restart");
     const backend = await backendFor(agent);
-    return isKubernetesAgent(agent) ? backend.restart(id, lifecycleOptions(agent)) : backend.restart(id);
+    return isKubernetesAgent(agent)
+      ? backend.restart(id, lifecycleOptions(agent))
+      : backend.restart(id);
   },
 
   async destroy(agent) {

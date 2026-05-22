@@ -98,8 +98,7 @@ function buildPayload(form) {
     isDefault: form.isDefault,
     credentialMode: form.credentialMode,
     kubeconfigPath: form.credentialMode === "mounted_path" ? form.kubeconfigPath : "",
-    kubeconfigContent:
-      form.credentialMode === "encrypted_kubeconfig" ? form.kubeconfigContent : "",
+    kubeconfigContent: form.credentialMode === "encrypted_kubeconfig" ? form.kubeconfigContent : "",
     kubeContext: form.kubeContext,
     namespace: form.namespace,
     openclawNamespace: form.openclawNamespace,
@@ -152,34 +151,37 @@ export default function KubernetesAdminPage() {
     selectedIdRef.current = selectedId;
   }, [selectedId]);
 
-  const loadClusters = useCallback(async (preferredId = "", options = { selectFirst: true }) => {
-    const selectFirst = options.selectFirst !== false;
-    setLoading(true);
-    try {
-      const response = await fetchWithAuth("/api/admin/kubernetes-clusters");
-      const payload = await response.json().catch(() => []);
-      if (!response.ok) throw new Error(payload.error || "Failed to load Kubernetes clusters");
-      const nextClusters = Array.isArray(payload) ? payload : [];
-      const desiredId = preferredId ?? selectedIdRef.current;
-      setClusters(nextClusters);
-      const nextSelected =
-        (desiredId && nextClusters.find((cluster) => cluster.id === desiredId)?.id) ||
-        (selectFirst ? nextClusters[0]?.id : "") ||
-        "";
-      setSelectedId(nextSelected);
-      if (nextSelected) {
-        setForm(buildForm(nextClusters.find((cluster) => cluster.id === nextSelected)));
-      } else {
-        setForm(EMPTY_FORM);
+  const loadClusters = useCallback(
+    async (preferredId = "", options = { selectFirst: true }) => {
+      const selectFirst = options.selectFirst !== false;
+      setLoading(true);
+      try {
+        const response = await fetchWithAuth("/api/admin/kubernetes-clusters");
+        const payload = await response.json().catch(() => []);
+        if (!response.ok) throw new Error(payload.error || "Failed to load Kubernetes clusters");
+        const nextClusters = Array.isArray(payload) ? payload : [];
+        const desiredId = preferredId ?? selectedIdRef.current;
+        setClusters(nextClusters);
+        const nextSelected =
+          (desiredId && nextClusters.find((cluster) => cluster.id === desiredId)?.id) ||
+          (selectFirst ? nextClusters[0]?.id : "") ||
+          "";
+        setSelectedId(nextSelected);
+        if (nextSelected) {
+          setForm(buildForm(nextClusters.find((cluster) => cluster.id === nextSelected)));
+        } else {
+          setForm(EMPTY_FORM);
+        }
+      } catch (error) {
+        console.error("Failed to load Kubernetes clusters:", error);
+        toast.error(error.message || "Failed to load Kubernetes clusters");
+        setClusters([]);
+      } finally {
+        setLoading(false);
       }
-    } catch (error) {
-      console.error("Failed to load Kubernetes clusters:", error);
-      toast.error(error.message || "Failed to load Kubernetes clusters");
-      setClusters([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [toast]);
+    },
+    [toast],
+  );
 
   useEffect(() => {
     loadClusters(undefined, { selectFirst: true });
@@ -312,8 +314,8 @@ export default function KubernetesAdminPage() {
             Kubernetes clusters
           </h1>
           <p className="mt-2 max-w-3xl text-sm font-medium leading-relaxed text-slate-600">
-            Register each cluster Nora can deploy to. Enabled clusters with a passing test appear
-            as separate Kubernetes execution targets in the operator Deploy flow.
+            Register each cluster Nora can deploy to. Enabled clusters with a passing test appear as
+            separate Kubernetes execution targets in the operator Deploy flow.
           </p>
         </div>
         <button
@@ -332,7 +334,9 @@ export default function KubernetesAdminPage() {
             <h2 className="text-sm font-black text-slate-950">Registry</h2>
             <button
               type="button"
-              onClick={() => loadClusters(undefined, { selectFirst: Boolean(selectedIdRef.current) })}
+              onClick={() =>
+                loadClusters(undefined, { selectFirst: Boolean(selectedIdRef.current) })
+              }
               className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50"
               title="Refresh clusters"
             >
@@ -368,7 +372,9 @@ export default function KubernetesAdminPage() {
                         {cluster.clusterName || cluster.id}
                       </p>
                     </div>
-                    <span className={`rounded-full px-2 py-1 text-[10px] font-black ${statusClass(cluster.lastTestStatus)}`}>
+                    <span
+                      className={`rounded-full px-2 py-1 text-[10px] font-black ${statusClass(cluster.lastTestStatus)}`}
+                    >
                       {cluster.lastTestStatus || "untested"}
                     </span>
                   </div>
@@ -542,9 +548,7 @@ export default function KubernetesAdminPage() {
                   onChange={(event) => updateField("kubeconfigContent", event.target.value)}
                   className="input min-h-32 font-mono text-xs"
                   placeholder={
-                    editing
-                      ? "Leave empty to keep the stored kubeconfig"
-                      : "Paste kubeconfig YAML"
+                    editing ? "Leave empty to keep the stored kubeconfig" : "Paste kubeconfig YAML"
                   }
                 />
               </Field>

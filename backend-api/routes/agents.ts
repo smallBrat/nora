@@ -1751,7 +1751,8 @@ async function destroyAgent(agentId, userId, req, res) {
   if (!agent) return res.status(404).json({ error: "Agent not found" });
   if (agent.user_id !== userId) {
     return res.status(403).json({
-      error: "Only the direct agent owner can delete this agent. Remove the workspace assignment instead.",
+      error:
+        "Only the direct agent owner can delete this agent. Remove the workspace assignment instead.",
     });
   }
   res.locals.auditContext = buildAgentContext(agent, {

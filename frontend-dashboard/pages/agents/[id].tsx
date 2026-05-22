@@ -16,7 +16,11 @@ import BackupsTab from "../../components/agents/BackupsTab";
 import StatusBadge from "../../components/agents/StatusBadge";
 import { useToast } from "../../components/Toast";
 import { fetchWithAuth } from "../../lib/api";
-import { hasValidatedAgent, markAgentValidated, subscribeAgentValidation } from "../../lib/activation";
+import {
+  hasValidatedAgent,
+  markAgentValidated,
+  subscribeAgentValidation,
+} from "../../lib/activation";
 import {
   activeExecutionTargetFromConfig,
   activeSandboxOptionFromTarget,

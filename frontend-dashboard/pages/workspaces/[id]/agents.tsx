@@ -93,10 +93,7 @@ export default function WorkspaceAgentsPage() {
     }
   }
 
-  const assignedAgentIds = useMemo(
-    () => new Set(agents.map((agent) => agent.agentId)),
-    [agents],
-  );
+  const assignedAgentIds = useMemo(() => new Set(agents.map((agent) => agent.agentId)), [agents]);
   const sortedCandidates = useMemo(
     () =>
       [...candidates].sort((a, b) => {
@@ -143,9 +140,7 @@ export default function WorkspaceAgentsPage() {
                 Workspace members can access these agents based on their workspace role.
               </p>
             </div>
-            <span className="text-xs font-bold text-slate-500">
-              {agents.length} assigned
-            </span>
+            <span className="text-xs font-bold text-slate-500">{agents.length} assigned</span>
           </div>
 
           {loading ? (

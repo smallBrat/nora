@@ -72,7 +72,7 @@ describe("monitoring route ownership", () => {
     ]);
     expect(mockMonitoring.getUserRecentEvents).toHaveBeenCalledWith(
       "user-1",
-      expect.objectContaining({ limit: 10 })
+      expect.objectContaining({ limit: 10 }),
     );
   });
 
@@ -97,7 +97,7 @@ describe("monitoring route ownership", () => {
     });
 
     const res = await request(app).get(
-      "/monitoring/events?page=1&limit=30&type=agent_started&from=2026-04-01&to=2026-04-08"
+      "/monitoring/events?page=1&limit=30&type=agent_started&from=2026-04-01&to=2026-04-08",
     );
 
     expect(res.status).toBe(200);
@@ -109,7 +109,7 @@ describe("monitoring route ownership", () => {
         type: "agent_started",
         from: expect.any(Date),
         to: expect.any(Date),
-      })
+      }),
     );
     expect(res.body.events).toHaveLength(1);
     expect(res.body.total).toBe(1);
@@ -141,7 +141,7 @@ describe("monitoring route ownership", () => {
     expect(res.body).toHaveLength(1);
     expect(mockDb.query).toHaveBeenCalledWith(
       "SELECT value, metadata, recorded_at FROM usage_metrics WHERE metric_type = 'api_performance' AND recorded_at >= $1 ORDER BY recorded_at",
-      ["2026-04-09T00:00:00.000Z"]
+      ["2026-04-09T00:00:00.000Z"],
     );
   });
 });

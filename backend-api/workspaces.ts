@@ -145,10 +145,10 @@ async function listWorkspaces(userId) {
 
 async function addAgent(workspaceId, agentId, role = "member", userId = null) {
   if (userId) {
-    const ownership = await db.query(
-      "SELECT id FROM agents WHERE id = $1 AND user_id = $2",
-      [agentId, userId],
-    );
+    const ownership = await db.query("SELECT id FROM agents WHERE id = $1 AND user_id = $2", [
+      agentId,
+      userId,
+    ]);
     if (!ownership.rows[0]) throw new Error("Workspace or agent not found");
   }
 

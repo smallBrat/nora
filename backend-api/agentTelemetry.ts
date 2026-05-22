@@ -112,7 +112,9 @@ function normalizeTelemetry(telemetry, agent = {}) {
 function normalizeReplicaSnapshot(snapshot) {
   if (!snapshot) return null;
   const normalized = {
-    specReplicas: toFiniteInteger(snapshot.specReplicas ?? snapshot.desiredReplicas ?? snapshot.desired),
+    specReplicas: toFiniteInteger(
+      snapshot.specReplicas ?? snapshot.desiredReplicas ?? snapshot.desired,
+    ),
     replicas: toFiniteInteger(snapshot.replicas ?? snapshot.currentReplicas ?? snapshot.current),
     availableReplicas: toFiniteInteger(snapshot.availableReplicas ?? snapshot.available),
     readyReplicas: toFiniteInteger(snapshot.readyReplicas ?? snapshot.ready),

@@ -91,7 +91,10 @@ function WorkspaceCostSection({
     ? workspace.workspaceName.toLowerCase().includes(searchQuery)
     : false;
   const sortedAgents = [...(workspace.perAgent || [])]
-    .filter((agent) => workspaceMatches || agentMatchesSearch(agent, searchQuery, workspace.workspaceName))
+    .filter(
+      (agent) =>
+        workspaceMatches || agentMatchesSearch(agent, searchQuery, workspace.workspaceName),
+    )
     .sort((a, b) => b.total_cost - a.total_cost);
 
   if (searchQuery && !workspaceMatches && sortedAgents.length === 0) return null;

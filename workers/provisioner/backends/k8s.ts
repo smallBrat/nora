@@ -326,7 +326,9 @@ class K8sBackend extends ProvisionerBackend {
   constructor(profile = null) {
     super();
     this.profile = profile || {};
-    this.executionTargetId = String(this.profile.executionTargetId || "").trim().toLowerCase();
+    this.executionTargetId = String(this.profile.executionTargetId || "")
+      .trim()
+      .toLowerCase();
     if (!this.executionTargetId.startsWith("k8s:")) {
       throw new Error("Kubernetes backend requires an Admin-registered cluster profile.");
     }
@@ -365,9 +367,7 @@ class K8sBackend extends ProvisionerBackend {
         this.profile.runtimeNamespaces?.openclaw ||
         this.namespace,
       hermes:
-        this.profile.hermesNamespace ||
-        this.profile.runtimeNamespaces?.hermes ||
-        this.namespace,
+        this.profile.hermesNamespace || this.profile.runtimeNamespaces?.hermes || this.namespace,
     };
     this.exposureMode = this._normalizeExposureMode(this.profile.exposureMode);
     this.serviceAnnotations = this._parseServiceAnnotations(this.profile.serviceAnnotations);

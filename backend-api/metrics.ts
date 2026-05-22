@@ -317,13 +317,16 @@ function normalizeRateEntry(entry) {
   const per1k = entry.per_1k ?? entry.per1k ?? entry.total_per_1k ?? entry.totalPer1k;
 
   const normalized = {
-    inputPer1k: inputPer1k === undefined || inputPer1k === null ? null : normalizePositiveRate(inputPer1k),
+    inputPer1k:
+      inputPer1k === undefined || inputPer1k === null ? null : normalizePositiveRate(inputPer1k),
     outputPer1k:
       outputPer1k === undefined || outputPer1k === null ? null : normalizePositiveRate(outputPer1k),
     per1k: per1k === undefined || per1k === null ? null : normalizePositiveRate(per1k),
   };
 
-  return normalized.inputPer1k === null && normalized.outputPer1k === null && normalized.per1k === null
+  return normalized.inputPer1k === null &&
+    normalized.outputPer1k === null &&
+    normalized.per1k === null
     ? null
     : normalized;
 }
@@ -354,7 +357,8 @@ function resolveModelRate(model, provider, modelRates) {
   const modelKey = String(model || "").trim();
   const providerKey = String(provider || "").trim();
   const candidates = [];
-  if (providerKey && modelKey && !modelKey.includes("/")) candidates.push(`${providerKey}/${modelKey}`);
+  if (providerKey && modelKey && !modelKey.includes("/"))
+    candidates.push(`${providerKey}/${modelKey}`);
   if (modelKey) candidates.push(modelKey);
   if (providerKey && modelKey && modelKey.includes("/")) {
     const bareModel = modelKey.split("/").slice(1).join("/");
@@ -603,9 +607,8 @@ async function getAccessibleWorkspaceCosts(userId, options = {}) {
   const unassignedPerAgent = await Promise.all(
     unassignedRows.rows.map((agent) => buildCostRow(agent, windowOptions)),
   );
-  const unassignedTotalUsd = Math.round(
-    unassignedPerAgent.reduce((sum, row) => sum + (row.total_cost || 0), 0) * 100,
-  ) / 100;
+  const unassignedTotalUsd =
+    Math.round(unassignedPerAgent.reduce((sum, row) => sum + (row.total_cost || 0), 0) * 100) / 100;
 
   const uniqueAgents = new Map();
   for (const workspace of workspaces) {

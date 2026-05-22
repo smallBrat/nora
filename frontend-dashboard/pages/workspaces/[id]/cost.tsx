@@ -76,7 +76,10 @@ export default function WorkspaceCostPage() {
     setLoading(true);
     try {
       const [costRes, budgetsRes] = await Promise.all([
-        getWorkspaceCost(workspaceId, usingCustomRange ? { periodStart, periodEnd } : { periodDays }),
+        getWorkspaceCost(
+          workspaceId,
+          usingCustomRange ? { periodStart, periodEnd } : { periodDays },
+        ),
         listBudgets(workspaceId),
       ]);
       setCost(costRes);
@@ -284,14 +287,15 @@ export default function WorkspaceCostPage() {
                     href={`/agents/${agent.agentId}`}
                     className="flex items-center justify-between gap-4 rounded-xl px-2 py-2 hover:bg-slate-50"
                   >
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm font-bold text-slate-900 truncate">
-                      {agent.agentName}
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-bold text-slate-900 truncate">
+                        {agent.agentName}
+                      </div>
+                      <div className="text-xs text-slate-500">
+                        {formatUsd(agent.token_cost)} token cost ·{" "}
+                        {formatNumber(agent.total_tokens)} tokens
+                      </div>
                     </div>
-                    <div className="text-xs text-slate-500">
-                      {formatUsd(agent.token_cost)} token cost · {formatNumber(agent.total_tokens)} tokens
-                    </div>
-                  </div>
                     <span className="inline-flex items-center gap-2 text-sm font-black text-slate-900">
                       {formatUsd(agent.total_cost)}
                       <ArrowUpRight size={14} className="text-slate-400" />

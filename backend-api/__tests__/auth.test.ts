@@ -112,7 +112,9 @@ jest.mock("../metrics", () => ({
   getAgentSummary: jest.fn().mockResolvedValue({}),
   getAgentCost: jest.fn().mockResolvedValue(null),
   getWorkspaceCost: jest.fn().mockResolvedValue({ totalUsd: 0, perAgent: [] }),
-  getAccessibleWorkspaceCosts: jest.fn().mockResolvedValue({ workspaces: [], uniqueFleetTotalUsd: 0 }),
+  getAccessibleWorkspaceCosts: jest
+    .fn()
+    .mockResolvedValue({ workspaces: [], uniqueFleetTotalUsd: 0 }),
   recordApiMetric: jest.fn(),
 }));
 

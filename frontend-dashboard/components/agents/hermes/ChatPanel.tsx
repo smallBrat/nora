@@ -1,12 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import {
-  AlertTriangle,
-  Bot,
-  Loader2,
-  RefreshCw,
-  Send,
-  Trash2,
-} from "lucide-react";
+import { AlertTriangle, Bot, Loader2, RefreshCw, Send, Trash2 } from "lucide-react";
 import { fetchWithAuth } from "../../../lib/api";
 import { markAgentValidated } from "../../../lib/activation";
 
@@ -104,9 +97,7 @@ export default function HermesChatPanel({
         },
       ]);
     } catch (nextError) {
-      setMessages((current) =>
-        current.filter((message) => message.id !== nextUserMessage.id)
-      );
+      setMessages((current) => current.filter((message) => message.id !== nextUserMessage.id));
       setDraft(content);
       setError(nextError.message || "Hermes chat request failed");
     } finally {
@@ -145,9 +136,7 @@ export default function HermesChatPanel({
         <div className="flex items-center gap-2">
           <span
             className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-bold ${
-              runtimeReady
-                ? "bg-emerald-50 text-emerald-700"
-                : "bg-amber-50 text-amber-700"
+              runtimeReady ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"
             }`}
           >
             <span
@@ -215,9 +204,7 @@ export default function HermesChatPanel({
             {messages.length === 0 ? (
               <div className="flex h-full min-h-[280px] flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white px-6 text-center">
                 <Bot size={26} className="text-slate-300" />
-                <p className="mt-3 text-sm font-bold text-slate-700">
-                  No active conversation yet
-                </p>
+                <p className="mt-3 text-sm font-bold text-slate-700">No active conversation yet</p>
                 <p className="mt-1 max-w-sm text-xs text-slate-500">
                   Send a prompt once the Hermes runtime reports healthy status.
                 </p>
@@ -354,7 +341,9 @@ export default function HermesChatPanel({
             </div>
             <div className="space-y-3 p-4 text-xs text-slate-600">
               <p>Use the Status tab first if Hermes is still starting or models are missing.</p>
-              <p>Integration and channel changes can restart Hermes, so refresh this tab after edits.</p>
+              <p>
+                Integration and channel changes can restart Hermes, so refresh this tab after edits.
+              </p>
               <p>Conversation state is carried with the Hermes session id until you reset it.</p>
             </div>
           </section>
