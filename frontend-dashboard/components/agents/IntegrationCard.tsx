@@ -11,6 +11,7 @@ import {
   ExternalLink,
   Cpu,
 } from "lucide-react";
+import { buildInitialValues, partitionVisibleFields } from "./integrationFormUtils";
 
 type IntegrationCardProps = {
   item: any;
@@ -64,6 +65,34 @@ const EMAIL_CONNECTION_ADVANCED_KEYS = new Set([
   "smtp.port",
   "smtp.secure",
 ]);
+
+function isWecomBotField(field: any) {
+  return typeof field?.key === "string" && field.key.startsWith("defaultAccount.bot.");
+}
+
+function isWecomAgentField(field: any) {
+  return typeof field?.key === "string" && field.key.startsWith("defaultAccount.agent.");
+}
+
+function partitionWecomModeFields(fields: any[]) {
+  const shared: any[] = [];
+  const bot: any[] = [];
+  const agent: any[] = [];
+
+  for (const field of fields || []) {
+    if (isWecomBotField(field)) {
+      bot.push(field);
+      continue;
+    }
+    if (isWecomAgentField(field)) {
+      agent.push(field);
+      continue;
+    }
+    shared.push(field);
+  }
+
+  return { shared, bot, agent };
+}
 
 const EMAIL_CRON_KEYS = new Set(["cron.enabled", "cron.intervalMinutes", "cron.prompt"]);
 
@@ -123,13 +152,7 @@ export default function IntegrationCard({
   }
 
   function buildInitialConfigValues() {
-    const initialValues = configFields.reduce(
-      (acc, field) => {
-        if (field.defaultValue !== undefined) acc[field.key] = field.defaultValue;
-        return acc;
-      },
-      {} as Record<string, any>,
-    );
+    const initialValues = buildInitialValues({}, configFields);
     return applyEmailPresetDefaults(initialValues);
   }
 
@@ -227,15 +250,15 @@ export default function IntegrationCard({
     }
   }
 
-  const basicFields = isEmailIntegration
-    ? configFields.filter(
-        (field) =>
-          !EMAIL_CONNECTION_ADVANCED_KEYS.has(field.key) && !EMAIL_CRON_KEYS.has(field.key),
-      )
-    : configFields;
-  const advancedConnectionFields = isEmailIntegration
-    ? configFields.filter((field) => EMAIL_CONNECTION_ADVANCED_KEYS.has(field.key))
-    : [];
+  const { basicFields, advancedFields } = partitionVisibleFields(configFields, configValues, {
+    advancedKeys: isEmailIntegration ? EMAIL_CONNECTION_ADVANCED_KEYS : undefined,
+  });
+  const isWecomIntegration = (item?.id || item?.provider || item?.catalog_id) === "wecom";
+  const installedConfig =
+    item?.installed?.config && typeof item.installed.config === "object"
+      ? item.installed.config
+      : {};
+  const wecomMode = (configValues as any).mode || (installedConfig as any).mode || "bot";
   const cronToggleField = isEmailIntegration
     ? configFields.find((field) => field.key === "cron.enabled")
     : null;
@@ -252,6 +275,9 @@ export default function IntegrationCard({
         <label className="text-[10px] text-slate-500 font-bold uppercase tracking-widest block mb-1">
           {field.label} {field.required && <span className="text-red-400">*</span>}
         </label>
+        {field.description ? (
+          <p className="mb-1 text-[10px] leading-relaxed text-slate-500">{field.description}</p>
+        ) : null}
         {field.type === "textarea" ? (
           <textarea
             value={configValues[field.key] || ""}
@@ -307,6 +333,43 @@ export default function IntegrationCard({
             className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         )}
+      </div>
+    );
+  }
+
+  function renderWecomModeSections(fields: any[]) {
+    const { shared, bot, agent } = partitionWecomModeFields(fields);
+    const shouldSeparate = wecomMode === "both" && bot.length > 0 && agent.length > 0;
+
+    if (!shouldSeparate) {
+      return <div className="space-y-3">{fields.map(renderField)}</div>;
+    }
+
+    return (
+      <div className="space-y-4">
+        {shared.length > 0 ? <div className="space-y-3">{shared.map(renderField)}</div> : null}
+
+        <div className="space-y-4">
+          <div className="rounded-lg border border-sky-200 bg-sky-50/70 p-3">
+            <div className="mb-3">
+              <div className="text-[11px] font-bold text-sky-800">Bot Configuration</div>
+              <div className="mt-1 text-[10px] text-sky-900/75">
+                WebSocket bot settings and credentials used for the Bot channel path.
+              </div>
+            </div>
+            <div className="space-y-3">{bot.map(renderField)}</div>
+          </div>
+
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50/70 p-3">
+            <div className="mb-3">
+              <div className="text-[11px] font-bold text-emerald-800">Agent Configuration</div>
+              <div className="mt-1 text-[10px] text-emerald-900/75">
+                Enterprise app credentials and callback settings used for Agent mode.
+              </div>
+            </div>
+            <div className="space-y-3">{agent.map(renderField)}</div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -524,80 +587,88 @@ export default function IntegrationCard({
                   )}
                 </div>
               )}
-              {basicFields.map(renderField)}
+              {isWecomIntegration
+                ? renderWecomModeSections(basicFields)
+                : basicFields.map(renderField)}
 
-              {isEmailIntegration &&
-                (advancedConnectionFields.length > 0 ||
-                  cronToggleField ||
-                  cronConfigFields.length > 0) && (
-                  <div className="rounded-xl border border-slate-200 bg-slate-50/70">
-                    <button
-                      type="button"
-                      onClick={() => setShowAdvanced((prev) => !prev)}
-                      className="w-full flex items-center justify-between px-3 py-2 text-left"
-                    >
-                      <div>
-                        <div className="text-[11px] font-bold text-slate-800">
-                          Advanced Connection & Cron Settings
-                        </div>
-                        <div className="text-[10px] text-slate-500">
-                          Provider defaults are prefilled. Use this section for custom server
-                          overrides and the optional reminder cron.
-                        </div>
+              {(advancedFields.length > 0 ||
+                (isEmailIntegration && (cronToggleField || cronConfigFields.length > 0))) && (
+                <div className="rounded-xl border border-slate-200 bg-slate-50/70">
+                  <button
+                    type="button"
+                    onClick={() => setShowAdvanced((prev) => !prev)}
+                    className="w-full flex items-center justify-between px-3 py-2 text-left"
+                  >
+                    <div>
+                      <div className="text-[11px] font-bold text-slate-800">
+                        {isEmailIntegration
+                          ? "Advanced Connection & Cron Settings"
+                          : "Advanced Configuration"}
                       </div>
-                      <span className="text-[10px] font-bold text-slate-500">
-                        {showAdvanced ? "Hide" : "Show"}
-                      </span>
-                    </button>
-                    {showAdvanced && (
-                      <div className="border-t border-slate-200 p-3 space-y-3">
-                        {advancedConnectionFields.length > 0 && (
-                          <div className="space-y-3">
-                            <div>
-                              <div className="text-[11px] font-bold text-slate-800">
-                                Connection Overrides
-                              </div>
-                              <div className="mt-1 text-[10px] text-slate-500">
-                                Adjust IMAP and SMTP host settings only if you need something other
-                                than the preset defaults.
-                              </div>
+                      <div className="text-[10px] text-slate-500">
+                        {isEmailIntegration
+                          ? "Provider defaults are prefilled. Use this section for custom server overrides and the optional reminder cron."
+                          : "Optional provider-specific fields live here so the main connect flow stays focused on the default setup."}
+                      </div>
+                    </div>
+                    <span className="text-[10px] font-bold text-slate-500">
+                      {showAdvanced ? "Hide" : "Show"}
+                    </span>
+                  </button>
+                  {showAdvanced && (
+                    <div className="border-t border-slate-200 p-3 space-y-3">
+                      {advancedFields.length > 0 && (
+                        <div className="space-y-3">
+                          <div>
+                            <div className="text-[11px] font-bold text-slate-800">
+                              {isEmailIntegration ? "Connection Overrides" : "Advanced Fields"}
                             </div>
+                            <div className="mt-1 text-[10px] text-slate-500">
+                              {isEmailIntegration
+                                ? "Adjust IMAP and SMTP host settings only if you need something other than the preset defaults."
+                                : "These settings are optional and usually only needed for more customized provider behavior."}
+                            </div>
+                          </div>
+                          {isWecomIntegration ? (
+                            renderWecomModeSections(advancedFields)
+                          ) : (
                             <div className="grid gap-3 md:grid-cols-2">
-                              {advancedConnectionFields.map(renderField)}
+                              {advancedFields.map(renderField)}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {isEmailIntegration && (cronToggleField || cronConfigFields.length > 0) && (
+                        <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-3">
+                          <div>
+                            <div className="text-[11px] font-bold text-slate-800">
+                              Reminder Cron
+                            </div>
+                            <div className="mt-1 text-[10px] text-slate-500">
+                              Nora can optionally create a normal scheduled agent turn seeded from
+                              this mailbox connection.
                             </div>
                           </div>
-                        )}
 
-                        {(cronToggleField || cronConfigFields.length > 0) && (
-                          <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-3">
-                            <div>
-                              <div className="text-[11px] font-bold text-slate-800">
-                                Reminder Cron
-                              </div>
-                              <div className="mt-1 text-[10px] text-slate-500">
-                                Nora can optionally create a normal scheduled agent turn seeded from
-                                this mailbox connection.
-                              </div>
+                          {cronToggleField ? renderField(cronToggleField) : null}
+
+                          {cronEnabled ? (
+                            <div className="grid gap-3 md:grid-cols-2">
+                              {cronConfigFields.map(renderField)}
                             </div>
-
-                            {cronToggleField ? renderField(cronToggleField) : null}
-
-                            {cronEnabled ? (
-                              <div className="grid gap-3 md:grid-cols-2">
-                                {cronConfigFields.map(renderField)}
-                              </div>
-                            ) : (
-                              <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-500">
-                                Turn on the reminder cron to choose how often it runs and what
-                                prompt it should use.
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
+                          ) : (
+                            <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-500">
+                              Turn on the reminder cron to choose how often it runs and what prompt
+                              it should use.
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
             {/* Test result banner in modal */}
             {testResult && (

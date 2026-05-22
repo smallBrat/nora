@@ -4,6 +4,7 @@ const os = require("os");
 const path = require("path");
 const request = require("supertest");
 const jwt = require("jsonwebtoken");
+const { getDefaultAgentImage } = require("../../agent-runtime/lib/agentImages");
 
 const JWT_SECRET = process.env.JWT_SECRET || "secret";
 process.env.JWT_SECRET = JWT_SECRET;
@@ -1639,7 +1640,12 @@ describe("admin routes", () => {
       "docker",
       "nemoclaw",
       "standard-agent",
-      "ghcr.io/nvidia/openshell-community/sandboxes/openclaw",
+      getDefaultAgentImage({
+        runtime_family: "openclaw",
+        deploy_target: "docker",
+        sandbox_profile: "nemoclaw",
+        backend: "docker",
+      }),
     ]);
     expect(mockAddDeploymentJob).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -1647,7 +1653,12 @@ describe("admin routes", () => {
         userId: "user-3",
         backend: "docker",
         sandbox: "nemoclaw",
-        image: "ghcr.io/nvidia/openshell-community/sandboxes/openclaw",
+        image: getDefaultAgentImage({
+          runtime_family: "openclaw",
+          deploy_target: "docker",
+          sandbox_profile: "nemoclaw",
+          backend: "docker",
+        }),
       }),
     );
   });

@@ -10,6 +10,12 @@ import {
   Link2,
   Loader2,
 } from "lucide-react";
+import {
+  buildInitialValues,
+  normalizeFieldValue,
+  partitionVisibleFields,
+  readFieldValue,
+} from "./integrationFormUtils";
 
 const REDACTED_SECRET = "[REDACTED]";
 const EMAIL_CONNECTION_ADVANCED_KEYS = new Set([
@@ -20,8 +26,7 @@ const EMAIL_CONNECTION_ADVANCED_KEYS = new Set([
   "smtp.port",
   "smtp.secure",
 ]);
-
-const EMAIL_CRON_KEYS = new Set(["cron.enabled", "cron.intervalMinutes", "cron.prompt"]);
+const DEFAULT_WECOM_AGENT_CALLBACK_PATH = "/plugins/wecom/agent/default";
 
 function connectionStatusLabel(integration: any) {
   return integration?.status || "active";
@@ -35,32 +40,32 @@ function providerPresetLabel(config: any, provider: string) {
   return config?.providerPreset || provider || "custom";
 }
 
-function readFieldValue(source: any, key: string) {
-  return key.split(".").reduce((acc, part) => (acc == null ? undefined : acc[part]), source);
+function isWecomBotField(field: any) {
+  return typeof field?.key === "string" && field.key.startsWith("defaultAccount.bot.");
 }
 
-function normalizeFieldValue(field: any, value: any) {
-  if (field.type === "checkbox") return Boolean(value ?? field.defaultValue ?? false);
-  if (field.type === "number") {
-    if (value == null || value === "") return "";
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : "";
+function isWecomAgentField(field: any) {
+  return typeof field?.key === "string" && field.key.startsWith("defaultAccount.agent.");
+}
+
+function partitionWecomModeFields(fields: any[]) {
+  const shared: any[] = [];
+  const bot: any[] = [];
+  const agent: any[] = [];
+
+  for (const field of fields || []) {
+    if (isWecomBotField(field)) {
+      bot.push(field);
+      continue;
+    }
+    if (isWecomAgentField(field)) {
+      agent.push(field);
+      continue;
+    }
+    shared.push(field);
   }
-  if (field.type === "password") return "";
-  return value ?? field.defaultValue ?? "";
-}
 
-function buildInitialValues(integration: any, configFields: any[]) {
-  return (configFields || []).reduce(
-    (acc, field) => {
-      acc[field.key] = normalizeFieldValue(
-        field,
-        readFieldValue(integration?.config || {}, field.key),
-      );
-      return acc;
-    },
-    {} as Record<string, any>,
-  );
+  return { shared, bot, agent };
 }
 
 export default function IntegrationDetailPanel({
@@ -84,7 +89,7 @@ export default function IntegrationDetailPanel({
       setFormValues({});
       return;
     }
-    setFormValues(buildInitialValues(integration, configFields));
+    setFormValues(buildInitialValues(integration?.config || {}, configFields));
     setConfigExpanded(false);
     setAdvancedExpanded(false);
   }, [integration, configFields]);
@@ -99,27 +104,31 @@ export default function IntegrationDetailPanel({
 
   const name = integration.name || integration.catalog_name || integration.provider;
   const config = integration.config || {};
-  const basicFields =
-    integration.provider === "email"
-      ? configFields.filter(
-          (field: any) =>
-            !EMAIL_CONNECTION_ADVANCED_KEYS.has(field.key) && !EMAIL_CRON_KEYS.has(field.key),
-        )
-      : configFields;
-  const advancedConnectionFields =
-    integration.provider === "email"
-      ? configFields.filter((field: any) => EMAIL_CONNECTION_ADVANCED_KEYS.has(field.key))
-      : [];
-  const cronToggleField =
-    integration.provider === "email"
-      ? configFields.find((field: any) => field.key === "cron.enabled")
-      : null;
-  const cronConfigFields =
-    integration.provider === "email"
-      ? configFields.filter(
-          (field: any) => field.key === "cron.intervalMinutes" || field.key === "cron.prompt",
-        )
-      : [];
+  const isEmailIntegration = integration.provider === "email";
+  const isWecomIntegration = integration.provider === "wecom";
+  const wecomMode = config?.mode || "bot";
+  const wecomActivation = config?.activation || {};
+  const wecomCallbackPath =
+    config?.defaultAccount?.agent?.callbackPath || DEFAULT_WECOM_AGENT_CALLBACK_PATH;
+  const wecomCallbackUrl = useMemo(() => {
+    if (typeof window === "undefined" || !wecomCallbackPath) return "";
+    try {
+      return new URL(wecomCallbackPath, window.location.origin).toString();
+    } catch {
+      return wecomCallbackPath;
+    }
+  }, [wecomCallbackPath]);
+  const { basicFields, advancedFields } = partitionVisibleFields(configFields, formValues, {
+    advancedKeys: isEmailIntegration ? EMAIL_CONNECTION_ADVANCED_KEYS : undefined,
+  });
+  const cronToggleField = isEmailIntegration
+    ? configFields.find((field: any) => field.key === "cron.enabled")
+    : null;
+  const cronConfigFields = isEmailIntegration
+    ? configFields.filter(
+        (field: any) => field.key === "cron.intervalMinutes" || field.key === "cron.prompt",
+      )
+    : [];
   const hasCronAssociation = Boolean(integration?.cron_job_id);
   const cronEnabled = Boolean(formValues["cron.enabled"]);
 
@@ -165,6 +174,9 @@ export default function IntegrationDetailPanel({
         <label className="mb-1 block text-xs font-bold text-slate-600">
           {field.label} {field.required ? <span className="text-rose-500">*</span> : null}
         </label>
+        {field.description ? (
+          <p className="mb-1 text-xs leading-relaxed text-slate-500">{field.description}</p>
+        ) : null}
         {field.type === "textarea" ? (
           <textarea
             value={value ?? ""}
@@ -232,6 +244,49 @@ export default function IntegrationDetailPanel({
     );
   }
 
+  function renderWecomModeSections(fields: any[]) {
+    const { shared, bot, agent } = partitionWecomModeFields(fields);
+    const shouldSeparate = wecomMode === "both" && bot.length > 0 && agent.length > 0;
+
+    if (!shouldSeparate) {
+      return <div className="grid gap-3 md:grid-cols-2">{fields.map(renderField)}</div>;
+    }
+
+    return (
+      <div className="space-y-4">
+        {shared.length > 0 ? (
+          <div className="grid gap-3 md:grid-cols-2">{shared.map(renderField)}</div>
+        ) : null}
+
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div className="rounded-xl border border-sky-200 bg-sky-50/70 p-4">
+            <div className="mb-3">
+              <div className="text-xs font-bold uppercase tracking-wide text-sky-700">
+                Bot Configuration
+              </div>
+              <p className="mt-1 text-xs text-sky-900/75">
+                WebSocket bot credentials used for the Bot connection path.
+              </p>
+            </div>
+            <div className="space-y-3">{bot.map(renderField)}</div>
+          </div>
+
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-4">
+            <div className="mb-3">
+              <div className="text-xs font-bold uppercase tracking-wide text-emerald-700">
+                Agent Configuration
+              </div>
+              <p className="mt-1 text-xs text-emerald-900/75">
+                Enterprise app credentials and callback settings used for Agent mode.
+              </p>
+            </div>
+            <div className="space-y-3">{agent.map(renderField)}</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="flex items-start justify-between gap-3">
@@ -252,59 +307,198 @@ export default function IntegrationDetailPanel({
       </div>
 
       <div className="mt-6 grid gap-4 md:grid-cols-2">
-        <section className="rounded-xl border border-slate-100 bg-slate-50 p-4">
-          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-500">
-            <Mail size={12} />
-            Mailbox Summary
-          </div>
-          <dl className="mt-3 space-y-2 text-sm">
-            <div>
-              <dt className="text-xs text-slate-500">Mailbox Identity</dt>
-              <dd className="font-medium text-slate-900">
-                {config?.auth?.username || config?.smtp?.fromAddress || "Not configured"}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs text-slate-500">From Address</dt>
-              <dd className="font-medium text-slate-900">
-                {config?.smtp?.fromAddress || config?.from_address || "Not configured"}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs text-slate-500">Auth Mode</dt>
-              <dd className="font-medium capitalize text-slate-900">{authModeLabel(config)}</dd>
-            </div>
-          </dl>
-        </section>
+        {isEmailIntegration ? (
+          <>
+            <section className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-500">
+                <Mail size={12} />
+                Mailbox Summary
+              </div>
+              <dl className="mt-3 space-y-2 text-sm">
+                <div>
+                  <dt className="text-xs text-slate-500">Mailbox Identity</dt>
+                  <dd className="font-medium text-slate-900">
+                    {config?.auth?.username || config?.smtp?.fromAddress || "Not configured"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-slate-500">From Address</dt>
+                  <dd className="font-medium text-slate-900">
+                    {config?.smtp?.fromAddress || config?.from_address || "Not configured"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-slate-500">Auth Mode</dt>
+                  <dd className="font-medium capitalize text-slate-900">{authModeLabel(config)}</dd>
+                </div>
+              </dl>
+            </section>
 
-        <section className="rounded-xl border border-slate-100 bg-slate-50 p-4">
-          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-500">
-            <Clock size={12} />
-            Cron Setup
-          </div>
-          <dl className="mt-3 space-y-2 text-sm">
-            <div>
-              <dt className="text-xs text-slate-500">Reminder Cron Enabled</dt>
-              <dd className="font-medium text-slate-900">{config?.cron?.enabled ? "Yes" : "No"}</dd>
+            <section className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-500">
+                <Clock size={12} />
+                Cron Setup
+              </div>
+              <dl className="mt-3 space-y-2 text-sm">
+                <div>
+                  <dt className="text-xs text-slate-500">Reminder Cron Enabled</dt>
+                  <dd className="font-medium text-slate-900">
+                    {config?.cron?.enabled ? "Yes" : "No"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-slate-500">Interval</dt>
+                  <dd className="font-medium text-slate-900">
+                    {config?.cron?.enabled
+                      ? config?.cron?.intervalMinutes
+                        ? `${config.cron.intervalMinutes} minutes`
+                        : "Not configured"
+                      : "Disabled"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-slate-500">Prompt</dt>
+                  <dd className="font-medium text-slate-900">
+                    {config?.cron?.enabled ? config?.cron?.prompt || "Not configured" : "Disabled"}
+                  </dd>
+                </div>
+              </dl>
+            </section>
+          </>
+        ) : isWecomIntegration ? (
+          <>
+            <section className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-500">
+                <Mail size={12} />
+                WeCom Summary
+              </div>
+              <dl className="mt-3 space-y-2 text-sm">
+                <div>
+                  <dt className="text-xs text-slate-500">Mode</dt>
+                  <dd className="font-medium capitalize text-slate-900">
+                    {config?.mode || "Not configured"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-slate-500">Default Account</dt>
+                  <dd className="font-medium text-slate-900">
+                    {config?.defaultAccount?.label || "Default"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-slate-500">Extra Accounts</dt>
+                  <dd className="font-medium text-slate-900">
+                    {Array.isArray(config?.accounts) ? config.accounts.length : 0}
+                  </dd>
+                </div>
+              </dl>
+            </section>
+
+            <section className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-500">
+                <Clock size={12} />
+                Activation State
+              </div>
+              <dl className="mt-3 space-y-2 text-sm">
+                <div>
+                  <dt className="text-xs text-slate-500">Lifecycle</dt>
+                  <dd className="font-medium text-slate-900">
+                    {config?.activation?.lifecycleStatus || "saved"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-slate-500">Readiness</dt>
+                  <dd className="font-medium text-slate-900">
+                    {config?.activation?.readiness || "pending_activation"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-slate-500">Callback Path</dt>
+                  <dd className="font-medium text-slate-900">
+                    {wecomCallbackPath || "Not configured"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-slate-500">Browser-Resolved Callback URL</dt>
+                  <dd className="break-all font-medium text-slate-900">
+                    {wecomCallbackUrl || "Not available in this browser context"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-slate-500">Last Verified</dt>
+                  <dd className="font-medium text-slate-900">
+                    {wecomActivation?.lastVerifiedAt
+                      ? new Date(wecomActivation.lastVerifiedAt).toLocaleString()
+                      : "Not yet verified"}
+                  </dd>
+                </div>
+              </dl>
+            </section>
+
+            <section className="rounded-xl border border-slate-100 bg-slate-50 p-4 md:col-span-2">
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-500">
+                <Shield size={12} />
+                Operator Guidance
+              </div>
+              <div className="mt-3 space-y-2 text-sm text-slate-700">
+                {wecomActivation?.lastError ? (
+                  <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-rose-700">
+                    {wecomActivation.lastError}
+                  </p>
+                ) : null}
+                {wecomActivation?.readiness === "pending_activation" ? (
+                  <p>
+                    Start the OpenClaw agent, then run <span className="font-medium">Test</span> to
+                    finish plugin verification and refresh the saved activation state.
+                  </p>
+                ) : null}
+                {wecomMode === "agent" || wecomMode === "both" ? (
+                  <p>
+                    Agent mode still needs the WeCom admin console callback setup to use your public
+                    Nora/OpenClaw host with this path:{" "}
+                    <span className="font-mono text-xs">{wecomCallbackPath}</span>.
+                  </p>
+                ) : null}
+                {(wecomMode === "agent" || wecomMode === "both") && wecomCallbackUrl ? (
+                  <p className="text-xs text-slate-500">
+                    The browser-resolved URL above is only a preview based on the host you are
+                    currently using to access Nora. If WeCom reaches Nora through a tunnel or public
+                    domain, use that public base URL instead.
+                  </p>
+                ) : null}
+                {wecomActivation?.readiness === "ready" ? (
+                  <p>
+                    Runtime activation looks healthy. Re-run Test after any config change to confirm
+                    the gateway picked it up.
+                  </p>
+                ) : null}
+              </div>
+            </section>
+          </>
+        ) : (
+          <section className="rounded-xl border border-slate-100 bg-slate-50 p-4 md:col-span-2">
+            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-500">
+              <Mail size={12} />
+              Integration Summary
             </div>
-            <div>
-              <dt className="text-xs text-slate-500">Interval</dt>
-              <dd className="font-medium text-slate-900">
-                {config?.cron?.enabled
-                  ? config?.cron?.intervalMinutes
-                    ? `${config.cron.intervalMinutes} minutes`
-                    : "Not configured"
-                  : "Disabled"}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs text-slate-500">Prompt</dt>
-              <dd className="font-medium text-slate-900">
-                {config?.cron?.enabled ? config?.cron?.prompt || "Not configured" : "Disabled"}
-              </dd>
-            </div>
-          </dl>
-        </section>
+            <dl className="mt-3 grid gap-3 text-sm md:grid-cols-3">
+              <div>
+                <dt className="text-xs text-slate-500">Provider</dt>
+                <dd className="font-medium text-slate-900">{integration.provider}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-slate-500">Status</dt>
+                <dd className="font-medium text-slate-900">{connectionStatusLabel(integration)}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-slate-500">Preset</dt>
+                <dd className="font-medium text-slate-900">
+                  {providerPresetLabel(config, integration.provider)}
+                </dd>
+              </div>
+            </dl>
+          </section>
+        )}
 
         <section className="rounded-xl border border-slate-100 bg-slate-50 p-4">
           <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-500">
@@ -365,11 +559,18 @@ export default function IntegrationDetailPanel({
               />
             </button>
             {configExpanded ? (
-              <div className="mt-3 grid gap-3 md:grid-cols-2">{basicFields.map(renderField)}</div>
+              <div className="mt-3">
+                {isWecomIntegration ? (
+                  renderWecomModeSections(basicFields)
+                ) : (
+                  <div className="grid gap-3 md:grid-cols-2">{basicFields.map(renderField)}</div>
+                )}
+              </div>
             ) : null}
           </section>
 
-          {advancedConnectionFields.length > 0 || cronToggleField || cronConfigFields.length > 0 ? (
+          {advancedFields.length > 0 ||
+          (isEmailIntegration && (cronToggleField || cronConfigFields.length > 0)) ? (
             <section className="rounded-xl border border-slate-100 bg-slate-50 p-4">
               <button
                 type="button"
@@ -387,20 +588,25 @@ export default function IntegrationDetailPanel({
               </button>
               {advancedExpanded ? (
                 <div className="mt-3 space-y-4">
-                  {advancedConnectionFields.length > 0 ? (
+                  {advancedFields.length > 0 ? (
                     <div className="space-y-3">
                       <div>
                         <div className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                          Connection Overrides
+                          {isEmailIntegration ? "Connection Overrides" : "Advanced Fields"}
                         </div>
                         <p className="mt-1 text-xs text-slate-500">
-                          Adjust IMAP and SMTP server settings only if you need something other than
-                          the provider preset defaults.
+                          {isEmailIntegration
+                            ? "Adjust IMAP and SMTP server settings only if you need something other than the provider preset defaults."
+                            : "Optional provider-specific fields that are usually only needed for a more customized setup."}
                         </p>
                       </div>
-                      <div className="grid gap-3 md:grid-cols-2">
-                        {advancedConnectionFields.map(renderField)}
-                      </div>
+                      {isWecomIntegration ? (
+                        renderWecomModeSections(advancedFields)
+                      ) : (
+                        <div className="grid gap-3 md:grid-cols-2">
+                          {advancedFields.map(renderField)}
+                        </div>
+                      )}
                     </div>
                   ) : null}
 
