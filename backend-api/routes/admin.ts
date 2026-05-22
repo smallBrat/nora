@@ -1003,6 +1003,14 @@ router.get(
   }),
 );
 
+router.get(
+  "/release-upgrade/preflight",
+  asyncHandler(async (_req, res) => {
+    const status = await releaseUpgrade.getReleaseUpgradeStatus();
+    res.json(status.preflight);
+  }),
+);
+
 router.post(
   "/release-upgrade",
   asyncHandler(async (req, res) => {

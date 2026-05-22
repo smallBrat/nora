@@ -102,27 +102,32 @@ OAuth login is disabled by default. Set `OAUTH_LOGIN_ENABLED=true` and `NEXT_PUB
 
 Drives the admin "release available" banner and the one-click upgrade runner. Setting `NORA_GITHUB_REPO` enables Nora to compare the running version against the latest published GitHub release.
 
-| Variable                      | Required | Default                                   | Description                                                                  |
-| ----------------------------- | -------- | ----------------------------------------- | ---------------------------------------------------------------------------- |
-| `NORA_CURRENT_VERSION`        | No       | —                                         | Current running version, set by your deploy pipeline.                        |
-| `NORA_CURRENT_COMMIT`         | No       | —                                         | Commit SHA of the running build.                                             |
-| `NORA_GITHUB_REPO`            | No       | `solomon2773/nora`                        | `owner/repo` used to query the GitHub Releases API.                          |
-| `NORA_GITHUB_TOKEN`           | No       | —                                         | Optional PAT to raise the GitHub API rate limit.                             |
-| `NORA_RELEASE_CACHE_TTL_MS`   | No       | `300000`                                  | How long to cache the latest-release lookup, in milliseconds.                |
-| `NORA_LATEST_VERSION`         | No       | —                                         | Manual override for the latest version. Skips the GitHub query when set.     |
-| `NORA_LATEST_PUBLISHED_AT`    | No       | —                                         | Manual override for the latest release timestamp.                            |
-| `NORA_RELEASE_NOTES_URL`      | No       | —                                         | URL displayed alongside the upgrade banner.                                  |
-| `NORA_LATEST_SEVERITY`        | No       | `warning`                                 | Severity of the upgrade banner. One of `info`, `warning`, `critical`.        |
-| `NORA_UPGRADE_REQUIRED`       | No       | `false`                                   | Set to `true` to display a hard-required upgrade banner.                     |
-| `NORA_AUTO_UPGRADE_ENABLED`   | No       | `false`                                   | Opt-in to one-click upgrades from Admin Settings.                            |
-| `NORA_HOST_REPO_DIR`          | No       | —                                         | Absolute Linux host path to this Nora checkout. Auto-filled by `setup.sh`.   |
-| `NORA_UPGRADE_REPO`           | No       | `https://github.com/solomon2773/nora.git` | Git URL used by the upgrade runner.                                          |
-| `NORA_UPGRADE_REF`            | No       | `master`                                  | Branch or ref the upgrade runner pulls.                                      |
-| `NORA_UPGRADE_RUNNER_IMAGE`   | No       | `docker:29-cli`                           | Container image the upgrade runner executes inside.                          |
-| `NORA_UPGRADE_STATE_VOLUME`   | No       | `nora_upgrade_state`                      | Docker volume that persists upgrade state between runs.                      |
-| `NORA_INSTALL_METHOD`         | No       | `source`                                  | Install method shown in admin UI. One of `source`, `docker_image`, `custom`. |
-| `NORA_MANUAL_UPGRADE_COMMAND` | No       | `./setup.sh --update`                     | Command displayed when auto-upgrade is disabled.                             |
-| `NORA_MANUAL_UPGRADE_STEPS`   | No       | —                                         | Optional override for the displayed manual-upgrade steps.                    |
+| Variable                                    | Required | Default                                   | Description                                                                                                                                  |
+| ------------------------------------------- | -------- | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NORA_CURRENT_VERSION`                      | No       | —                                         | Current running version, set by your deploy pipeline.                                                                                        |
+| `NORA_CURRENT_COMMIT`                       | No       | —                                         | Commit SHA of the running build.                                                                                                             |
+| `NORA_GITHUB_REPO`                          | No       | `solomon2773/nora`                        | `owner/repo` used to query the GitHub Releases API.                                                                                          |
+| `NORA_GITHUB_TOKEN`                         | No       | —                                         | Optional PAT to raise the GitHub API rate limit.                                                                                             |
+| `NORA_RELEASE_CACHE_TTL_MS`                 | No       | `300000`                                  | How long to cache the latest-release lookup, in milliseconds.                                                                                |
+| `NORA_LATEST_VERSION`                       | No       | —                                         | Manual override for the latest version. Skips the GitHub query when set.                                                                     |
+| `NORA_LATEST_PUBLISHED_AT`                  | No       | —                                         | Manual override for the latest release timestamp.                                                                                            |
+| `NORA_RELEASE_NOTES_URL`                    | No       | —                                         | URL displayed alongside the upgrade banner.                                                                                                  |
+| `NORA_LATEST_SEVERITY`                      | No       | `warning`                                 | Severity of the upgrade banner. One of `info`, `warning`, `critical`.                                                                        |
+| `NORA_UPGRADE_REQUIRED`                     | No       | `false`                                   | Set to `true` to display a hard-required upgrade banner.                                                                                     |
+| `NORA_AUTO_UPGRADE_ENABLED`                 | No       | `false`                                   | Opt-in to one-click upgrades from Admin Settings.                                                                                            |
+| `NORA_HOST_REPO_DIR`                        | No       | —                                         | Absolute Linux host path to this Nora checkout. Auto-filled by `setup.sh`.                                                                   |
+| `NORA_UPGRADE_REPO`                         | No       | `https://github.com/solomon2773/nora.git` | Git URL used by the upgrade runner.                                                                                                          |
+| `NORA_UPGRADE_REF`                          | No       | `master`                                  | Branch or ref the upgrade runner pulls.                                                                                                      |
+| `NORA_UPGRADE_RUNNER_IMAGE`                 | No       | `docker:29-cli`                           | Container image the upgrade runner executes inside.                                                                                          |
+| `NORA_UPGRADE_STATE_VOLUME`                 | No       | `nora_upgrade_state`                      | Docker volume that persists upgrade state between runs.                                                                                      |
+| `NORA_ENV_FILE`                             | No       | `.env`                                    | Deploy env file passed to Docker Compose during one-click upgrades.                                                                          |
+| `NORA_UPGRADE_COMPOSE_FILES`                | No       | auto-detected                             | Colon-separated compose file list used by the upgrade runner. Leave blank to reuse Docker Compose labels from the running backend container. |
+| `NORA_UPGRADE_PUBLIC_HEALTH_URL`            | No       | —                                         | Optional public health URL checked after the stack rebuilds, for example `https://stage.example.com/api/health`.                             |
+| `NORA_UPGRADE_HEALTHCHECK_ATTEMPTS`         | No       | `40`                                      | Number of backend health attempts before a one-click upgrade is marked failed.                                                               |
+| `NORA_UPGRADE_HEALTHCHECK_INTERVAL_SECONDS` | No       | `3`                                       | Seconds to wait between one-click upgrade health checks.                                                                                     |
+| `NORA_INSTALL_METHOD`                       | No       | `source`                                  | Install method shown in admin UI. One of `source`, `docker_image`, `custom`.                                                                 |
+| `NORA_MANUAL_UPGRADE_COMMAND`               | No       | `./setup.sh --update`                     | Command displayed when auto-upgrade is disabled.                                                                                             |
+| `NORA_MANUAL_UPGRADE_STEPS`                 | No       | —                                         | Optional override for the displayed manual-upgrade steps.                                                                                    |
 
 ## System banner
 
@@ -163,11 +168,11 @@ These variables are only read when `PLATFORM_MODE=paas`. See [Platform modes](/c
 
 Runtime selection is three-dimensional: **runtime family × deploy target × sandbox profile**. Each enabled-list variable accepts a comma-separated list. The first id in each list is the default for new deployments. See [Provisioner backends](/configuration/provisioner-backends) for details.
 
-| Variable                   | Required | Default    | Description                                                                                                                  |
-| -------------------------- | -------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `ENABLED_RUNTIME_FAMILIES` | No       | `openclaw` | Runtime families enabled. Supported ids: `openclaw`, `hermes`.                                                               |
-| `ENABLED_BACKENDS`         | No       | `docker`   | Env-configured deploy targets enabled. Supported ids: `docker`, `proxmox`. Kubernetes clusters are registered in Admin.      |
-| `ENABLED_SANDBOX_PROFILES` | No       | `standard` | Sandbox profiles enabled. Supported ids: `standard`, `nemoclaw`.                                                             |
+| Variable                   | Required | Default    | Description                                                                                                             |
+| -------------------------- | -------- | ---------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `ENABLED_RUNTIME_FAMILIES` | No       | `openclaw` | Runtime families enabled. Supported ids: `openclaw`, `hermes`.                                                          |
+| `ENABLED_BACKENDS`         | No       | `docker`   | Env-configured deploy targets enabled. Supported ids: `docker`, `proxmox`. Kubernetes clusters are registered in Admin. |
+| `ENABLED_SANDBOX_PROFILES` | No       | `standard` | Sandbox profiles enabled. Supported ids: `standard`, `nemoclaw`.                                                        |
 
 ## Kubernetes registry and Compose mount helpers
 
@@ -177,10 +182,10 @@ Nora no longer creates Kubernetes execution targets from `.env` labels. Register
 
 For more than one cluster, put multiple kubeconfig files under `NORA_KUBECONFIGS_DIR`. The Kubernetes overlay mounts that directory at `/kubeconfigs`, so two AKS clusters can use Admin paths such as `/kubeconfigs/aks-eastus2` and `/kubeconfigs/aks-westus2` while both still run through `docker-compose.kubernetes.yml`.
 
-| Variable                    | Required | Default                                  | Description                                                                                       |
-| --------------------------- | -------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `NORA_KUBECONFIGS_DIR`      | No       | `./.secrets/kubeconfigs`                 | Host directory mounted at `/kubeconfigs` by the Kubernetes overlay for single- or multi-cluster setups. |
-| `CONTAINER_KUBECONFIG_PATH` | No       | `/tmp/nora-kind.container.kubeconfig`    | Kind smoke helper file; its parent directory is mounted as `NORA_KUBECONFIGS_DIR`.                |
+| Variable                    | Required | Default                               | Description                                                                                             |
+| --------------------------- | -------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `NORA_KUBECONFIGS_DIR`      | No       | `./.secrets/kubeconfigs`              | Host directory mounted at `/kubeconfigs` by the Kubernetes overlay for single- or multi-cluster setups. |
+| `CONTAINER_KUBECONFIG_PATH` | No       | `/tmp/nora-kind.container.kubeconfig` | Kind smoke helper file; its parent directory is mounted as `NORA_KUBECONFIGS_DIR`.                      |
 
 Admin-registered encrypted kubeconfigs require `ENCRYPTION_KEY` because Nora stores pasted kubeconfig content encrypted at rest.
 
@@ -343,10 +348,10 @@ Optional; only relevant when nginx terminates TLS directly inside the stack.
 
 These optional rates drive the Cost dashboards. Nora estimates spend from token usage recorded by OpenClaw, Hermes, and future runtime chat paths.
 
-| Variable                  | Required | Default | Description                                                                                         |
-| ------------------------- | -------- | ------- | --------------------------------------------------------------------------------------------------- |
-| `COST_PER_1K_TOKENS`      | No       | `0.002` | Fallback LLM token cost when a per-model rate is unavailable or historical usage has no model data. |
-| `COST_MODEL_RATES_JSON`   | No       | —       | JSON object mapping model ids or `provider/model` ids to token rates.                               |
+| Variable                | Required | Default | Description                                                                                         |
+| ----------------------- | -------- | ------- | --------------------------------------------------------------------------------------------------- |
+| `COST_PER_1K_TOKENS`    | No       | `0.002` | Fallback LLM token cost when a per-model rate is unavailable or historical usage has no model data. |
+| `COST_MODEL_RATES_JSON` | No       | —       | JSON object mapping model ids or `provider/model` ids to token rates.                               |
 
 Example:
 

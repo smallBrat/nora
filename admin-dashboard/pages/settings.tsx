@@ -112,13 +112,26 @@ function formatCommitLabel(commit) {
   return normalized ? normalized.slice(0, 8) : "Not reported";
 }
 
+const UPGRADE_RUNNING_PHASES = new Set([
+  "queued",
+  "fetching",
+  "applying",
+  "building",
+  "health_checking",
+  "running",
+]);
+
 function isUpgradeRunning(job) {
-  return job?.phase === "queued" || job?.phase === "running";
+  return UPGRADE_RUNNING_PHASES.has(job?.phase);
 }
 
 function formatUpgradePhase(job) {
   if (!job?.phase) return "No upgrade job";
   if (job.phase === "queued") return "Queued";
+  if (job.phase === "fetching") return "Fetching source";
+  if (job.phase === "applying") return "Applying release";
+  if (job.phase === "building") return "Rebuilding stack";
+  if (job.phase === "health_checking") return "Checking health";
   if (job.phase === "running") return "Running";
   if (job.phase === "succeeded") return "Succeeded";
   if (job.phase === "failed") return "Failed";
@@ -133,6 +146,26 @@ function getUpgradePhaseClassName(job) {
   if (job?.phase === "succeeded") return "bg-emerald-100 text-emerald-700";
   if (job?.phase === "failed") return "bg-red-100 text-red-700";
   if (isUpgradeRunning(job)) return "bg-amber-100 text-amber-800";
+  return "bg-slate-100 text-slate-700";
+}
+
+function formatPreflightStatus(status) {
+  if (status === "ready") return "Ready";
+  if (status === "warning") return "Ready with warnings";
+  if (status === "blocked") return "Blocked";
+  return "Not checked";
+}
+
+function getPreflightCheckClassName(status) {
+  if (status === "pass") return "border-emerald-200 bg-emerald-50 text-emerald-800";
+  if (status === "warn") return "border-amber-200 bg-amber-50 text-amber-800";
+  return "border-red-200 bg-red-50 text-red-700";
+}
+
+function getPreflightStatusClassName(status) {
+  if (status === "ready") return "bg-emerald-100 text-emerald-700";
+  if (status === "warning") return "bg-amber-100 text-amber-800";
+  if (status === "blocked") return "bg-red-100 text-red-700";
   return "bg-slate-100 text-slate-700";
 }
 
@@ -449,12 +482,21 @@ export default function AdminSettingsPage() {
   const release = upgradeStatus?.release || platformConfig?.release || null;
   const autoUpgrade = upgradeStatus?.autoUpgrade || release?.autoUpgrade || null;
   const upgradeJob = upgradeStatus?.job || null;
+  const upgradePreflight = upgradeStatus?.preflight || null;
+  const upgradePreflightChecks = Array.isArray(upgradePreflight?.checks)
+    ? upgradePreflight.checks
+    : [];
+  const failedPreflightCheck =
+    upgradePreflightChecks.find((check) => check.status === "fail") || null;
   const upgradeLogTail = Array.isArray(upgradeStatus?.logTail) ? upgradeStatus.logTail : [];
   const upgradeRunning = isUpgradeRunning(upgradeJob);
-  const oneClickEnabled = Boolean(autoUpgrade?.available);
+  const oneClickConfigured = Boolean(autoUpgrade?.enabled);
+  const oneClickEnabled = Boolean(autoUpgrade?.available && upgradePreflight?.ok);
   const runnerReachable = upgradeStatus?.runnerReachable;
   const oneClickBlockedReason = !oneClickEnabled
-    ? autoUpgrade?.disabledReason || "Direct GitHub upgrade is not enabled for this install."
+    ? failedPreflightCheck?.message ||
+      autoUpgrade?.disabledReason ||
+      "Direct GitHub upgrade is not enabled for this install."
     : runnerReachable === false
       ? "The GitHub upgrade runner could not be started."
       : !release?.updateAvailable
@@ -696,11 +738,15 @@ export default function AdminSettingsPage() {
                     Upgrade path
                   </p>
                   <p className="mt-2 text-xl font-black text-slate-950">
-                    {oneClickEnabled ? "Manual + one-click" : "Manual"}
+                    {oneClickConfigured ? "Manual + one-click" : "Manual"}
                   </p>
                   <p className="mt-2 text-sm font-medium text-slate-500">
                     {formatInstallMethod(release?.installMethod)}{" "}
-                    {oneClickEnabled ? "from GitHub" : "with host command"}
+                    {oneClickEnabled
+                      ? "from GitHub"
+                      : oneClickConfigured
+                        ? "preflight blocked"
+                        : "with host command"}
                   </p>
                 </div>
               </div>
@@ -769,6 +815,101 @@ export default function AdminSettingsPage() {
                       </p>
                     </div>
                   ) : null}
+
+                  <div className="mt-5 rounded-[1.25rem] border border-slate-200 bg-white px-4 py-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">
+                          Preflight checks
+                        </p>
+                        <p className="mt-1 text-sm font-medium leading-relaxed text-slate-500">
+                          Confirms the runner can reach Docker, resolve the release target, and use
+                          the same deploy env and compose files as this stack.
+                        </p>
+                      </div>
+                      <span
+                        className={`inline-flex items-center gap-2 self-start rounded-full px-3 py-2 text-[11px] font-black uppercase tracking-[0.14em] ${getPreflightStatusClassName(
+                          upgradePreflight?.status,
+                        )}`}
+                      >
+                        {upgradePreflight?.ok ? (
+                          <CheckCircle2 size={13} />
+                        ) : (
+                          <TriangleAlert size={13} />
+                        )}
+                        {formatPreflightStatus(upgradePreflight?.status)}
+                      </span>
+                    </div>
+
+                    {upgradePreflightChecks.length ? (
+                      <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                        {upgradePreflightChecks.map((check, index) => (
+                          <div
+                            key={`${check.id}-${index}`}
+                            className={`rounded-2xl border px-4 py-3 ${getPreflightCheckClassName(
+                              check.status,
+                            )}`}
+                          >
+                            <div className="flex items-start gap-3">
+                              <span className="mt-0.5 shrink-0">
+                                {check.status === "pass" ? (
+                                  <CheckCircle2 size={16} />
+                                ) : (
+                                  <TriangleAlert size={16} />
+                                )}
+                              </span>
+                              <span>
+                                <span className="block text-sm font-black">{check.label}</span>
+                                <span className="mt-1 block break-words text-sm font-medium leading-relaxed opacity-80">
+                                  {check.message}
+                                </span>
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="mt-4 text-sm font-medium leading-relaxed text-slate-500">
+                        Preflight has not returned checks yet.
+                      </p>
+                    )}
+
+                    <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                      <div className="rounded-2xl bg-slate-50 px-4 py-4">
+                        <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">
+                          Deploy env
+                        </p>
+                        <p className="mt-2 break-words text-sm font-semibold text-slate-900">
+                          {upgradePreflight?.config?.envFile || autoUpgrade?.envFile || ".env"}
+                        </p>
+                      </div>
+                      <div className="rounded-2xl bg-slate-50 px-4 py-4">
+                        <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">
+                          Compose files
+                        </p>
+                        <p className="mt-2 break-words text-sm font-semibold text-slate-900">
+                          {(
+                            upgradePreflight?.config?.composeFiles ||
+                            autoUpgrade?.composeFiles ||
+                            []
+                          ).join(", ") || "docker-compose.yml"}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 rounded-2xl bg-slate-950 px-4 py-4 text-slate-100">
+                      <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">
+                        Runner compose command
+                      </p>
+                      <pre className="mt-3 overflow-x-auto text-xs font-semibold leading-relaxed text-slate-100">
+                        <code>
+                          {upgradePreflight?.command ||
+                            autoUpgrade?.command ||
+                            "docker compose --env-file .env -f docker-compose.yml up -d --build"}
+                        </code>
+                      </pre>
+                    </div>
+                  </div>
 
                   {upgradeJob ? (
                     <div className="mt-5 grid gap-3 sm:grid-cols-2">
@@ -862,14 +1003,18 @@ export default function AdminSettingsPage() {
                     <p className={`text-sm font-semibold ${releaseStatus.titleClassName}`}>
                       {oneClickEnabled
                         ? "Direct GitHub upgrade is enabled for this install."
-                        : "Manual upgrade remains available."}
+                        : oneClickConfigured
+                          ? "Direct GitHub upgrade needs preflight attention."
+                          : "Manual upgrade remains available."}
                     </p>
                     <p
                       className={`mt-1 text-sm font-medium leading-relaxed ${releaseStatus.bodyClassName}`}
                     >
                       {oneClickEnabled
                         ? "Use the button above to start the temporary GitHub runner, or copy the host command when you want to run the same update yourself."
-                        : "Set NORA_AUTO_UPGRADE_ENABLED=true and NORA_HOST_REPO_DIR to show the background GitHub upgrade action."}
+                        : oneClickConfigured
+                          ? "Review the preflight checks above before starting the background GitHub runner."
+                          : "Set NORA_AUTO_UPGRADE_ENABLED=true and NORA_HOST_REPO_DIR to show the background GitHub upgrade action."}
                     </p>
                   </div>
 

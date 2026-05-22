@@ -69,6 +69,9 @@ const mockDockerPull = jest.fn();
 const mockDockerFollowProgress = jest.fn();
 const mockDockerCreateContainer = jest.fn();
 const mockDockerContainerStart = jest.fn();
+const mockDockerPing = jest.fn();
+const mockDockerGetContainer = jest.fn();
+const mockDockerContainerInspect = jest.fn();
 const mockAssertKubernetesExecutionTargetAvailable = jest.fn().mockResolvedValue();
 
 jest.mock("../db", () => mockDb);
@@ -234,7 +237,9 @@ jest.mock("../metrics", () => ({
   getAgentSummary: jest.fn().mockResolvedValue({}),
   getAgentCost: jest.fn().mockResolvedValue(null),
   getWorkspaceCost: jest.fn().mockResolvedValue({ totalUsd: 0, perAgent: [] }),
-  getAccessibleWorkspaceCosts: jest.fn().mockResolvedValue({ workspaces: [], uniqueFleetTotalUsd: 0 }),
+  getAccessibleWorkspaceCosts: jest
+    .fn()
+    .mockResolvedValue({ workspaces: [], uniqueFleetTotalUsd: 0 }),
   recordApiMetric: jest.fn(),
 }));
 jest.mock("../agentTelemetry", () => ({
@@ -264,6 +269,8 @@ jest.mock("dockerode", () =>
       followProgress: mockDockerFollowProgress,
     },
     createContainer: mockDockerCreateContainer,
+    ping: mockDockerPing,
+    getContainer: mockDockerGetContainer,
   })),
 );
 
@@ -300,6 +307,11 @@ const RELEASE_ENV_KEYS = [
   "NORA_UPGRADE_RUNNER_IMAGE",
   "NORA_UPGRADE_STATE_VOLUME",
   "NORA_UPGRADE_STATE_DIR",
+  "NORA_ENV_FILE",
+  "NORA_UPGRADE_COMPOSE_FILES",
+  "NORA_UPGRADE_PUBLIC_HEALTH_URL",
+  "NORA_UPGRADE_HEALTHCHECK_ATTEMPTS",
+  "NORA_UPGRADE_HEALTHCHECK_INTERVAL_SECONDS",
   "NORA_UPGRADE_LOG_TAIL_LINES",
   "NORA_INSTALL_METHOD",
   "NORA_MANUAL_UPGRADE_COMMAND",
@@ -326,6 +338,9 @@ beforeEach(() => {
     id: "runner-1",
     start: mockDockerContainerStart,
   });
+  mockDockerPing.mockReset().mockImplementation((callback) => callback(null));
+  mockDockerContainerInspect.mockReset().mockResolvedValue({ Config: { Labels: {} } });
+  mockDockerGetContainer.mockReset().mockReturnValue({ inspect: mockDockerContainerInspect });
   mockGetDeploymentDefaults.mockReset().mockResolvedValue({
     vcpu: 1,
     ram_mb: 1024,
@@ -654,9 +669,9 @@ describe("admin routes", () => {
           enabled: false,
           available: false,
           mode: "github_direct",
-          disabledReason: expect.stringContaining("Auto-upgrade is disabled"),
+          disabledReason: expect.stringContaining("NORA_AUTO_UPGRADE_ENABLED=true"),
         }),
-        runnerReachable: null,
+        runnerReachable: true,
         job: null,
         logTail: [],
       }),
@@ -688,7 +703,41 @@ describe("admin routes", () => {
           mode: "github_direct",
           disabledReason: expect.stringContaining("NORA_HOST_REPO_DIR"),
         }),
-        runnerReachable: null,
+        runnerReachable: true,
+      }),
+    );
+  });
+
+  it("returns direct GitHub release upgrade preflight checks for admins", async () => {
+    process.env.NORA_CURRENT_VERSION = "1.0.0";
+    process.env.NORA_LATEST_VERSION = "1.1.0";
+    process.env.NORA_AUTO_UPGRADE_ENABLED = "true";
+    process.env.NORA_HOST_REPO_DIR = "/srv/nora";
+    process.env.NORA_UPGRADE_COMPOSE_FILES =
+      "docker-compose.yml:infra/docker-compose.public-tls.yml:docker-compose.kubernetes.yml";
+
+    const res = await withToken(request(app).get("/admin/release-upgrade/preflight"), adminToken);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual(
+      expect.objectContaining({
+        ok: true,
+        command:
+          "docker compose --env-file .env -f docker-compose.yml -f infra/docker-compose.public-tls.yml -f docker-compose.kubernetes.yml up -d --build",
+        config: expect.objectContaining({
+          hostRepoDir: "/srv/nora",
+          envFile: ".env",
+          composeFiles: [
+            "docker-compose.yml",
+            "infra/docker-compose.public-tls.yml",
+            "docker-compose.kubernetes.yml",
+          ],
+        }),
+        checks: expect.arrayContaining([
+          expect.objectContaining({ id: "auto_upgrade_enabled", status: "pass" }),
+          expect.objectContaining({ id: "target_release", status: "pass" }),
+          expect.objectContaining({ id: "docker_socket", status: "pass" }),
+        ]),
       }),
     );
   });
@@ -711,7 +760,7 @@ describe("admin routes", () => {
         disabledReason: expect.stringContaining("public HTTPS GitHub repository URL"),
       }),
     );
-    expect(res.body.runnerReachable).toBe(null);
+    expect(res.body.runnerReachable).toBe(true);
   });
 
   it("starts a direct GitHub release upgrade runner for admins", async () => {
@@ -724,6 +773,10 @@ describe("admin routes", () => {
     process.env.NORA_UPGRADE_REPO = "https://github.com/solomon2773/nora.git";
     process.env.NORA_UPGRADE_REF = "master";
     process.env.NORA_UPGRADE_RUNNER_IMAGE = "docker:29-cli";
+    process.env.NORA_ENV_FILE = "deploy.env";
+    process.env.NORA_UPGRADE_COMPOSE_FILES =
+      "docker-compose.yml:infra/docker-compose.public-tls.yml:docker-compose.kubernetes.yml";
+    process.env.NORA_UPGRADE_PUBLIC_HEALTH_URL = "https://nora.test/api/health";
 
     const res = await withToken(request(app).post("/admin/release-upgrade"), adminToken);
 
@@ -738,6 +791,14 @@ describe("admin routes", () => {
           "NORA_UPGRADE_REF=master",
           "NORA_UPGRADE_TARGET_VERSION=1.1.0",
           "NORA_HOST_REPO_DIR=/srv/nora",
+          "NORA_ENV_FILE=deploy.env",
+          "NORA_UPGRADE_COMPOSE_FILES=docker-compose.yml:infra/docker-compose.public-tls.yml:docker-compose.kubernetes.yml",
+          "NORA_UPGRADE_PUBLIC_HEALTH_URL=https://nora.test/api/health",
+        ]),
+        Cmd: expect.arrayContaining([
+          "sh",
+          "-c",
+          expect.stringContaining("infra/run-release-upgrade.sh"),
         ]),
         WorkingDir: "/srv/nora",
         HostConfig: expect.objectContaining({
@@ -754,10 +815,18 @@ describe("admin routes", () => {
       expect.objectContaining({
         runnerReachable: true,
         job: expect.objectContaining({
-          phase: "running",
+          phase: "queued",
           targetVersion: "1.1.0",
           containerId: "runner-1",
           sourceRepo: "https://github.com/solomon2773/nora.git",
+          envFile: "deploy.env",
+          composeFiles: [
+            "docker-compose.yml",
+            "infra/docker-compose.public-tls.yml",
+            "docker-compose.kubernetes.yml",
+          ],
+          command:
+            "docker compose --env-file deploy.env -f docker-compose.yml -f infra/docker-compose.public-tls.yml -f docker-compose.kubernetes.yml up -d --build",
         }),
         logTail: expect.arrayContaining([expect.stringContaining("Queued direct GitHub upgrade")]),
       }),
@@ -778,7 +847,7 @@ describe("admin routes", () => {
     const res = await withToken(request(app).post("/admin/release-upgrade"), adminToken);
 
     expect(res.status).toBe(409);
-    expect(res.body.error).toMatch(/latest release/i);
+    expect(res.body.error).toMatch(/latest announced release/i);
     expect(mockDockerCreateContainer).not.toHaveBeenCalled();
   });
 

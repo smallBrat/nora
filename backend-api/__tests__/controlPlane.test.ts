@@ -175,7 +175,9 @@ jest.mock("../metrics", () => ({
   getAgentSummary: jest.fn().mockResolvedValue({}),
   getAgentCost: jest.fn().mockResolvedValue(null),
   getWorkspaceCost: jest.fn().mockResolvedValue({ totalUsd: 0, perAgent: [] }),
-  getAccessibleWorkspaceCosts: jest.fn().mockResolvedValue({ workspaces: [], uniqueFleetTotalUsd: 0 }),
+  getAccessibleWorkspaceCosts: jest
+    .fn()
+    .mockResolvedValue({ workspaces: [], uniqueFleetTotalUsd: 0 }),
   recordApiMetric: jest.fn(),
 }));
 jest.mock("../platformSettings", () => ({
@@ -588,7 +590,7 @@ describe("public platform config", () => {
         canAutoUpgrade: false,
         installMethod: "source",
         manualUpgrade: expect.objectContaining({
-          command: "git pull --ff-only && docker compose up -d --build",
+          command: "./setup.sh --update",
           steps: expect.arrayContaining([expect.stringContaining("repo root")]),
         }),
       }),

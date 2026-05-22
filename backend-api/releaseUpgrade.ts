@@ -2,6 +2,7 @@
 const crypto = require("crypto");
 const fs = require("fs");
 const fsp = fs.promises;
+const os = require("os");
 const path = require("path");
 const Docker = require("dockerode");
 const { buildAutoUpgrade, buildReleaseInfo } = require("./releaseInfo");
@@ -11,13 +12,31 @@ const DEFAULT_STATE_VOLUME = "nora_upgrade_state";
 const DEFAULT_RUNNER_IMAGE = "docker:29-cli";
 const DEFAULT_UPGRADE_REPO = "https://github.com/solomon2773/nora.git";
 const DEFAULT_UPGRADE_REF = "master";
+const DEFAULT_ENV_FILE = ".env";
+const DEFAULT_COMPOSE_FILES = ["docker-compose.yml"];
 const DEFAULT_LOG_TAIL_LINES = 80;
-const RUNNING_PHASES = new Set(["queued", "running"]);
+const HOST_REPO_MOUNT = "/nora-host-repo";
+const RUNNING_PHASES = new Set([
+  "queued",
+  "fetching",
+  "applying",
+  "building",
+  "health_checking",
+  "running",
+]);
 
 const docker = new Docker({ socketPath: "/var/run/docker.sock" });
 
 function readString(value) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function parseBooleanEnv(value, defaultValue = false) {
+  const normalized = readString(value).toLowerCase();
+  if (!normalized) return defaultValue;
+  if (["1", "true", "yes", "on"].includes(normalized)) return true;
+  if (["0", "false", "no", "off"].includes(normalized)) return false;
+  return defaultValue;
 }
 
 function parsePositiveInteger(value, fallback) {
@@ -53,6 +72,168 @@ function normalizeGithubRepoSlug(repoUrl) {
   return /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(normalized) ? normalized : "";
 }
 
+function isPublicGithubHttpsRepo(value) {
+  const normalized = readString(value);
+  if (!normalized) return false;
+
+  let url;
+  try {
+    url = new URL(normalized);
+  } catch {
+    return false;
+  }
+
+  return (
+    url.protocol === "https:" &&
+    url.hostname.toLowerCase() === "github.com" &&
+    !url.username &&
+    !url.password &&
+    !url.search &&
+    !url.hash &&
+    Boolean(normalizeGithubRepoSlug(normalized))
+  );
+}
+
+function splitList(value) {
+  return String(value || "")
+    .split(/[\n,:]/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function normalizeComposeFiles(value, fallback = DEFAULT_COMPOSE_FILES) {
+  const parsed = splitList(value);
+  return parsed.length ? parsed : [...fallback];
+}
+
+function shellQuote(value) {
+  const raw = String(value || "");
+  if (/^[A-Za-z0-9_./:=@%+-]+$/.test(raw)) return raw;
+  return `'${raw.replace(/'/g, `'\\''`)}'`;
+}
+
+function buildComposeCommand({ envFile, composeFiles }) {
+  const args = [
+    "docker compose",
+    "--env-file",
+    shellQuote(envFile || DEFAULT_ENV_FILE),
+    ...normalizeComposeFiles(composeFiles).flatMap((file) => ["-f", shellQuote(file)]),
+    "up",
+    "-d",
+    "--build",
+  ];
+  return args.join(" ");
+}
+
+async function inspectCurrentComposeMetadata() {
+  if (typeof docker.getContainer !== "function") return {};
+
+  const containerId = readString(process.env.HOSTNAME) || os.hostname();
+  if (!containerId) return {};
+
+  try {
+    const container = docker.getContainer(containerId);
+    if (!container || typeof container.inspect !== "function") return {};
+    const details = await container.inspect();
+    const labels = details?.Config?.Labels || details?.Config?.labels || {};
+    const configFiles = splitList(labels["com.docker.compose.project.config_files"]);
+    return {
+      workingDir: readString(labels["com.docker.compose.project.working_dir"]) || "",
+      configFiles,
+    };
+  } catch {
+    return {};
+  }
+}
+
+function repoMirrorPathFor(hostPath, hostRepoDir) {
+  const normalizedHostPath = readString(hostPath);
+  const normalizedRepoDir = readString(hostRepoDir);
+  if (!normalizedHostPath) return "";
+  if (!path.isAbsolute(normalizedHostPath)) {
+    return path.join(HOST_REPO_MOUNT, normalizedHostPath);
+  }
+  if (!normalizedRepoDir || !path.isAbsolute(normalizedRepoDir)) return "";
+  const relative = path.relative(normalizedRepoDir, normalizedHostPath);
+  if (relative === "") return HOST_REPO_MOUNT;
+  if (relative.startsWith("..") || path.isAbsolute(relative)) return "";
+  return path.join(HOST_REPO_MOUNT, relative);
+}
+
+async function pathExists(filePath, type = "any") {
+  if (!filePath) return false;
+  try {
+    const stat = await fsp.stat(filePath);
+    if (type === "file") return stat.isFile();
+    if (type === "directory") return stat.isDirectory();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function resolveUpgradeConfig(env = process.env) {
+  const composeMetadata = await inspectCurrentComposeMetadata();
+  const autoConfig = buildAutoUpgrade(env, { includeInternal: true });
+  const hostRepoDir =
+    readString(env.NORA_HOST_REPO_DIR) || readString(composeMetadata.workingDir) || "";
+  const envFile = readString(env.NORA_ENV_FILE) || DEFAULT_ENV_FILE;
+  const envComposeFiles = normalizeComposeFiles(env.NORA_UPGRADE_COMPOSE_FILES, []);
+  const labelComposeFiles = normalizeComposeFiles(composeMetadata.configFiles, []);
+  const composeFiles = envComposeFiles.length
+    ? envComposeFiles
+    : labelComposeFiles.length
+      ? labelComposeFiles
+      : [...DEFAULT_COMPOSE_FILES];
+  const sourceRepo = readString(env.NORA_UPGRADE_REPO) || DEFAULT_UPGRADE_REPO;
+  const sourceRef = readString(env.NORA_UPGRADE_REF) || DEFAULT_UPGRADE_REF;
+  const enabled = parseBooleanEnv(env.NORA_AUTO_UPGRADE_ENABLED);
+  const hostRepoDirIsUsable = hostRepoDir && path.isAbsolute(hostRepoDir);
+  const sourceRepoIsPublicGithubHttps = isPublicGithubHttpsRepo(sourceRepo);
+
+  let disabledReason = null;
+  if (!enabled) {
+    disabledReason =
+      "Auto-upgrade is disabled. Set NORA_AUTO_UPGRADE_ENABLED=true to allow direct GitHub upgrades.";
+  } else if (!hostRepoDir) {
+    disabledReason =
+      "Direct GitHub upgrade requires NORA_HOST_REPO_DIR or Docker Compose working-dir labels.";
+  } else if (!hostRepoDirIsUsable) {
+    disabledReason =
+      "Direct GitHub upgrade requires the Nora host repo path to be an absolute Linux path visible to Docker.";
+  } else if (!sourceRepoIsPublicGithubHttps) {
+    disabledReason =
+      "Direct GitHub upgrade requires NORA_UPGRADE_REPO to be a public HTTPS GitHub repository URL without embedded credentials.";
+  }
+
+  return {
+    ...autoConfig,
+    enabled,
+    available: Boolean(enabled && hostRepoDirIsUsable && sourceRepoIsPublicGithubHttps),
+    disabledReason,
+    hostRepoDir,
+    hostRepoDirSource: readString(env.NORA_HOST_REPO_DIR)
+      ? "env"
+      : readString(composeMetadata.workingDir)
+        ? "compose-label"
+        : "missing",
+    sourceRepo,
+    sourceRef,
+    sourceRepoIsPublicGithubHttps,
+    runnerImage: readString(env.NORA_UPGRADE_RUNNER_IMAGE) || DEFAULT_RUNNER_IMAGE,
+    stateVolume: readString(env.NORA_UPGRADE_STATE_VOLUME) || DEFAULT_STATE_VOLUME,
+    stateDir: readString(env.NORA_UPGRADE_STATE_DIR) || DEFAULT_STATE_DIR,
+    envFile,
+    composeFiles,
+    composeFilesSource: envComposeFiles.length
+      ? "env"
+      : labelComposeFiles.length
+        ? "compose-label"
+        : "default",
+    command: buildComposeCommand({ envFile, composeFiles }),
+  };
+}
+
 function buildIdleState() {
   return {
     job: null,
@@ -71,6 +252,9 @@ function publicAutoUpgrade(config, override = {}) {
     mode: config.mode || "github_direct",
     sourceRepo: config.sourceRepo || DEFAULT_UPGRADE_REPO,
     sourceRef: config.sourceRef || DEFAULT_UPGRADE_REF,
+    envFile: config.envFile || DEFAULT_ENV_FILE,
+    composeFiles: normalizeComposeFiles(config.composeFiles),
+    command: config.command || buildComposeCommand(config),
     disabledReason: override.disabledReason ?? config.disabledReason ?? null,
   };
 }
@@ -93,6 +277,9 @@ function publicJob(job) {
     containerId: job.containerId || null,
     sourceRepo: job.sourceRepo || null,
     sourceRef: job.sourceRef || null,
+    envFile: job.envFile || null,
+    composeFiles: normalizeComposeFiles(job.composeFiles || []),
+    command: job.command || null,
   };
 }
 
@@ -189,102 +376,15 @@ async function ensureRunnerImage(image) {
   });
 }
 
-function buildRunnerScript() {
+function buildRunnerCommand() {
   return [
-    "set -u",
-    'STATE_DIR="/var/lib/nora-upgrade"',
-    'STATE_FILE="${STATE_DIR}/status.json"',
-    'LOG_FILE="${NORA_UPGRADE_LOG_FILE}"',
-    'WORKSPACE="${NORA_HOST_REPO_DIR}"',
-    'mkdir -p "${STATE_DIR}"',
-    'touch "${LOG_FILE}"',
-    "",
-    "update_status() {",
-    '  STATE_FILE="${STATE_FILE}" PHASE="$1" EXIT_CODE="${2:-}" ERROR_MESSAGE="${3:-}" FINISHED_AT="$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \\',
-    "    node <<'NODE'",
-    'const fs = require("fs");',
-    "const stateFile = process.env.STATE_FILE;",
-    "const phase = process.env.PHASE;",
-    "const exitCode = process.env.EXIT_CODE;",
-    "const errorMessage = process.env.ERROR_MESSAGE;",
-    "const finishedAt = process.env.FINISHED_AT;",
-    "let state = {};",
-    "try {",
-    '  state = JSON.parse(fs.readFileSync(stateFile, "utf8"));',
-    "} catch {",
-    "  state = {};",
-    "}",
-    "const job = state.job || {};",
-    "job.phase = phase;",
-    'job.finishedAt = phase === "running" ? null : finishedAt;',
-    'job.exitCode = exitCode === "" ? null : Number(exitCode);',
-    "job.error = errorMessage || null;",
-    "state.job = job;",
-    "state.updatedAt = new Date().toISOString();",
-    'fs.writeFileSync(stateFile, JSON.stringify(state, null, 2) + "\\n");',
-    "NODE",
-    "}",
-    "",
-    "(",
-    "  set -eu",
-    '  echo "Starting Nora direct GitHub upgrade job ${NORA_UPGRADE_JOB_ID}"',
+    "mkdir -p /var/lib/nora-upgrade",
+    'touch "${NORA_UPGRADE_LOG_FILE}"',
+    "{",
     '  echo "Installing runner tools..."',
-    "  apk add --no-cache bash git openssl nodejs docker-cli-compose",
-    '  cd "${WORKSPACE}"',
-    '  git config --global --add safe.directory "${WORKSPACE}"',
-    "",
-    '  if [ -n "$(git status --porcelain)" ]; then',
-    '    echo "Refusing to upgrade because the host Nora checkout has uncommitted changes."',
-    "    exit 20",
-    "  fi",
-    "",
-    '  echo "Fetching Nora source from GitHub..."',
-    "  git remote remove nora-upgrade >/dev/null 2>&1 || true",
-    '  git remote add nora-upgrade "${NORA_UPGRADE_REPO}"',
-    "  git fetch --prune --tags nora-upgrade '+refs/heads/*:refs/remotes/nora-upgrade/*' '+refs/tags/*:refs/tags/*'",
-    "",
-    '  TARGET_REF=""',
-    '  if [ -n "${NORA_UPGRADE_TARGET_VERSION:-}" ] && git rev-parse --verify --quiet "refs/tags/${NORA_UPGRADE_TARGET_VERSION}^{commit}" >/dev/null; then',
-    '    TARGET_REF="refs/tags/${NORA_UPGRADE_TARGET_VERSION}"',
-    "  fi",
-    '  if [ -z "${TARGET_REF}" ]; then',
-    '    TARGET_REF="refs/remotes/nora-upgrade/${NORA_UPGRADE_REF:-master}"',
-    '    git rev-parse --verify "${TARGET_REF}^{commit}" >/dev/null',
-    "  fi",
-    "",
-    '  echo "Applying ${TARGET_REF}..."',
-    '  CURRENT_BRANCH="$(git symbolic-ref --quiet --short HEAD || true)"',
-    '  case "${TARGET_REF}" in',
-    "    refs/remotes/*|refs/tags/*)",
-    '      if [ -n "${CURRENT_BRANCH}" ]; then',
-    '        git merge --ff-only "${TARGET_REF}"',
-    "      else",
-    '        git checkout --detach "${TARGET_REF}"',
-    "      fi",
-    "      ;;",
-    "    *)",
-    '      git checkout --detach "${TARGET_REF}"',
-    "      ;;",
-    "  esac",
-    "",
-    '  VERSION="${NORA_UPGRADE_TARGET_VERSION:-$(git describe --tags --always)}"',
-    '  COMMIT="$(git rev-parse HEAD)"',
-    '  if [ -f infra/update-release-env.sh ] && [ -f "${NORA_ENV_FILE:-.env}" ]; then',
-    '    bash infra/update-release-env.sh "${NORA_ENV_FILE:-.env}" "${VERSION}" "${COMMIT}" "${NORA_UPGRADE_REPO_SLUG:-}"',
-    "  fi",
-    "",
-    '  echo "Rebuilding and restarting Nora services..."',
-    "  docker compose up -d --build",
-    '  echo "Nora direct GitHub upgrade completed."',
-    ') >> "${LOG_FILE}" 2>&1',
-    'EXIT_CODE="$?"',
-    'if [ "${EXIT_CODE}" -eq 0 ]; then',
-    '  update_status "succeeded" "${EXIT_CODE}" ""',
-    "else",
-    '  update_status "failed" "${EXIT_CODE}" "GitHub upgrade runner exited with ${EXIT_CODE}"',
-    "fi",
-    'exit "${EXIT_CODE}"',
-    "",
+    "  apk add --no-cache bash curl git nodejs openssl docker-cli-compose",
+    "  exec bash infra/run-release-upgrade.sh",
+    '} >> "${NORA_UPGRADE_LOG_FILE}" 2>&1',
   ].join("\n");
 }
 
@@ -294,13 +394,15 @@ async function launchRunnerContainer(job, config, env = process.env) {
   const sourceRepo = config.sourceRepo || DEFAULT_UPGRADE_REPO;
   const sourceRef = config.sourceRef || DEFAULT_UPGRADE_REF;
   const repoSlug = normalizeGithubRepoSlug(sourceRepo);
+  const envFile = config.envFile || DEFAULT_ENV_FILE;
+  const composeFiles = normalizeComposeFiles(config.composeFiles);
 
   await docker.createVolume({ Name: stateVolume });
   await ensureRunnerImage(image);
 
   const container = await docker.createContainer({
     Image: image,
-    Cmd: ["sh", "-c", buildRunnerScript()],
+    Cmd: ["sh", "-c", buildRunnerCommand()],
     Env: [
       `NORA_UPGRADE_JOB_ID=${job.id}`,
       `NORA_UPGRADE_LOG_FILE=/var/lib/nora-upgrade/${path.basename(job.logFile)}`,
@@ -309,7 +411,11 @@ async function launchRunnerContainer(job, config, env = process.env) {
       `NORA_UPGRADE_REPO_SLUG=${repoSlug}`,
       `NORA_UPGRADE_TARGET_VERSION=${job.targetVersion || ""}`,
       `NORA_HOST_REPO_DIR=${config.hostRepoDir}`,
-      `NORA_ENV_FILE=${readString(env.NORA_ENV_FILE) || ".env"}`,
+      `NORA_ENV_FILE=${envFile}`,
+      `NORA_UPGRADE_COMPOSE_FILES=${composeFiles.join(":")}`,
+      `NORA_UPGRADE_HEALTHCHECK_ATTEMPTS=${readString(env.NORA_UPGRADE_HEALTHCHECK_ATTEMPTS) || "40"}`,
+      `NORA_UPGRADE_HEALTHCHECK_INTERVAL_SECONDS=${readString(env.NORA_UPGRADE_HEALTHCHECK_INTERVAL_SECONDS) || "3"}`,
+      `NORA_UPGRADE_PUBLIC_HEALTH_URL=${readString(env.NORA_UPGRADE_PUBLIC_HEALTH_URL)}`,
     ],
     WorkingDir: config.hostRepoDir,
     Labels: {
@@ -332,20 +438,205 @@ async function launchRunnerContainer(job, config, env = process.env) {
   return container;
 }
 
+function buildCheck(id, label, status, message, detail = {}) {
+  return { id, label, status, message, detail };
+}
+
+function firstFailedCheck(preflight) {
+  return preflight?.checks?.find((check) => check.status === "fail") || null;
+}
+
+async function pingDockerSocket() {
+  if (typeof docker.ping !== "function") {
+    return { ok: false, message: "Docker client does not expose ping()" };
+  }
+
+  try {
+    await new Promise((resolve, reject) => {
+      docker.ping((error) => {
+        if (error) reject(error);
+        else resolve();
+      });
+    });
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, message: error?.message || "Docker socket is not reachable" };
+  }
+}
+
+async function validateRepoMirrorFiles(config) {
+  const checks = [];
+  const repoMirrorAvailable = await pathExists(HOST_REPO_MOUNT, "directory");
+
+  if (!repoMirrorAvailable) {
+    checks.push(
+      buildCheck(
+        "repo_mirror",
+        "Host repo mirror",
+        "warn",
+        "Host repo is not mounted read-only into backend-api; file checks will run inside the upgrade runner.",
+        { mount: HOST_REPO_MOUNT },
+      ),
+    );
+    return checks;
+  }
+
+  const envFilePath = repoMirrorPathFor(config.envFile, config.hostRepoDir);
+  checks.push(
+    (await pathExists(envFilePath, "file"))
+      ? buildCheck("env_file", "Deploy env file", "pass", `Found ${config.envFile}`)
+      : buildCheck(
+          "env_file",
+          "Deploy env file",
+          "fail",
+          `Missing deploy env file: ${config.envFile}`,
+        ),
+  );
+
+  for (const composeFile of normalizeComposeFiles(config.composeFiles)) {
+    const composeFilePath = repoMirrorPathFor(composeFile, config.hostRepoDir);
+    checks.push(
+      (await pathExists(composeFilePath, "file"))
+        ? buildCheck("compose_file", "Compose file", "pass", `Found ${composeFile}`)
+        : buildCheck(
+            "compose_file",
+            "Compose file",
+            "fail",
+            `Missing compose file: ${composeFile}`,
+          ),
+    );
+  }
+
+  return checks;
+}
+
+async function buildReleaseUpgradePreflight({
+  release = null,
+  config = null,
+  env = process.env,
+} = {}) {
+  const resolvedRelease = release || (await buildReleaseInfo(env));
+  const resolvedConfig = config || (await resolveUpgradeConfig(env));
+  const checks = [];
+
+  checks.push(
+    resolvedConfig.enabled
+      ? buildCheck("auto_upgrade_enabled", "One-click upgrade", "pass", "Enabled")
+      : buildCheck(
+          "auto_upgrade_enabled",
+          "One-click upgrade",
+          "fail",
+          "Set NORA_AUTO_UPGRADE_ENABLED=true to allow direct GitHub upgrades.",
+        ),
+  );
+
+  checks.push(
+    resolvedRelease.updateAvailable
+      ? buildCheck(
+          "target_release",
+          "Target release",
+          "pass",
+          `Upgrade target ${resolvedRelease.latestVersion || "latest release"} is available.`,
+        )
+      : buildCheck(
+          "target_release",
+          "Target release",
+          "fail",
+          "This Nora control plane is already on the latest announced release.",
+        ),
+  );
+
+  checks.push(
+    resolvedConfig.hostRepoDir && path.isAbsolute(resolvedConfig.hostRepoDir)
+      ? buildCheck(
+          "host_repo_dir",
+          "Host repo path",
+          "pass",
+          `Using ${resolvedConfig.hostRepoDir}`,
+          { source: resolvedConfig.hostRepoDirSource },
+        )
+      : buildCheck(
+          "host_repo_dir",
+          "Host repo path",
+          "fail",
+          "Direct GitHub upgrade requires NORA_HOST_REPO_DIR or Docker Compose working-dir labels.",
+        ),
+  );
+
+  checks.push(
+    resolvedConfig.sourceRepoIsPublicGithubHttps
+      ? buildCheck("source_repo", "Source repo", "pass", resolvedConfig.sourceRepo)
+      : buildCheck(
+          "source_repo",
+          "Source repo",
+          "fail",
+          "NORA_UPGRADE_REPO must be a public HTTPS GitHub repository URL without embedded credentials.",
+        ),
+  );
+
+  const dockerPing = await pingDockerSocket();
+  checks.push(
+    dockerPing.ok
+      ? buildCheck("docker_socket", "Docker socket", "pass", "Docker daemon is reachable.")
+      : buildCheck(
+          "docker_socket",
+          "Docker socket",
+          "fail",
+          dockerPing.message || "Docker daemon is not reachable from backend-api.",
+        ),
+  );
+
+  checks.push(...(await validateRepoMirrorFiles(resolvedConfig)));
+
+  const ok = checks.every((check) => check.status !== "fail");
+  const failed = checks.filter((check) => check.status === "fail").length;
+  const warnings = checks.filter((check) => check.status === "warn").length;
+
+  return {
+    ok,
+    status: ok ? (warnings ? "warning" : "ready") : "blocked",
+    checkedAt: new Date().toISOString(),
+    command: resolvedConfig.command,
+    config: {
+      hostRepoDir: resolvedConfig.hostRepoDir || null,
+      hostRepoDirSource: resolvedConfig.hostRepoDirSource,
+      sourceRepo: resolvedConfig.sourceRepo,
+      sourceRef: resolvedConfig.sourceRef,
+      envFile: resolvedConfig.envFile,
+      composeFiles: normalizeComposeFiles(resolvedConfig.composeFiles),
+      composeFilesSource: resolvedConfig.composeFilesSource,
+    },
+    summary: {
+      passed: checks.filter((check) => check.status === "pass").length,
+      warnings,
+      failed,
+    },
+    checks,
+  };
+}
+
 async function getReleaseUpgradeStatus(env = process.env) {
   const release = await buildReleaseInfo(env);
-  const config = buildAutoUpgrade(env, { includeInternal: true });
+  const config = await resolveUpgradeConfig(env);
+  const preflight = await buildReleaseUpgradePreflight({ release, config, env });
   const state = await readState(env);
   const job = state.job || null;
-  const disabledReason = config.disabledReason || null;
+  const failedCheck = firstFailedCheck(preflight);
+  const disabledReason = failedCheck?.message || config.disabledReason || null;
 
   return {
     release,
     autoUpgrade: publicAutoUpgrade(config, {
-      available: config.available,
+      available: preflight.ok,
       disabledReason,
     }),
-    runnerReachable: config.available ? true : null,
+    runnerReachable:
+      preflight.checks.find((check) => check.id === "docker_socket")?.status === "pass"
+        ? true
+        : preflight.checks.find((check) => check.id === "docker_socket")?.status === "fail"
+          ? false
+          : null,
+    preflight,
     job: publicJob(job),
     logTail: await readLogTail(job?.logFile, env),
     updatedAt: state.updatedAt || null,
@@ -354,25 +645,27 @@ async function getReleaseUpgradeStatus(env = process.env) {
 
 async function startReleaseUpgrade({ actor = null, env = process.env } = {}) {
   const release = await buildReleaseInfo(env);
-  const config = buildAutoUpgrade(env, { includeInternal: true });
-
-  if (!config.available) {
-    throw createHttpError(config.disabledReason || "Direct GitHub upgrade is not enabled", 503);
-  }
-  if (!release.updateAvailable) {
-    throw createHttpError("This Nora control plane is already on the latest release", 409);
-  }
+  const config = await resolveUpgradeConfig(env);
 
   const currentState = await readState(env);
   if (isRunningJob(currentState.job)) {
     throw createHttpError("A release upgrade is already running", 409);
   }
 
+  const preflight = await buildReleaseUpgradePreflight({ release, config, env });
+  const failedCheck = firstFailedCheck(preflight);
+  if (!preflight.ok) {
+    throw createHttpError(
+      failedCheck?.message || "Release upgrade preflight failed",
+      failedCheck?.id === "target_release" ? 409 : 503,
+    );
+  }
+
   const now = new Date().toISOString();
   const jobId = `upgrade-${Date.now()}-${crypto.randomBytes(4).toString("hex")}`;
   const job = {
     id: jobId,
-    phase: "running",
+    phase: "queued",
     currentVersion: release.currentVersion || null,
     targetVersion: release.latestVersion || null,
     releaseNotesUrl: release.releaseNotesUrl || null,
@@ -384,13 +677,16 @@ async function startReleaseUpgrade({ actor = null, env = process.env } = {}) {
         }
       : null,
     requestedAt: now,
-    startedAt: now,
+    startedAt: null,
     finishedAt: null,
     exitCode: null,
     signal: null,
     error: null,
     sourceRepo: config.sourceRepo,
     sourceRef: config.sourceRef,
+    envFile: config.envFile,
+    composeFiles: normalizeComposeFiles(config.composeFiles),
+    command: config.command,
     logFile: buildLogPath(jobId, env),
     containerId: null,
   };
@@ -416,8 +712,9 @@ async function startReleaseUpgrade({ actor = null, env = process.env } = {}) {
   const currentJob = state.job || job;
   return {
     release,
-    autoUpgrade: publicAutoUpgrade(config),
+    autoUpgrade: publicAutoUpgrade(config, { available: preflight.ok }),
     runnerReachable: true,
+    preflight,
     job: publicJob(currentJob),
     logTail: await readLogTail(currentJob.logFile, env),
     updatedAt: state.updatedAt || null,
@@ -425,10 +722,12 @@ async function startReleaseUpgrade({ actor = null, env = process.env } = {}) {
 }
 
 module.exports = {
+  buildReleaseUpgradePreflight,
   getReleaseUpgradeStatus,
   launchRunnerContainer,
   readState,
   redactText,
+  resolveUpgradeConfig,
   startReleaseUpgrade,
   writeState,
 };
