@@ -1536,16 +1536,16 @@ describe("Twitter/X integration OAuth routes", () => {
     expect(authorizationUrl.searchParams.get("scope")).toContain("tweet.write");
     expect(authorizationUrl.searchParams.get("code_challenge_method")).toBe("S256");
     expect(mockDb.query.mock.calls[1][0]).toContain("INSERT INTO integration_oauth_states");
-    expect(mockDb.query.mock.calls[1][1]).toEqual(
-      expect.arrayContaining([
-        "twitter",
-        "user-1",
-        "a-twitter",
-        "user-x-client-id",
-        "user-x-client-secret",
-        "/app/agents/a-twitter",
-      ]),
-    );
+    const oauthInsertParams = mockDb.query.mock.calls[1][1];
+    expect(oauthInsertParams[1]).toBe("twitter");
+    expect(oauthInsertParams[2]).toBe("user-1");
+    expect(oauthInsertParams[3]).toBe("a-twitter");
+    expect(oauthInsertParams[5]).toBe("user-x-client-id");
+    expect(typeof oauthInsertParams[6]).toBe("string");
+    expect(oauthInsertParams[6]).not.toBe("");
+    expect(oauthInsertParams[6]).not.toBe("user-x-client-secret");
+    expect(oauthInsertParams[7]).toBe(JSON.stringify({ default_username: "configured_user" }));
+    expect(oauthInsertParams[8]).toBe("/app/agents/a-twitter");
   });
 
   it("exchanges the callback code and stores the connected X user on that agent", async () => {
@@ -2264,7 +2264,7 @@ describe("POST /agents/deploy", () => {
       }),
     );
     const insertParams = mockDb.query.mock.calls[0][1];
-    expect(insertParams[9]).toBe("ghcr.io/nvidia/openshell-community/sandboxes/openclaw");
+    expect(insertParams[9]).toBe("nora-nemoclaw-agent:local");
     expect(mockAddDeploymentJob).toHaveBeenCalledWith(
       expect.objectContaining({
         id: "a-nemo-target",

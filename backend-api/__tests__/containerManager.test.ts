@@ -1,4 +1,5 @@
 // @ts-nocheck
+const path = require("path");
 const mockStart = jest.fn();
 const mockStop = jest.fn();
 const mockRestart = jest.fn();
@@ -63,9 +64,36 @@ jest.mock("../../workers/provisioner/backends/k8s", () => {
   }));
 });
 
+jest.mock("../backends/k8s", () => {
+  return jest.fn().mockImplementation(() => ({
+    start: mockK8sStart,
+    stop: mockK8sStop,
+    restart: mockK8sRestart,
+    destroy: mockK8sDestroy,
+    status: mockK8sStatus,
+    stats: mockK8sStats,
+    logs: mockK8sLogs,
+    exec: mockK8sExec,
+  }));
+});
+
 describe("containerManager NemoClaw routing", () => {
   beforeEach(() => {
     jest.resetModules();
+    const k8sBackendFactory = () =>
+      jest.fn().mockImplementation(() => ({
+        start: mockK8sStart,
+        stop: mockK8sStop,
+        restart: mockK8sRestart,
+        destroy: mockK8sDestroy,
+        status: mockK8sStatus,
+        stats: mockK8sStats,
+        logs: mockK8sLogs,
+        exec: mockK8sExec,
+      }));
+    const k8sBackendPath = path.resolve(__dirname, "../../workers/provisioner/backends/k8s");
+    jest.doMock(k8sBackendPath, k8sBackendFactory);
+    jest.doMock(`${k8sBackendPath}.ts`, k8sBackendFactory);
     mockStart.mockReset().mockResolvedValue(undefined);
     mockStop.mockReset().mockResolvedValue(undefined);
     mockRestart.mockReset().mockResolvedValue(undefined);

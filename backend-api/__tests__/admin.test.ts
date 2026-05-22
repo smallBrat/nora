@@ -1639,7 +1639,7 @@ describe("admin routes", () => {
       "docker",
       "nemoclaw",
       "standard-agent",
-      "ghcr.io/nvidia/openshell-community/sandboxes/openclaw",
+      "nora-nemoclaw-agent:local",
     ]);
     expect(mockAddDeploymentJob).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -1647,7 +1647,7 @@ describe("admin routes", () => {
         userId: "user-3",
         backend: "docker",
         sandbox: "nemoclaw",
-        image: "ghcr.io/nvidia/openshell-community/sandboxes/openclaw",
+        image: "nora-nemoclaw-agent:local",
       }),
     );
   });
