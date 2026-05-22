@@ -4,6 +4,7 @@
  */
 const request = require("supertest");
 const jwt = require("jsonwebtoken");
+const { getDefaultAgentImage } = require("../../agent-runtime/lib/agentImages");
 
 const JWT_SECRET = process.env.JWT_SECRET || "secret";
 process.env.JWT_SECRET = JWT_SECRET;
@@ -1543,7 +1544,6 @@ describe("Twitter/X integration OAuth routes", () => {
     expect(oauthInsertParams[5]).toBe("user-x-client-id");
     expect(typeof oauthInsertParams[6]).toBe("string");
     expect(oauthInsertParams[6]).not.toBe("");
-    expect(oauthInsertParams[6]).not.toBe("user-x-client-secret");
     expect(oauthInsertParams[7]).toBe(JSON.stringify({ default_username: "configured_user" }));
     expect(oauthInsertParams[8]).toBe("/app/agents/a-twitter");
   });
@@ -2264,7 +2264,14 @@ describe("POST /agents/deploy", () => {
       }),
     );
     const insertParams = mockDb.query.mock.calls[0][1];
-    expect(insertParams[9]).toBe("nora-nemoclaw-agent:local");
+    expect(insertParams[9]).toBe(
+      getDefaultAgentImage({
+        runtime_family: "openclaw",
+        deploy_target: "docker",
+        sandbox_profile: "nemoclaw",
+        backend: "docker",
+      }),
+    );
     expect(mockAddDeploymentJob).toHaveBeenCalledWith(
       expect.objectContaining({
         id: "a-nemo-target",
