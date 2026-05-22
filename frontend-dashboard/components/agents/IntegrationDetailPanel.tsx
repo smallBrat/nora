@@ -121,16 +121,14 @@ export default function IntegrationDetailPanel({
   const { basicFields, advancedFields } = partitionVisibleFields(configFields, formValues, {
     advancedKeys: isEmailIntegration ? EMAIL_CONNECTION_ADVANCED_KEYS : undefined,
   });
-  const cronToggleField =
-    isEmailIntegration
-      ? configFields.find((field: any) => field.key === "cron.enabled")
-      : null;
-  const cronConfigFields =
-    isEmailIntegration
-      ? configFields.filter(
-          (field: any) => field.key === "cron.intervalMinutes" || field.key === "cron.prompt",
-        )
-      : [];
+  const cronToggleField = isEmailIntegration
+    ? configFields.find((field: any) => field.key === "cron.enabled")
+    : null;
+  const cronConfigFields = isEmailIntegration
+    ? configFields.filter(
+        (field: any) => field.key === "cron.intervalMinutes" || field.key === "cron.prompt",
+      )
+    : [];
   const hasCronAssociation = Boolean(integration?.cron_job_id);
   const cronEnabled = Boolean(formValues["cron.enabled"]);
 
@@ -454,20 +452,25 @@ export default function IntegrationDetailPanel({
                     finish plugin verification and refresh the saved activation state.
                   </p>
                 ) : null}
-                {(wecomMode === "agent" || wecomMode === "both") ? (
+                {wecomMode === "agent" || wecomMode === "both" ? (
                   <p>
-                    Agent mode still needs the WeCom admin console callback setup to use your public Nora/OpenClaw host with this path:
-                    {" "}
+                    Agent mode still needs the WeCom admin console callback setup to use your public
+                    Nora/OpenClaw host with this path:{" "}
                     <span className="font-mono text-xs">{wecomCallbackPath}</span>.
                   </p>
                 ) : null}
                 {(wecomMode === "agent" || wecomMode === "both") && wecomCallbackUrl ? (
                   <p className="text-xs text-slate-500">
-                    The browser-resolved URL above is only a preview based on the host you are currently using to access Nora. If WeCom reaches Nora through a tunnel or public domain, use that public base URL instead.
+                    The browser-resolved URL above is only a preview based on the host you are
+                    currently using to access Nora. If WeCom reaches Nora through a tunnel or public
+                    domain, use that public base URL instead.
                   </p>
                 ) : null}
                 {wecomActivation?.readiness === "ready" ? (
-                  <p>Runtime activation looks healthy. Re-run Test after any config change to confirm the gateway picked it up.</p>
+                  <p>
+                    Runtime activation looks healthy. Re-run Test after any config change to confirm
+                    the gateway picked it up.
+                  </p>
                 ) : null}
               </div>
             </section>
@@ -557,14 +560,17 @@ export default function IntegrationDetailPanel({
             </button>
             {configExpanded ? (
               <div className="mt-3">
-                {isWecomIntegration ? renderWecomModeSections(basicFields) : (
+                {isWecomIntegration ? (
+                  renderWecomModeSections(basicFields)
+                ) : (
                   <div className="grid gap-3 md:grid-cols-2">{basicFields.map(renderField)}</div>
                 )}
               </div>
             ) : null}
           </section>
 
-          {advancedFields.length > 0 || (isEmailIntegration && (cronToggleField || cronConfigFields.length > 0)) ? (
+          {advancedFields.length > 0 ||
+          (isEmailIntegration && (cronToggleField || cronConfigFields.length > 0)) ? (
             <section className="rounded-xl border border-slate-100 bg-slate-50 p-4">
               <button
                 type="button"

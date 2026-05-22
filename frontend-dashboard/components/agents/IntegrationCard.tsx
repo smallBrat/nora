@@ -255,7 +255,9 @@ export default function IntegrationCard({
   });
   const isWecomIntegration = (item?.id || item?.provider || item?.catalog_id) === "wecom";
   const installedConfig =
-    item?.installed?.config && typeof item.installed.config === "object" ? item.installed.config : {};
+    item?.installed?.config && typeof item.installed.config === "object"
+      ? item.installed.config
+      : {};
   const wecomMode = (configValues as any).mode || (installedConfig as any).mode || "bot";
   const cronToggleField = isEmailIntegration
     ? configFields.find((field) => field.key === "cron.enabled")
@@ -345,9 +347,7 @@ export default function IntegrationCard({
 
     return (
       <div className="space-y-4">
-        {shared.length > 0 ? (
-          <div className="space-y-3">{shared.map(renderField)}</div>
-        ) : null}
+        {shared.length > 0 ? <div className="space-y-3">{shared.map(renderField)}</div> : null}
 
         <div className="space-y-4">
           <div className="rounded-lg border border-sky-200 bg-sky-50/70 p-3">
@@ -587,87 +587,88 @@ export default function IntegrationCard({
                   )}
                 </div>
               )}
-              {isWecomIntegration ? renderWecomModeSections(basicFields) : basicFields.map(renderField)}
+              {isWecomIntegration
+                ? renderWecomModeSections(basicFields)
+                : basicFields.map(renderField)}
 
-              {(advancedFields.length > 0 || (isEmailIntegration && (cronToggleField || cronConfigFields.length > 0))) && (
-                  <div className="rounded-xl border border-slate-200 bg-slate-50/70">
-                    <button
-                      type="button"
-                      onClick={() => setShowAdvanced((prev) => !prev)}
-                      className="w-full flex items-center justify-between px-3 py-2 text-left"
-                    >
-                      <div>
-                        <div className="text-[11px] font-bold text-slate-800">
-                          {isEmailIntegration
-                            ? "Advanced Connection & Cron Settings"
-                            : "Advanced Configuration"}
-                        </div>
-                        <div className="text-[10px] text-slate-500">
-                          {isEmailIntegration
-                            ? "Provider defaults are prefilled. Use this section for custom server overrides and the optional reminder cron."
-                            : "Optional provider-specific fields live here so the main connect flow stays focused on the default setup."}
-                        </div>
+              {(advancedFields.length > 0 ||
+                (isEmailIntegration && (cronToggleField || cronConfigFields.length > 0))) && (
+                <div className="rounded-xl border border-slate-200 bg-slate-50/70">
+                  <button
+                    type="button"
+                    onClick={() => setShowAdvanced((prev) => !prev)}
+                    className="w-full flex items-center justify-between px-3 py-2 text-left"
+                  >
+                    <div>
+                      <div className="text-[11px] font-bold text-slate-800">
+                        {isEmailIntegration
+                          ? "Advanced Connection & Cron Settings"
+                          : "Advanced Configuration"}
                       </div>
-                      <span className="text-[10px] font-bold text-slate-500">
-                        {showAdvanced ? "Hide" : "Show"}
-                      </span>
-                    </button>
-                    {showAdvanced && (
-                      <div className="border-t border-slate-200 p-3 space-y-3">
-                        {advancedFields.length > 0 && (
-                          <div className="space-y-3">
-                            <div>
-                              <div className="text-[11px] font-bold text-slate-800">
-                                {isEmailIntegration
-                                  ? "Connection Overrides"
-                                  : "Advanced Fields"}
-                              </div>
-                              <div className="mt-1 text-[10px] text-slate-500">
-                                {isEmailIntegration
-                                  ? "Adjust IMAP and SMTP host settings only if you need something other than the preset defaults."
-                                  : "These settings are optional and usually only needed for more customized provider behavior."}
-                              </div>
-                            </div>
-                            {isWecomIntegration ? (
-                              renderWecomModeSections(advancedFields)
-                            ) : (
-                              <div className="grid gap-3 md:grid-cols-2">
-                                {advancedFields.map(renderField)}
-                              </div>
-                            )}
-                          </div>
-                        )}
-
-                        {isEmailIntegration && (cronToggleField || cronConfigFields.length > 0) && (
-                          <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-3">
-                            <div>
-                              <div className="text-[11px] font-bold text-slate-800">
-                                Reminder Cron
-                              </div>
-                              <div className="mt-1 text-[10px] text-slate-500">
-                                Nora can optionally create a normal scheduled agent turn seeded from
-                                this mailbox connection.
-                              </div>
-                            </div>
-
-                            {cronToggleField ? renderField(cronToggleField) : null}
-
-                            {cronEnabled ? (
-                              <div className="grid gap-3 md:grid-cols-2">
-                                {cronConfigFields.map(renderField)}
-                              </div>
-                            ) : (
-                              <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-500">
-                                Turn on the reminder cron to choose how often it runs and what
-                                prompt it should use.
-                              </div>
-                            )}
-                          </div>
-                        )}
+                      <div className="text-[10px] text-slate-500">
+                        {isEmailIntegration
+                          ? "Provider defaults are prefilled. Use this section for custom server overrides and the optional reminder cron."
+                          : "Optional provider-specific fields live here so the main connect flow stays focused on the default setup."}
                       </div>
-                    )}
-                  </div>
-                )}
+                    </div>
+                    <span className="text-[10px] font-bold text-slate-500">
+                      {showAdvanced ? "Hide" : "Show"}
+                    </span>
+                  </button>
+                  {showAdvanced && (
+                    <div className="border-t border-slate-200 p-3 space-y-3">
+                      {advancedFields.length > 0 && (
+                        <div className="space-y-3">
+                          <div>
+                            <div className="text-[11px] font-bold text-slate-800">
+                              {isEmailIntegration ? "Connection Overrides" : "Advanced Fields"}
+                            </div>
+                            <div className="mt-1 text-[10px] text-slate-500">
+                              {isEmailIntegration
+                                ? "Adjust IMAP and SMTP host settings only if you need something other than the preset defaults."
+                                : "These settings are optional and usually only needed for more customized provider behavior."}
+                            </div>
+                          </div>
+                          {isWecomIntegration ? (
+                            renderWecomModeSections(advancedFields)
+                          ) : (
+                            <div className="grid gap-3 md:grid-cols-2">
+                              {advancedFields.map(renderField)}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {isEmailIntegration && (cronToggleField || cronConfigFields.length > 0) && (
+                        <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-3">
+                          <div>
+                            <div className="text-[11px] font-bold text-slate-800">
+                              Reminder Cron
+                            </div>
+                            <div className="mt-1 text-[10px] text-slate-500">
+                              Nora can optionally create a normal scheduled agent turn seeded from
+                              this mailbox connection.
+                            </div>
+                          </div>
+
+                          {cronToggleField ? renderField(cronToggleField) : null}
+
+                          {cronEnabled ? (
+                            <div className="grid gap-3 md:grid-cols-2">
+                              {cronConfigFields.map(renderField)}
+                            </div>
+                          ) : (
+                            <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-500">
+                              Turn on the reminder cron to choose how often it runs and what prompt
+                              it should use.
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
             {/* Test result banner in modal */}
             {testResult && (
