@@ -130,7 +130,8 @@ describe("integration secret handling", () => {
         "policies.allowFrom": ["u1", "u2"],
         "policies.groupPolicy": "allowlist",
         "policies.groupAllowFrom": ["g1"],
-        "policies.groupsJson": '{"g1":{"allowFrom":["owner1","owner2"]},"g2":{"allowFrom":["owner3"]}}',
+        "policies.groupsJson":
+          '{"g1":{"allowFrom":["owner1","owner2"]},"g2":{"allowFrom":["owner3"]}}',
         "advanced.mediaLocalRoots": "/tmp/media, /var/data",
         "advanced.egressProxyUrl": "http://proxy.internal:3128",
         "advanced.dynamicAgentEnabled": true,
@@ -286,11 +287,7 @@ describe("integration secret handling", () => {
         readiness: "ready",
       },
     });
-    expect(rpcCall).toHaveBeenNthCalledWith(
-      1,
-      { id: "agent-1", status: "running" },
-      "config.get",
-    );
+    expect(rpcCall).toHaveBeenNthCalledWith(1, { id: "agent-1", status: "running" }, "config.get");
     expect(rpcCall).toHaveBeenNthCalledWith(
       2,
       { id: "agent-1", status: "running" },
@@ -309,11 +306,7 @@ describe("integration secret handling", () => {
         baseHash: "cfg-before",
       },
     );
-    expect(rpcCall).toHaveBeenNthCalledWith(
-      3,
-      { id: "agent-1", status: "running" },
-      "config.get",
-    );
+    expect(rpcCall).toHaveBeenNthCalledWith(3, { id: "agent-1", status: "running" }, "config.get");
     expect(rpcCall).toHaveBeenNthCalledWith(
       4,
       { id: "agent-1", status: "running" },
@@ -480,51 +473,49 @@ describe("integration secret handling", () => {
   });
 
   it("normalizes and redacts WeCom config on create", async () => {
-    mockDb.query
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({
-        rows: [
-          {
-            id: "int-wecom",
-            agent_id: "agent-1",
-            provider: "wecom",
-            catalog_id: "wecom",
-            access_token: null,
-            config: JSON.stringify({
-              mode: "both",
-              defaultAccount: {
-                label: "Main WeCom",
-                bot: {
-                  botId: "wx_bot_main",
-                  secret: "enc(bot-secret)",
-                  websocketUrl: "wss://openws.work.weixin.qq.com",
-                },
-                agent: {
-                  corpId: "ww123",
-                  corpSecret: "enc(corp-secret)",
-                  agentId: 1000002,
-                  token: "enc(agent-token)",
-                  encodingAESKey: "enc(aes-key)",
-                  callbackPath: "/plugins/wecom/agent/default",
-                },
+    mockDb.query.mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce({
+      rows: [
+        {
+          id: "int-wecom",
+          agent_id: "agent-1",
+          provider: "wecom",
+          catalog_id: "wecom",
+          access_token: null,
+          config: JSON.stringify({
+            mode: "both",
+            defaultAccount: {
+              label: "Main WeCom",
+              bot: {
+                botId: "wx_bot_main",
+                secret: "enc(bot-secret)",
+                websocketUrl: "wss://openws.work.weixin.qq.com",
               },
-              accounts: [
-                {
-                  id: "sales",
-                  label: "Sales",
-                  bot: { botId: "wx_bot_sales", secret: "enc(sales-secret)" },
-                  agent: { agentId: 1000003 },
-                },
-              ],
-              activation: {
-                lifecycleStatus: "saved",
-                readiness: "pending_activation",
+              agent: {
+                corpId: "ww123",
+                corpSecret: "enc(corp-secret)",
+                agentId: 1000002,
+                token: "enc(agent-token)",
+                encodingAESKey: "enc(aes-key)",
+                callbackPath: "/plugins/wecom/agent/default",
               },
-            }),
-            status: "active",
-          },
-        ],
-      });
+            },
+            accounts: [
+              {
+                id: "sales",
+                label: "Sales",
+                bot: { botId: "wx_bot_sales", secret: "enc(sales-secret)" },
+                agent: { agentId: 1000003 },
+              },
+            ],
+            activation: {
+              lifecycleStatus: "saved",
+              readiness: "pending_activation",
+            },
+          }),
+          status: "active",
+        },
+      ],
+    });
 
     const result = await integrations.connectIntegration("agent-1", "wecom", null, {
       mode: "both",

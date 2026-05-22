@@ -799,7 +799,10 @@ async function activateWecomIntegration(agent, agentId, integrationId) {
       runContainerCommand,
       rpcCall,
     });
-    return (await updateWecomActivationState(agentId, integrationId, outcome.activation)) || savedIntegration;
+    return (
+      (await updateWecomActivationState(agentId, integrationId, outcome.activation)) ||
+      savedIntegration
+    );
   } catch (error) {
     const message =
       String(error?.message || "WeCom activation failed.")
@@ -1100,7 +1103,10 @@ router.post("/agents/:id/integrations/:iid/test", async (req, res) => {
     let result;
 
     if (current?.provider === "wecom" && runtimeFamily === "openclaw") {
-      const savedIntegration = await integrations.getDecryptedIntegration(req.params.iid, req.params.id);
+      const savedIntegration = await integrations.getDecryptedIntegration(
+        req.params.iid,
+        req.params.id,
+      );
       if (!savedIntegration) {
         return res.status(404).json({ error: "Integration not found" });
       }
@@ -1109,7 +1115,9 @@ router.post("/agents/:id/integrations/:iid/test", async (req, res) => {
         rpcCall,
       });
       if (result?.activation) {
-        await updateWecomActivationState(req.params.id, req.params.iid, result.activation).catch(() => null);
+        await updateWecomActivationState(req.params.id, req.params.iid, result.activation).catch(
+          () => null,
+        );
       }
     } else {
       result = await integrations.testIntegration(req.params.iid, req.params.id);

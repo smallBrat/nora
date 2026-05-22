@@ -27,7 +27,7 @@ function stringValue(value: unknown): string {
 }
 
 function shellSingleQuote(value: string): string {
-  return `'${String(value).replace(/'/g, `'\"'\"'`)}'`;
+  return `'${String(value).replace(/'/g, `'"'"'`)}'`;
 }
 
 function booleanValue(value: unknown, fallback = false): boolean {
@@ -39,12 +39,17 @@ function parseStringList(value: unknown): string[] {
     return [...new Set(value.map((entry) => stringValue(entry)).filter(Boolean))];
   }
   if (typeof value !== "string") return [];
-  return [...new Set(value.split(/[\n,]/).map((entry) => entry.trim()).filter(Boolean))];
+  return [
+    ...new Set(
+      value
+        .split(/[\n,]/)
+        .map((entry) => entry.trim())
+        .filter(Boolean),
+    ),
+  ];
 }
 
-function normalizeGroupSenderAllowlists(
-  value: unknown,
-): Record<string, { allowFrom: string[] }> {
+function normalizeGroupSenderAllowlists(value: unknown): Record<string, { allowFrom: string[] }> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   const normalized: Record<string, { allowFrom: string[] }> = {};
   for (const [groupId, entry] of Object.entries(value as Record<string, any>)) {
@@ -150,7 +155,8 @@ export function buildWecomOpenClawChannelConfig(config: WecomConfig = {}): Recor
     const accounts: Record<string, any> = {};
     accounts[defaultAccountId] = buildAccountConfig(filteredDefaultAccount);
     filteredExtraAccounts.forEach((account: Record<string, any>, index: number) => {
-      const accountId = stringValue(account?.id || `account-${index + 1}`) || `account-${index + 1}`;
+      const accountId =
+        stringValue(account?.id || `account-${index + 1}`) || `account-${index + 1}`;
       accounts[accountId] = buildAccountConfig(account || {});
     });
     channelConfig.defaultAccount = defaultAccountId;
@@ -166,10 +172,10 @@ export function buildWecomPluginInstallCommand(): string {
     'OPENCLAW_BIN="${OPENCLAW_CLI_PATH:-/usr/local/bin/openclaw}"',
     'if [ ! -x "$OPENCLAW_BIN" ]; then OPENCLAW_BIN="$(command -v openclaw 2>/dev/null || true)"; fi',
     '[ -n "$OPENCLAW_BIN" ] && [ -x "$OPENCLAW_BIN" ]',
-    'export npm_config_audit=false',
-    'export npm_config_fund=false',
-    'export npm_config_progress=false',
-    'export npm_config_update_notifier=false',
+    "export npm_config_audit=false",
+    "export npm_config_fund=false",
+    "export npm_config_progress=false",
+    "export npm_config_update_notifier=false",
     'if ! printf "%s" "${NODE_OPTIONS:-}" | grep -Eq "(^| )--max-old-space-size="; then',
     '  NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--max-old-space-size=${OPENCLAW_PLUGIN_INSTALL_MAX_OLD_SPACE_MB:-256}"',
     "fi",
@@ -249,33 +255,34 @@ function activationState(
 function inferWecomMode(channelConfig: Record<string, any> = {}): string {
   const topLevelHasBot = Boolean(
     stringValue(channelConfig.botId) ||
-      stringValue(channelConfig.secret) ||
-      stringValue(channelConfig.websocketUrl),
+    stringValue(channelConfig.secret) ||
+    stringValue(channelConfig.websocketUrl),
   );
   const topLevelHasAgent = Boolean(
     stringValue(channelConfig?.agent?.corpId) ||
-      stringValue(channelConfig?.agent?.corpSecret) ||
-      normalizeAgentId(channelConfig?.agent?.agentId) !== undefined ||
-      stringValue(channelConfig?.agent?.token) ||
-      stringValue(channelConfig?.agent?.encodingAESKey),
+    stringValue(channelConfig?.agent?.corpSecret) ||
+    normalizeAgentId(channelConfig?.agent?.agentId) !== undefined ||
+    stringValue(channelConfig?.agent?.token) ||
+    stringValue(channelConfig?.agent?.encodingAESKey),
   );
-  const accounts = channelConfig?.accounts && typeof channelConfig.accounts === "object"
-    ? Object.values(channelConfig.accounts)
-    : [];
+  const accounts =
+    channelConfig?.accounts && typeof channelConfig.accounts === "object"
+      ? Object.values(channelConfig.accounts)
+      : [];
   const accountHasBot = accounts.some((account: any) =>
     Boolean(
       stringValue(account?.botId) ||
-        stringValue(account?.secret) ||
-        stringValue(account?.websocketUrl),
+      stringValue(account?.secret) ||
+      stringValue(account?.websocketUrl),
     ),
   );
   const accountHasAgent = accounts.some((account: any) =>
     Boolean(
       stringValue(account?.agent?.corpId) ||
-        stringValue(account?.agent?.corpSecret) ||
-        normalizeAgentId(account?.agent?.agentId) !== undefined ||
-        stringValue(account?.agent?.token) ||
-        stringValue(account?.agent?.encodingAESKey),
+      stringValue(account?.agent?.corpSecret) ||
+      normalizeAgentId(account?.agent?.agentId) !== undefined ||
+      stringValue(account?.agent?.token) ||
+      stringValue(account?.agent?.encodingAESKey),
     ),
   );
   const hasBot = topLevelHasBot || accountHasBot;
@@ -378,7 +385,9 @@ export async function activateWecomForOpenClawAgent(
       ? refreshedSnapshot.hash.trim()
       : null;
   if (!refreshedBaseHash) {
-    throw new Error("OpenClaw runtime did not return a refreshed config hash for WeCom activation.");
+    throw new Error(
+      "OpenClaw runtime did not return a refreshed config hash for WeCom activation.",
+    );
   }
 
   await deps.rpcCall(agent, "config.patch", {
@@ -418,12 +427,7 @@ export async function activateWecomForOpenClawAgent(
 
   return {
     deferred: false,
-    activation: activationState(
-      "active",
-      "ready",
-      "",
-      new Date().toISOString(),
-    ),
+    activation: activationState("active", "ready", "", new Date().toISOString()),
   };
 }
 

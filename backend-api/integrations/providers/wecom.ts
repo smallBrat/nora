@@ -22,7 +22,14 @@ function parseStringList(value: unknown): string[] {
     return [...new Set(value.map((entry) => stringValue(entry)).filter(Boolean))];
   }
   if (typeof value !== "string") return [];
-  return [...new Set(value.split(/[\n,]/).map((entry) => entry.trim()).filter(Boolean))];
+  return [
+    ...new Set(
+      value
+        .split(/[\n,]/)
+        .map((entry) => entry.trim())
+        .filter(Boolean),
+    ),
+  ];
 }
 
 function normalizePolicyGroups(value: unknown): Record<string, { allowFrom: string[] }> {

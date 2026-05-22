@@ -471,7 +471,7 @@ async function listIntegrations(agentId) {
           )
         : row.provider === "wecom"
           ? normalizeWecomDisplayConfig(decryptSensitiveConfig(row.provider, row.config))
-        : row.config;
+          : row.config;
     return {
       ...hydrated,
       config: redactSensitiveConfig(row.provider, displayConfig),
@@ -503,7 +503,7 @@ async function updateIntegration(integrationId, agentId, token, config = {}) {
       ? normalizeEmailConfigInput(mergeConfig(currentConfig, patchConfig))
       : provider === "wecom"
         ? normalizeWecomConfigInput(mergeConfig(currentConfig, patchConfig))
-      : mergeConfig(currentConfig, patchConfig);
+        : mergeConfig(currentConfig, patchConfig);
 
   let resolvedToken = token;
   if (provider === "email") {
@@ -546,7 +546,7 @@ async function updateIntegration(integrationId, agentId, token, config = {}) {
         ? normalizeEmailDisplayConfig(mergedConfig, updated.cron_job_id)
         : provider === "wecom"
           ? normalizeWecomDisplayConfig(mergedConfig)
-        : mergedConfig,
+          : mergedConfig,
     ),
   };
 }
