@@ -69,6 +69,31 @@ export default function IntegrationsTab({ agentId }) {
     }
   }, [toast]);
 
+  async function runIntegrationTest(integration, { silentSuccess = false } = {}) {
+    try {
+      const res = await fetchWithAuth(
+        `/api/agents/${agentId}/integrations/${integration.id}/test`,
+        {
+          method: "POST",
+        },
+      );
+      const result = await res.json();
+      if (result.success) {
+        if (!silentSuccess) {
+          toast.success(result.message || "Connection verified");
+        }
+      } else {
+        toast.error(result.error || result.message || "Test failed");
+      }
+      await loadData();
+      emitAgentDataChanged({ agentId, scope: "integrations" });
+      return result;
+    } catch {
+      toast.error("Test request failed");
+      return { success: false, message: "Test request failed" };
+    }
+  }
+
   async function loadData() {
     setLoading(true);
     try {
@@ -163,24 +188,7 @@ export default function IntegrationsTab({ agentId }) {
   }
 
   async function handleTest(integration) {
-    try {
-      const res = await fetchWithAuth(
-        `/api/agents/${agentId}/integrations/${integration.id}/test`,
-        {
-          method: "POST",
-        },
-      );
-      const result = await res.json();
-      if (result.success) {
-        toast.success(result.message || "Connection verified");
-      } else {
-        toast.error(result.error || result.message || "Test failed");
-      }
-      return result;
-    } catch {
-      toast.error("Test request failed");
-      return { success: false, message: "Test request failed" };
-    }
+    return runIntegrationTest(integration);
   }
 
   async function handleDisconnect(integration) {
@@ -217,6 +225,9 @@ export default function IntegrationsTab({ agentId }) {
       toast.success("Integration updated");
       await loadData();
       emitAgentDataChanged({ agentId, scope: "integrations" });
+      if (integration?.provider === "email") {
+        await runIntegrationTest(integration, { silentSuccess: true });
+      }
     } catch {
       toast.error("Failed to save integration");
     } finally {

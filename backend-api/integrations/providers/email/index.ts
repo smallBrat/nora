@@ -80,6 +80,12 @@ export function normalizeEmailConfigInput(rawConfig: Record<string, unknown> = {
       stringValue(next?.cron?.prompt) ||
       "Look for any new emails or calendar invites I should be aware of and summarize anything important for me.",
   };
+  next.verification = {
+    lastTestAt: stringValue(next?.verification?.lastTestAt),
+    lastSuccess:
+      typeof next?.verification?.lastSuccess === "boolean" ? next.verification.lastSuccess : null,
+    lastError: stringValue(next?.verification?.lastError),
+  };
   delete next.polling;
   delete next.initialSync;
   delete next.mailboxScope;

@@ -3,6 +3,7 @@ import { ChevronRight, Mail, Clock3 } from "lucide-react";
 export default function ActiveIntegrationRow({ integration, selected, onSelect }: any) {
   const providerName = integration.name || integration.catalog_name || integration.provider;
   const isWecomIntegration = integration.provider === "wecom";
+  const isEmailIntegration = integration.provider === "email";
   const mailboxIdentity =
     integration.config?.auth?.username ||
     integration.config?.smtp?.fromAddress ||
@@ -10,9 +11,19 @@ export default function ActiveIntegrationRow({ integration, selected, onSelect }
     "Connected integration";
   const providerPreset = integration.config?.providerPreset || integration.provider;
   const cronEnabled = Boolean(integration?.config?.cron?.enabled && integration?.cron_job_id);
+  const emailVerification = integration?.config?.verification || {};
+  const emailVerificationSuccess =
+    typeof emailVerification?.lastSuccess === "boolean" ? emailVerification.lastSuccess : null;
+  const emailVerificationError = emailVerification?.lastError || "";
   const wecomMode = integration?.config?.mode || "bot";
   const wecomReadiness = integration?.config?.activation?.readiness || "pending_activation";
   const wecomLifecycle = integration?.config?.activation?.lifecycleStatus || "saved";
+  const emailStatusText =
+    emailVerificationSuccess === true
+      ? "Connection verified"
+      : emailVerificationSuccess === false
+        ? emailVerificationError || "Connection test failed"
+        : "Not yet verified";
   const statusText = cronEnabled
     ? `Reminder cron active every ${integration.config?.cron?.intervalMinutes || 60} minutes`
     : "No reminder cron configured";
@@ -21,16 +32,24 @@ export default function ActiveIntegrationRow({ integration, selected, onSelect }
     : mailboxIdentity;
   const detailText = isWecomIntegration
     ? `${wecomLifecycle.replace(/_/g, " ")} • ${wecomReadiness.replace(/_/g, " ")}`
-    : statusText;
+    : isEmailIntegration
+      ? emailStatusText
+      : statusText;
   const stateDotClass = isWecomIntegration
     ? wecomReadiness === "ready"
       ? "bg-emerald-500"
       : wecomReadiness === "error"
         ? "bg-rose-500"
         : "bg-amber-500"
-    : cronEnabled
-      ? "bg-blue-500"
-      : "bg-slate-300";
+    : isEmailIntegration
+      ? emailVerificationSuccess === true
+        ? "bg-emerald-500"
+        : emailVerificationSuccess === false
+          ? "bg-rose-500"
+          : "bg-amber-500"
+      : cronEnabled
+        ? "bg-blue-500"
+        : "bg-slate-300";
 
   return (
     <button

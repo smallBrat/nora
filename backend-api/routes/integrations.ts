@@ -1121,6 +1121,17 @@ router.post("/agents/:id/integrations/:iid/test", async (req, res) => {
       }
     } else {
       result = await integrations.testIntegration(req.params.iid, req.params.id);
+      if (current?.provider === "email") {
+        await integrations.updateIntegration(req.params.iid, req.params.id, null, {
+          verification: {
+            lastTestAt: new Date().toISOString(),
+            lastSuccess: Boolean(result?.success),
+            lastError: result?.success
+              ? ""
+              : String(result?.error || result?.message || "Connection test failed"),
+          },
+        });
+      }
     }
     res.json(result);
   } catch (e) {

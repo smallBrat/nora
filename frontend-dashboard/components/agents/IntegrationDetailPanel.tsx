@@ -40,6 +40,15 @@ function providerPresetLabel(config: any, provider: string) {
   return config?.providerPreset || provider || "custom";
 }
 
+function formatVerificationTimestamp(value: any) {
+  if (!value) return "Not yet verified";
+  try {
+    return new Date(value).toLocaleString();
+  } catch {
+    return "Not yet verified";
+  }
+}
+
 function isWecomBotField(field: any) {
   return typeof field?.key === "string" && field.key.startsWith("defaultAccount.bot.");
 }
@@ -106,8 +115,36 @@ export default function IntegrationDetailPanel({
   const config = integration.config || {};
   const isEmailIntegration = integration.provider === "email";
   const isWecomIntegration = integration.provider === "wecom";
+  const emailVerification = config?.verification || {};
+  const emailReadiness =
+    emailVerification?.lastSuccess === true
+      ? "ready"
+      : emailVerification?.lastSuccess === false
+        ? "error"
+        : "pending_verification";
+  const emailReadinessLabel =
+    emailReadiness === "ready"
+      ? "Verified"
+      : emailReadiness === "error"
+        ? "Failed"
+        : "Not yet verified";
+  const emailReadinessClass =
+    emailReadiness === "ready"
+      ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200"
+      : emailReadiness === "error"
+        ? "bg-rose-50 text-rose-700 ring-1 ring-rose-200"
+        : "bg-amber-50 text-amber-700 ring-1 ring-amber-200";
   const wecomMode = config?.mode || "bot";
   const wecomActivation = config?.activation || {};
+  const wecomReadiness = wecomActivation?.readiness || "pending_activation";
+  const wecomReadinessLabel =
+    wecomReadiness === "ready" ? "Ready" : wecomReadiness === "error" ? "Error" : "Pending";
+  const wecomReadinessClass =
+    wecomReadiness === "ready"
+      ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200"
+      : wecomReadiness === "error"
+        ? "bg-rose-50 text-rose-700 ring-1 ring-rose-200"
+        : "bg-amber-50 text-amber-700 ring-1 ring-amber-200";
   const wecomCallbackPath =
     config?.defaultAccount?.agent?.callbackPath || DEFAULT_WECOM_AGENT_CALLBACK_PATH;
   const wecomCallbackUrl = useMemo(() => {
@@ -337,6 +374,41 @@ export default function IntegrationDetailPanel({
             <section className="rounded-xl border border-slate-100 bg-slate-50 p-4">
               <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-500">
                 <Clock size={12} />
+                Status
+              </div>
+              <dl className="mt-3 space-y-2 text-sm">
+                <div>
+                  <dt className="text-xs text-slate-500">State</dt>
+                  <dd className="font-medium text-slate-900">
+                    <span
+                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${emailReadinessClass}`}
+                    >
+                      {emailReadinessLabel}
+                    </span>
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-slate-500">Last Verified</dt>
+                  <dd className="font-medium text-slate-900">
+                    {formatVerificationTimestamp(emailVerification?.lastTestAt)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-slate-500">Verification Result</dt>
+                  <dd className="font-medium text-slate-900">
+                    {emailVerification?.lastSuccess === true
+                      ? "Connection verified"
+                      : emailVerification?.lastSuccess === false
+                        ? emailVerification?.lastError || "Connection test failed"
+                        : "Run Test to verify this mailbox connection."}
+                  </dd>
+                </div>
+              </dl>
+            </section>
+
+            <section className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-500">
+                <Clock size={12} />
                 Cron Setup
               </div>
               <dl className="mt-3 space-y-2 text-sm">
@@ -363,6 +435,30 @@ export default function IntegrationDetailPanel({
                   </dd>
                 </div>
               </dl>
+            </section>
+
+            <section className="rounded-xl border border-slate-100 bg-slate-50 p-4 md:col-span-2">
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-500">
+                <Shield size={12} />
+                Operator Guidance
+              </div>
+              <div className="mt-3 space-y-2 text-sm text-slate-700">
+                {emailVerification?.lastSuccess === false ? (
+                  <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-rose-700">
+                    {emailVerification?.lastError || "The last mailbox verification failed."}
+                  </p>
+                ) : null}
+                {emailVerification?.lastSuccess === null ||
+                typeof emailVerification?.lastSuccess !== "boolean" ? (
+                  <p>
+                    Run <span className="font-medium">Test</span> after saving to verify IMAP and
+                    SMTP access.
+                  </p>
+                ) : null}
+                {emailVerification?.lastSuccess === true ? (
+                  <p>Re-run Test after any credential or server setting change.</p>
+                ) : null}
+              </div>
             </section>
           </>
         ) : isWecomIntegration ? (
@@ -397,21 +493,54 @@ export default function IntegrationDetailPanel({
             <section className="rounded-xl border border-slate-100 bg-slate-50 p-4">
               <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-500">
                 <Clock size={12} />
-                Activation State
+                Status
               </div>
               <dl className="mt-3 space-y-2 text-sm">
                 <div>
-                  <dt className="text-xs text-slate-500">Lifecycle</dt>
+                  <dt className="text-xs text-slate-500">State</dt>
                   <dd className="font-medium text-slate-900">
-                    {config?.activation?.lifecycleStatus || "saved"}
+                    <span
+                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${wecomReadinessClass}`}
+                    >
+                      {wecomReadinessLabel}
+                    </span>
                   </dd>
                 </div>
                 <div>
-                  <dt className="text-xs text-slate-500">Readiness</dt>
+                  <dt className="text-xs text-slate-500">Lifecycle</dt>
                   <dd className="font-medium text-slate-900">
-                    {config?.activation?.readiness || "pending_activation"}
+                    {wecomActivation?.lifecycleStatus || "saved"}
                   </dd>
                 </div>
+                <div>
+                  <dt className="text-xs text-slate-500">Last Verified</dt>
+                  <dd className="font-medium text-slate-900">
+                    {wecomActivation?.lastVerifiedAt
+                      ? new Date(wecomActivation.lastVerifiedAt).toLocaleString()
+                      : "Not yet verified"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-slate-500">Result</dt>
+                  <dd className="font-medium text-slate-900">
+                    {wecomActivation?.lastError
+                      ? wecomActivation.lastError
+                      : wecomReadiness === "ready"
+                        ? "Runtime activation verified"
+                        : wecomReadiness === "pending_activation"
+                          ? "Start the agent and run Test to verify activation."
+                          : "Run Test to verify the current runtime state."}
+                  </dd>
+                </div>
+              </dl>
+            </section>
+
+            <section className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-500">
+                <Link2 size={12} />
+                Runtime Details
+              </div>
+              <dl className="mt-3 space-y-2 text-sm">
                 <div>
                   <dt className="text-xs text-slate-500">Callback Path</dt>
                   <dd className="font-medium text-slate-900">
@@ -422,14 +551,6 @@ export default function IntegrationDetailPanel({
                   <dt className="text-xs text-slate-500">Browser-Resolved Callback URL</dt>
                   <dd className="break-all font-medium text-slate-900">
                     {wecomCallbackUrl || "Not available in this browser context"}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-xs text-slate-500">Last Verified</dt>
-                  <dd className="font-medium text-slate-900">
-                    {wecomActivation?.lastVerifiedAt
-                      ? new Date(wecomActivation.lastVerifiedAt).toLocaleString()
-                      : "Not yet verified"}
                   </dd>
                 </div>
               </dl>
