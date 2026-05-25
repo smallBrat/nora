@@ -2,12 +2,16 @@
   "$schema": "https://mintlify.com/docs.json",
   "name": "Nora",
   "theme": "mint",
-  "colors": {
-    "primary": "#1a73e8",
-    "light": "#5b9dff",
-    "dark": "#0b3d91"
+  "logo": {
+    "light": "/logo/light.png",
+    "dark": "/logo/dark.png"
   },
-  "favicon": "/favicon.svg",
+  "colors": {
+    "primary": "#0e7490",
+    "light": "#8ae6ff",
+    "dark": "#0b5f87"
+  },
+  "favicon": "/favicon.png",
   "navbar": {
     "primary": {
       "type": "github",

@@ -142,9 +142,7 @@ export default function Home() {
         <header className="fixed inset-x-0 top-0 z-50 px-4 sm:px-6">
           <div className="mx-auto mt-4 flex max-w-7xl items-center justify-between rounded-full border border-white/10 bg-black/25 px-4 py-3 backdrop-blur-xl sm:px-5">
             <Link href="/" className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/15 bg-white/10 text-sm font-black text-white">
-                N
-              </div>
+              <img src="/logo-mark.png" alt="Nora" width={40} height={40} className="h-10 w-10" />
               <div>
                 <div className="text-sm font-black uppercase tracking-[0.28em] text-slate-300">
                   Nora

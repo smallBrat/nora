@@ -16,9 +16,11 @@
     "clsx": "^2.1.0",
     "lucide-react": "^1.8.0",
     "next": "^16.2.6",
+    "png-to-ico": "^3.0.1",
     "postcss": "8.5.12",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
+    "sharp": "^0.34.5",
     "tailwind-merge": "^3.5.0",
     "tailwindcss": "^4.2.2"
   },
