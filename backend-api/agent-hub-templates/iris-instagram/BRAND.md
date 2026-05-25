@@ -3,6 +3,9 @@
 > Fill this in once, update when anything changes.
 > This is the most important file in this workspace. Without it, Iris has no voice.
 
+## Agent
+- **agent_name:** Iris  <!-- default; the operator can rename during bootstrap. Use this name everywhere. -->
+
 ## The Account
 - **Handle:** @<your_handle>
 - **Niche:** <e.g. indie SaaS founder content / home-cooked Italian food / vintage film photography>

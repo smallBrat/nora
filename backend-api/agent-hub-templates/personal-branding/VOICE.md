@@ -44,6 +44,8 @@
 ## Platform Voice Shifts
 How the voice adjusts between platforms. Same person, different register.
 
+> Fill in only the subsection(s) for platforms in `PROFILE.md` `enabled_platforms`. If just one platform is enabled, you can ignore the cross-platform comparison entirely.
+
 ### X
 - <e.g. Shorter. Funnier. More willing to fire off a hot take. Lowercase-first often.>
 - <e.g. Thread format only when the idea is actually worth 5+ tweets — otherwise single post.>

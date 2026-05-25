@@ -8,9 +8,10 @@ One agent that helps you ghostwrite for yourself on X and LinkedIn. Learns your 
 
 - **Bootstrap flow:** first time you message the agent, it runs a guided 15-minute setup over chat. You don't edit markdown files by hand — the agent asks questions, you answer, it writes the files.
 - **Voice training:** you paste 5+ of your real writings (posts, emails, texts). The agent extracts your patterns into `VOICE.md` and references it on every draft.
+- **Pick one platform or both:** manage X only, LinkedIn only, or both. Your choice cascades through everything — a LinkedIn-only operator never gets X drafts, scans, or heartbeats.
 - **Platform-aware:** knows the X vs. LinkedIn playbooks are different and adapts format without losing your voice.
 - **Draft-only by design:** zero auto-publishing, zero auto-engagement. You post. The agent drafts, you post.
-- **Channel-flexible:** bootstrap walks you through connecting Telegram (default) or other options.
+- **Channel-flexible:** bootstrap walks you through connecting one channel (WhatsApp recommended) so the agent can reach you.
 
 ## Files
 
@@ -32,28 +33,45 @@ One agent that helps you ghostwrite for yourself on X and LinkedIn. Learns your 
 ~/.openclaw/openclaw.json    # Main config
 ```
 
-## Setup — Just Three Steps
+## Setup
 
-### 1. Drop the files in place
-Copy the workspace folder to `~/.openclaw/workspaces/echo-personal-brand/` and `openclaw.json` to `~/.openclaw/`.
+Full walkthrough with screenshots: **[Echo setup guide](https://noradocs.solomontsao.com/guides/echo-personal-branding)**.
 
-### 2. Connect credentials in Nora
-Open the installed agent in Nora and use the **Integrations** tab for every provider credential. Connect an LLM provider such as Anthropic before first use. During bootstrap, Echo can also walk you through connecting Telegram there.
+### 1. Install Echo from Agent Hub
+Install the **Echo Personal Branding** listing into a workspace. Nora materializes the agent and its files for you — you don't copy markdown by hand.
 
-### 3. Start OpenClaw and say hi
-Run OpenClaw. Send your first message ("hey" works). The agent detects `PROFILE.md` is empty and launches the bootstrap flow. Follow the prompts. In 15–20 minutes, you're set up.
+### 2. Connect your platform(s) — Integrations tab
+Open the agent → **Integrations** tab. Connect the platform(s) you want to manage (at least one):
+
+- **Twitter / X** — click *Authorize with X*. Requires an X OAuth 2.0 app ([setup guide](https://noradocs.solomontsao.com/guides/integrations/twitter)).
+- **LinkedIn** — click *Authorize with LinkedIn*. Requires a LinkedIn developer app ([setup guide](https://noradocs.solomontsao.com/guides/integrations/linkedin)).
+
+You can start with just one and add the other later.
+
+### 3. Connect one channel — Channels tab
+Open the agent → **Channels** tab and connect **at least one** way for Echo to reach you (you only need one):
+
+- **WhatsApp** (recommended) — Meta WhatsApp Cloud API; needs a Phone Number ID + Access Token.
+- Or **Telegram**, **Slack**, **Discord**, or **email**.
+
+See the [channels guide](https://noradocs.solomontsao.com/guides/channels) for the per-channel fields.
+
+### 4. Say hi
+Start the runtime and send your first message ("hey" works). Echo introduces herself and what she does, then runs the bootstrap flow — picks your platform(s), learns your voice from samples, and calibrates. 15–20 minutes and you're live.
+
+> **How integrations reach Echo:** when you connect X or LinkedIn in the Integrations tab, Nora automatically writes `integrations/NORA_INTEGRATIONS.md` into the workspace and updates `TOOLS.md` — you never edit those files. Echo reads that list to know what's connected.
 
 ## What the Bootstrap Covers
 
-1. Name the agent (keep default or rename)
+1. Echo introduces herself and what she can do, then asks what to call her
 2. Your name and what you want to be called
 3. What you do and want to be known for
-4. Your X handle and LinkedIn URL (one or both)
+4. **Pick your platform(s)** — X only, LinkedIn only, or both (handles collected only for what you choose)
 5. Your goals (audience, clients, job, launch, learning, other)
 6. **Voice samples** — paste 5+ real writings so the agent learns how you actually sound
-7. Posting cadence preferences
+7. Posting cadence preferences (for your enabled platform(s))
 8. Hard nos — topics you'll never post about
-9. Connect a communication channel (walks you through creating a Telegram bot)
+9. Connect a channel so Echo can reach you (WhatsApp walkthrough, or another option)
 10. Test draft — try a post to calibrate voice, give feedback
 11. Wrap up — you're live
 
@@ -83,10 +101,10 @@ These aren't hidden behind a "careful!" warning. They're structurally off. To en
 
 ## Honest Limits
 
-- **X API:** the free tier gives you very limited read access. Analytics pulls work with Premium API ($100/mo) or by scraping your own analytics dashboard.
-- **LinkedIn API:** restrictive. Most people fall back to semi-manual analytics (operator pastes screenshots, agent parses).
-- **If neither API is available:** the agent still works for drafting — it just won't auto-pull analytics. You paste your numbers during the weekly review.
-- **Credential setup:** connect X, LinkedIn, Telegram, and LLM provider credentials from Nora's Integrations tab. Do not put secrets in the template files.
+- **X API (X-only concern):** the free tier gives very limited read access. Analytics pulls work with Premium API ($100/mo) or by scraping your own analytics dashboard.
+- **LinkedIn API (LinkedIn-only concern):** restrictive. Most people fall back to semi-manual analytics (operator pastes screenshots, agent parses).
+- **If the API is unavailable for your platform:** the agent still works for drafting — it just won't auto-pull analytics. You paste your numbers during the weekly review.
+- **Credential setup:** platform providers (X, LinkedIn) connect from the **Integrations** tab; your channel (WhatsApp, etc.) connects from the **Channels** tab. Never put secrets in the template files.
 
 ## First Week Expectations
 
@@ -102,6 +120,6 @@ If week 1 feels too generic, the usual fix is: more voice samples, more specific
 
 - **Rename the agent:** during bootstrap, or anytime edit `PROFILE.md` → `agent_name`.
 - **Change cadence:** "update my cadence — X daily, LinkedIn 2x week"
-- **Add platforms later:** currently X and LinkedIn only. For IG or others, spin up a separate agent (see the Iris IG agent example).
+- **Add a platform later:** started X-only or LinkedIn-only? Say "add LinkedIn" / "add X" anytime — Echo walks you through connecting it and turns on its workflows. (Echo covers X and LinkedIn only; for IG, see the Iris IG agent.)
 - **Tighten or loosen voice:** retrain anytime.
 - **Adjust HEARTBEAT:** edit HEARTBEAT.md directly or ask the agent to draft changes.

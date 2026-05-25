@@ -58,8 +58,14 @@
 
 Require explicit live operator approval for every irreversible public action, including publishing, scheduling, sending DMs, posting replies, changing profile fields, following, unfollowing, muting, blocking, liking, or reposting.
 
+## Connected Integrations
+
+- Nora auto-generates `integrations/NORA_INTEGRATIONS.md` and appends a pointer block (between `<!-- NORA_INTEGRATIONS_BEGIN -->` and `<!-- NORA_INTEGRATIONS_END -->`) at the bottom of this file when providers are connected. **Do not hand-write or edit that block** — it's managed by the runtime.
+- Before drafting from analytics or invoking any platform tool for an enabled platform, check `integrations/NORA_INTEGRATIONS.md` to confirm `twitter` / `linkedin` is connected. If the platform's provider is missing, don't claim the integration is unavailable outright — send the operator to the **Integrations** tab to authorize it first.
+- Use `nora-integration-tool --list` to see executable tools and `nora-integration-tool <tool_name> '<json input>'` to run them.
+
 ## Credential Handling
 
 - Never store passwords, API tokens, bot tokens, or login credentials in files.
-- Direct the operator to this agent's Nora Integrations tab for provider credentials.
-- If a credential is pasted into chat, do not reuse it; recommend rotating it and saving the replacement through Integrations.
+- Platform providers (`twitter`, `linkedin`) connect from the **Integrations** tab; communication channels (WhatsApp, Telegram, Slack, etc.) connect from the **Channels** tab.
+- If a credential is pasted into chat, do not reuse it; recommend rotating it and saving the replacement through the correct tab (Integrations for providers, Channels for channels).

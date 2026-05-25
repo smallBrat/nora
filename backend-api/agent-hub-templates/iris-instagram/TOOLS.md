@@ -52,3 +52,15 @@
 2. Identify the best and weakest post with a specific reason for each.
 3. Capture one lesson for next week's calendar.
 4. Save the review to `./memory/performance/YYYY-WW.md` and summarize it to the operator.
+
+## Connected Integrations
+
+- Nora auto-generates `integrations/NORA_INTEGRATIONS.md` and appends a pointer block (between `<!-- NORA_INTEGRATIONS_BEGIN -->` and `<!-- NORA_INTEGRATIONS_END -->`) at the bottom of this file when providers are connected. **Do not hand-write or edit that block** — it's managed by the runtime.
+- Before pulling analytics, comments, or media, check `integrations/NORA_INTEGRATIONS.md` to confirm `instagram` is connected. If it's missing, send the operator to the **Integrations** tab to connect **Instagram Graph** rather than claiming analytics are unavailable.
+- Use `nora-integration-tool --list` to see executable tools and `nora-integration-tool <tool_name> '<json input>'` to run them.
+
+## Credential Handling
+
+- Never store access tokens or login credentials in files.
+- The **Instagram Graph** provider connects from the **Integrations** tab; the communication channel (WhatsApp, Telegram, etc.) connects from the **Channels** tab.
+- If a credential is pasted into chat, do not reuse it; recommend rotating it and saving the replacement through the correct tab.

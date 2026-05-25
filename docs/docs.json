@@ -144,7 +144,14 @@
           "guides/alert-rules",
           "guides/backups",
           "guides/upgrades",
-          "guides/agent-hub",
+          {
+            "group": "Agent Hub",
+            "pages": [
+              "guides/agent-hub",
+              "guides/echo-personal-branding",
+              "guides/iris-instagram"
+            ]
+          },
           "guides/nemoclaw"
         ]
       },

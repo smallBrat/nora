@@ -1,6 +1,8 @@
 # PLATFORMS.md — X vs. LinkedIn Playbooks
 
 > The operator's voice stays constant. Format and pacing adapt.
+>
+> **Load only the section(s) that match `enabled_platforms` in `PROFILE.md`.** If the operator enabled just X, ignore the LinkedIn playbook (and vice versa). The "When the Same Idea Goes to Both" and "Cross-Platform Don'ts" sections apply **only when `enabled_platforms` is `both`.**
 
 ## X (Twitter)
 
@@ -110,6 +112,8 @@ Commenting on bigger accounts in the operator's field is often higher ROI than p
 ---
 
 ## When the Same Idea Goes to Both
+
+> Applies only when `enabled_platforms` is `both`. Skip this section for single-platform operators.
 
 Sometimes an idea works for both X and LinkedIn. Don't post identical text. Adapt:
 

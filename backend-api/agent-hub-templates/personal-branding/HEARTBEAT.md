@@ -2,10 +2,18 @@
 
 > All times in operator's timezone from PROFILE.md.
 > If bootstrap isn't complete, skip all scheduled tasks until it is.
+>
+> **Each task is tagged for the platform(s) it applies to.** Honor the tag against `enabled_platforms` in `PROFILE.md`:
+> - `[Any]` — runs whenever at least one platform is enabled. Scope its content to the enabled platform(s) only.
+> - `[X]` — runs only when X is enabled.
+> - `[LinkedIn]` — runs only when LinkedIn is enabled.
+> - `[Both]` — runs only when `enabled_platforms = both` (cross-platform comparison work).
+>
+> A single-platform operator never sees the other platform mentioned in any brief or review.
 
 ## Daily
 
-### 07:30 — Morning Brief
+### 07:30 — Morning Brief `[Any]`
 Send one message to the operator's channel:
 1. **Yesterday's posts:** Engagement on anything published (reach, replies, notable comments).
 2. **Overnight engagement:** New replies, comments, DMs worth seeing. Count + one-line category breakdown.
@@ -14,7 +22,7 @@ Send one message to the operator's channel:
 
 Keep it to 4–5 bullets. Under 30 seconds to read.
 
-### 10:00 — Engagement Draft Batch
+### 10:00 — Engagement Draft Batch `[Any]`
 1. Pull replies, comments, quote-tweets, and DMs on the operator's content since yesterday's batch.
 2. Classify: worth-engaging / ignore / spam / hostile.
 3. Draft replies for worth-engaging.
@@ -22,13 +30,13 @@ Keep it to 4–5 bullets. Under 30 seconds to read.
 5. Save drafts to `./drafts/engagement-YYYY-MM-DD.md`.
 6. One-line summary: "N drafts ready for review."
 
-### 14:00 — Niche Listening
+### 14:00 — Niche Listening `[Any]`
 1. Scan for 5–10 high-engagement posts in the operator's niche (from accounts they follow or topics in PROFILE.md).
 2. Note 1–2 that the operator could meaningfully comment on or riff off in an original post.
 3. Save to `./listening/YYYY-MM-DD.md`.
 4. If any is time-sensitive (e.g. a conversation hot right now), ping operator. Otherwise silent.
 
-### 19:00 — Day's Content Check
+### 19:00 — Day's Content Check `[Any]`
 If the operator posted today:
 1. 6-hour mark engagement vs. their rolling median.
 2. Flag over/under-performance.
@@ -36,7 +44,7 @@ If the operator posted today:
 
 ## Weekly
 
-### Sunday 18:00 — Week Plan
+### Sunday 18:00 — Week Plan `[Any]`
 1. Read last week's performance, engagement, and operator feedback.
 2. Identify 3–5 topics worth drafting for the coming week based on:
    - What the operator's been doing / learning / building
@@ -45,7 +53,7 @@ If the operator posted today:
 3. Propose a week plan: platform × day × topic × format.
 4. Send to operator for approval before drafting any actual posts.
 
-### Monday 09:30 — Weekly Performance Review
+### Monday 09:30 — Weekly Performance Review `[Any]`
 1. Pull last 7 days: followers, impressions, engagement by platform.
 2. Top post per platform — why it worked.
 3. Worst post per platform — why it probably didn't.
@@ -53,13 +61,13 @@ If the operator posted today:
 5. One takeaway for this week.
 6. Save to `./memory/performance/YYYY-WW.md`. Summary to operator.
 
-### Wednesday 12:00 — Competitor / Peer Scan
+### Wednesday 12:00 — Competitor / Peer Scan `[Any]`
 1. Check 3–5 accounts the operator watches (listed in MEMORY.md).
 2. What's working for them this week? Format, topic, hook.
 3. Classify as: inspiration / not-applicable / trap-to-avoid.
 4. One paragraph to operator. Never suggest copying — suggest riffing.
 
-### Friday 16:00 — Week Reflection
+### Friday 16:00 — Week Reflection `[Any]`
 Light touch:
 - What got published this week, aggregate.
 - What's the operator feeling good / bad about?
@@ -68,7 +76,7 @@ Light touch:
 
 ## Monthly
 
-### First day of month, 10:00 — Monthly Recap
+### First day of month, 10:00 — Monthly Recap `[Any]`
 1. Followers gained/lost per platform.
 2. Best 3 posts of the month — pattern across them.
 3. Worst 3 — pattern across them.
@@ -78,12 +86,12 @@ Light touch:
 7. One change to try next month.
 8. Save to `./memory/monthly/YYYY-MM.md`.
 
-### 15th of month — Voice Audit
+### 15th of month — Voice Audit `[Any]`
 Read the 10 most recent posts. Are they consistent with VOICE.md? Flag drift and propose specific VOICE.md updates. Operator approves before saving.
 
 ## Conditional
 
-### On a post performing >5× operator's median in first 2 hours
+### On a post performing >5× operator's median in first 2 hours `[Any]`
 Ping operator immediately: "This one's moving." Suggest:
 - Engage actively in comments for 1–2 hours (you draft, they send)
 - Pin the best comment
@@ -109,7 +117,7 @@ Acknowledge, run BOOTSTRAP.md from step 1. Back up existing PROFILE.md and VOICE
 
 ## Drift Check
 
-### Sunday 20:00 — Self-audit
+### Sunday 20:00 — Self-audit `[Any]`
 - Did any draft this week feel like it was reaching for engagement instead of saying something true?
 - Did I get pulled toward a trend that didn't actually fit the operator's voice?
 - Am I drafting more than the operator is publishing? (If the approval rate is low, the drafts are off.)

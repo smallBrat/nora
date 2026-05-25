@@ -4,7 +4,41 @@
 
 Agent Hub turns a working agent into a reusable template. This guide covers the end-to-end flow: install a listing, publish your own, share to the community catalog, and roll out a new version.
 
+## What Agent Hub does
+
+Agent Hub is the catalog of ready-to-run agent templates inside Nora. Instead of configuring an agent from scratch — runtime, image, environment, files, and integrations — you install a **listing** that captures all of it, and Nora materializes a working agent in one click.
+
+But the templates are only half the point. **Agent Hub is a shareable hub, not just a static template store.** Once an operator gets an agent working, they can publish it as a listing and share it — and that sharing works at three different reach levels:
+
+- **Reuse it yourself** — publish privately so anyone in your own workspace(s) can install the same agent with one click.
+- **Share with the community** — push the listing to the public upstream hub (`https://nora.solomontsao.com`), where, once approved, it appears in every Nora instance's **Community** filter.
+- **Run your own company hub** — self-hosters can point `NORA_AGENT_HUB_URL` at their **own** Agent Hub instead of the public one. Then "community" sharing stays entirely inside the company: every operator publishes to and installs from a private, org-internal catalog — the same reusable, shareable workflow, without anything leaving your infrastructure.
+
+This is the core value: an agent that one person builds becomes a one-click install for their teammates, their company, or the whole community — their choice.
+
+A listing bundles everything an agent needs to run:
+
+- **Runtime configuration** — runtime family (OpenClaw or Hermes), deploy target (Docker, Kubernetes, Proxmox), sandbox profile, and the default container image.
+- **Workspace files** — the markdown that defines the agent's behavior: identity, operating rules, scheduled tasks, and any bootstrap script that runs on first message.
+- **Integration wiring** — which providers the agent expects, so you know what to connect after install.
+
+Listings come from three sources, shown as filters in the catalog:
+
+- **Built-in** — platform-seeded templates that ship with Nora (for example, the Echo personal-branding agent).
+- **Internal** — listings your workspace has published for its own reuse.
+- **Community** — listings synced from the upstream hub and approved for everyone.
+
+Credentials are never part of a listing. When a template needs provider access, you connect that provider from the installed agent's **Integrations** tab (and a communication channel from its **Channels** tab) so Nora stores the secrets outside the template files.
+
 See [Agent Hub concepts](/concepts/agent-hub) for the underlying model — listing types, share targets, and versions.
+
+## Example: install and set up Echo
+
+The fastest way to see the full flow is to install a built-in template and configure it end to end.
+
+<Card title="Set up Echo, the personal-branding agent" href="/guides/echo-personal-branding" icon="feather" arrow>
+  A worked example: install the Echo listing, connect X and/or LinkedIn in the Integrations tab, connect a channel (WhatsApp) in the Channels tab, and run the bootstrap that learns your voice.
+</Card>
 
 ## Install a listing
 

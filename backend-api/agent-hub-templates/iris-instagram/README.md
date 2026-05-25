@@ -1,6 +1,8 @@
 # Iris — Instagram Manager Agent
 
-One OpenClaw agent that runs your Instagram: content calendar, caption drafts, DM and comment reply drafts, trend watching, weekly performance reviews. Controlled from Telegram.
+One OpenClaw agent that runs your Instagram: content calendar, caption drafts, DM and comment reply drafts, trend watching, weekly performance reviews. You talk to her through one channel you connect (WhatsApp recommended).
+
+**Renamable.** Iris is just the default name — she'll ask what you want to call her on first run.
 
 **Iris drafts. You post.** That's the contract. Instagram doesn't like bots, and neither does your audience — so Iris never publishes, never replies, never follows anyone on her own.
 
@@ -24,15 +26,26 @@ One OpenClaw agent that runs your Instagram: content calendar, caption drafts, D
 
 ## Setup
 
-1. **Copy this bundle to `~/.openclaw/workspaces/iris-instagram/`** and `openclaw.json` to `~/.openclaw/`.
+Full walkthrough with screenshots: **[Iris setup guide](https://noradocs.solomontsao.com/guides/iris-instagram)**.
 
-2. **Fill in `BRAND.md`.** This is the single most important step. Without it, Iris writes generic captions that could be any account's. Spend 20 minutes, not 2.
+### 1. Install Iris from Agent Hub
+Install the **Iris Instagram Manager** listing into a workspace. Nora materializes the agent and its files for you.
 
-3. **Connect credentials in Nora.** Open the installed agent, go to **Integrations**, and connect the LLM provider, Instagram Graph, and any messaging provider you want Iris to use. Credentials stay in Nora's integration store, not in template files.
+### 2. Connect Instagram — Integrations tab
+Open the agent → **Integrations** tab → connect **Instagram Graph**. It uses an Access Token + Business Account ID (form-based), and requires a **Creator or Business** account linked to a Facebook Page — not a Personal account. Without it, Iris can't pull analytics ([setup guide](https://noradocs.solomontsao.com/guides/integrations/instagram)).
 
-4. **Connect the Instagram Graph API.** This requires a Creator or Business account (not Personal) connected to a Facebook Page. Without this, Iris can't pull analytics.
+### 3. Connect one channel — Channels tab
+Open the agent → **Channels** tab → connect **one** way for Iris to reach you (you only need one):
 
-5. **Start OpenClaw.** Message your Telegram bot: "Hey Iris, what's on the plan this week?"
+- **WhatsApp** (recommended) — Meta WhatsApp Cloud API; needs a Phone Number ID + Access Token.
+- Or **Telegram**, **Slack**, **Discord**, or **email**.
+
+See the [channels guide](https://noradocs.solomontsao.com/guides/channels) for the per-channel fields.
+
+### 4. Say hi
+Start the runtime and send a first message. Iris introduces herself and what she does, offers to rename, helps you connect anything still missing, then walks you through `BRAND.md` — the single most important step. Without a real brand file she writes generic captions, so spend the 15 minutes here.
+
+> **How integrations reach Iris:** when you connect Instagram Graph, Nora automatically writes `integrations/NORA_INTEGRATIONS.md` into the workspace and updates `TOOLS.md` — you never edit those. Iris reads that list to know what's connected.
 
 ## The Honest Constraints
 

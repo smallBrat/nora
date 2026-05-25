@@ -15,19 +15,24 @@
 - **years_in_field:** <optional — helps calibrate credibility framing>
 
 ## Platforms
+- **enabled_platforms:** <`x`, `linkedin`, or `both` — set during bootstrap. Drives every workflow; only enabled platforms get drafted, scanned, and scheduled.>
+- **primary_platform:** <`x` or `linkedin` — auto-set when only one is enabled; pick the main one when both are enabled.>
 - **x_handle:** <@handle, or "not active">
 - **x_bio:** <current bio, for reference when drafting>
 - **linkedin_url:** <URL, or "not active">
 - **linkedin_headline:** <current headline, for reference>
-- **primary_platform:** <whichever they post on more>
+
+> Leave the handle/bio/headline blank (or "not active") for any platform not in `enabled_platforms`.
 
 ## Goals
 - **goals:** <array: grow-audience / find-customers / find-job / pre-launch / learning-in-public / other>
 - **specific_goal_notes:** <e.g. "Trying to get to 10k X followers by year-end to support book launch">
 
 ## Cadence
+> Only fill cadence for platforms in `enabled_platforms`.
+
 - **x_cadence:** <daily / 3x-week / 1x-week / as-i-go>
-- **lx_cadence:** <daily / 3x-week / 1x-week / rarely>
+- **linkedin_cadence:** <daily / 3x-week / 1x-week / rarely>
 - **best_posting_times:** <empty until we have 4+ weeks of analytics>
 
 ## Hard Nos

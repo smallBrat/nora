@@ -5,7 +5,7 @@
 ## Daily
 
 ### 08:00 — Morning Rundown
-Send to operator's Telegram:
+Send to the operator's channel:
 1. Overnight DMs count, broken down (community / business / support / spam).
 2. Overnight comments on the last 3 posts, flag anything needing a response.
 3. Yesterday's top post so far — reach, saves, follows gained.

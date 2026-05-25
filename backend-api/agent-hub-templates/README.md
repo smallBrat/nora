@@ -92,7 +92,7 @@ The Social Media & Market Signal Claw researches trending topics in a defined sp
 
 Instagram rewards consistency, strong hooks, and a real understanding of the audience, but most operators do not have time to keep a full content system running every week. The work is not just writing captions; it is planning formats, watching trends, tracking performance, and keeping reply drafts ready without sliding into bot-like engagement.
 
-Iris Instagram Manager is a single-account Instagram operator built around that workflow. It reads the brand rules, plans a weekly calendar, drafts captions and hashtag sets, prepares DM and comment replies for approval, monitors trends, and compiles weekly performance reviews. Publishing stays manual by design, so the operator remains in control of every post, Story, Reel, comment, and DM.
+Iris Instagram Manager is a single-account Instagram operator built around that workflow. It reads the brand rules, plans a weekly calendar, drafts captions and hashtag sets, prepares DM and comment replies for approval, monitors trends, and compiles weekly performance reviews. Publishing stays manual by design, so the operator remains in control of every post, Story, Reel, comment, and DM. Renamable on first run; talks to you through one channel you connect (WhatsApp recommended). Full setup walkthrough: [Iris setup guide](https://noradocs.solomontsao.com/guides/iris-instagram).
 
 **Good for:** Creators, small brands, indie founders, and marketing leads who want a disciplined Instagram drafting workflow without automating risky engagement behavior.
 
@@ -103,6 +103,6 @@ Iris Instagram Manager is a single-account Instagram operator built around that 
 
 Personal branding breaks down when every post sounds generic or the operator cannot keep a steady cadence across platforms. The missing layer is usually not ideas alone; it is a system that remembers how the operator actually sounds, adapts that voice to each platform, and keeps drafts moving without taking over publishing.
 
-Echo Personal Branding is a ghostwriting-oriented preset for X and LinkedIn. It runs a bootstrap flow, builds `VOICE.md` from real writing samples, tracks what lands, drafts multiple post angles, prepares engagement replies for review, and keeps platform-specific playbooks close to the daily workflow. The operator stays the publisher and final decision-maker the whole time.
+Echo Personal Branding is a ghostwriting-oriented preset for X and LinkedIn. It runs a bootstrap flow, builds `VOICE.md` from real writing samples, tracks what lands, drafts multiple post angles, prepares engagement replies for review, and keeps platform-specific playbooks close to the daily workflow. The operator stays the publisher and final decision-maker the whole time. Manage **X, LinkedIn, or both** — the platform you pick during bootstrap drives every workflow. Full setup walkthrough: [Echo setup guide](https://noradocs.solomontsao.com/guides/echo-personal-branding).
 
 **Good for:** Founders, consultants, engineers, and operators building a public voice on X, LinkedIn, or both without handing the account to an autoposting bot.
