@@ -4,5 +4,6 @@
   "description": "Answers customer questions from your knowledge base, drafts support responses, and flags issues that need human escalation.",
   "price": "Free",
   "category": "Support",
-  "starterType": "support"
+  "starterType": "support",
+  "extraFiles": ["PROFILE.md", "README.md"]
 }

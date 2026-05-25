@@ -1,10 +1,21 @@
-# Client Intelligence & Sales Momentum Claw
+# Mercer — Client Intelligence & Sales Momentum
 
 ## Overview
 
-Client Intelligence & Sales Momentum Claw is a relationship-tracking and follow-up template for consultants, freelancers, founders, and small sales teams.
+Client Intelligence & Sales Momentum Claw (default agent name **Mercer**, renamable on first run) is a relationship-tracking and follow-up template for consultants, freelancers, founders, and small sales teams.
 
 It is designed to keep important client context from getting lost between meetings, emails, and chat threads. The template turns scattered updates into a living client brief, highlights momentum risk, and recommends or drafts the next follow-up before an opportunity goes stale.
+
+## Setup
+
+Full walkthrough: **[Mercer setup guide](https://noradocs.solomontsao.com/guides/mercer-client-intelligence)**.
+
+1. **Install from Agent Hub** — install the listing into a workspace.
+2. **Connect one channel** (**Channels** tab) so Mercer can reach you — **WhatsApp** recommended (Phone Number ID + Access Token), or Telegram / Slack / Discord / email. You only need one.
+3. **(Optional) Connect a CRM or source** (**Integrations** tab) — Salesforce, HubSpot, Email, or LinkedIn. Mercer works fine from pasted updates without one.
+4. **Say hi** — Mercer introduces itself, offers to rename, gets your channel connected, captures your sales context, and builds your first client brief.
+
+> Credentials live in the dashboard (Integrations / Channels tabs), never in chat or files. When you connect a CRM, Nora writes `integrations/NORA_INTEGRATIONS.md` and updates `TOOLS.md` automatically.
 
 ## What This Template Does
 

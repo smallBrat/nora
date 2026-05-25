@@ -4,5 +4,6 @@
   "description": "Drafts personalized payment reminder sequences for overdue invoices so you get paid faster without the awkward chase.",
   "price": "Free",
   "category": "Finance",
-  "starterType": "finance"
+  "starterType": "finance",
+  "extraFiles": ["PROFILE.md", "README.md"]
 }

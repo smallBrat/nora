@@ -4,5 +4,6 @@
   "description": "Captures ideas, turns them into owned work, tracks status, and summarizes what is pending, blocked, or waiting on decisions.",
   "price": "Free",
   "category": "Operations",
-  "starterType": "operations"
+  "starterType": "operations",
+  "extraFiles": ["PROFILE.md", "README.md"]
 }

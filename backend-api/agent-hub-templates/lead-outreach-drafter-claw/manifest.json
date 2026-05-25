@@ -4,5 +4,6 @@
   "description": "Researches prospects, writes personalized outreach messages, and builds follow-up sequences so opportunities don't go cold.",
   "price": "Free",
   "category": "Sales",
-  "starterType": "sales"
+  "starterType": "sales",
+  "extraFiles": ["PROFILE.md", "README.md"]
 }
