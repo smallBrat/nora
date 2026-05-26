@@ -120,9 +120,16 @@ A small CLI lives in [`cli/`](./cli) (`@nora/cli`) and wraps the same surface fo
 
 ## Roadmap
 
-**Current focus** — Hermes/OpenClaw parity across validation, logs, terminal, monitoring, and integrations · first-run operator UX · account-scoped monitoring · auth and key-sync hardening · Agent Hub ergonomics.
+Current roadmap items:
 
-**Recently shipped** — multi-tenant RBAC (`owner/admin/editor/viewer`); workspace-scoped REST API + CLI; alerting and cost controls (alert rules with retried webhook delivery, per-workspace budgets, cost dashboard); agent versioning and rollback; fleet-level runtime transitions; SMTP-driven workspace invitations and email alert channel.
+- **High priority - NemoClaw production readiness:** harden secure-sandbox deploys across enablement, NVIDIA key and model configuration, OpenShell policy controls, approvals, gateway health, logs, terminal access, telemetry, and end-to-end validation.
+- **Kubernetes policy controls:** extend NemoClaw/OpenShell policy enforcement, approval workflows, network policy defaults, pod-level telemetry, and smoke coverage to k3s/Kubernetes deploy targets.
+- **Proxmox backend:** continue adapter work for standard, Hermes, and NemoClaw-backed LXC deployments, with stronger API/SSH validation, template handling, lifecycle operations, log streaming, telemetry, and smoke coverage.
+- **Hermes/OpenClaw parity:** close runtime gaps across validation, deployment readiness, logs, terminal access, monitoring, integration setup, and failure reporting.
+- **First-run operator UX:** tighten the setup path for workspaces, LLM providers, provisioning backends, the first agent deploy, and recommended smoke checks.
+- **Account-scoped monitoring:** add account-level health views that roll up workspace, agent, runtime, cost, and alert signals with drill-downs where operators need detail.
+- **Auth and key-sync hardening:** strengthen session and API-key boundaries, provider key propagation, audit trails, key rotation, and recovery from partial sync failures.
+- **Agent Hub ergonomics:** improve template discovery, install/configure flows, version metadata, setup guidance, and post-install validation.
 
 ## Development
 
