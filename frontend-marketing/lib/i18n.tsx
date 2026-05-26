@@ -70,8 +70,7 @@ const TRANSLATIONS = {
     "Open Source, License, and PaaS Mode": "Open source, licencia y modo PaaS",
     "Apache 2.0 rights, self-hosting, and PaaS mode":
       "Derechos Apache 2.0, autohospedaje y modo PaaS",
-    "Nora is open source first, and PaaS mode is yours to run.":
-      "Nora prioriza el open source, y el modo PaaS lo operas tu.",
+    "Open source licensing with room to operate.": "Licencia open source con margen para operar.",
     "What Apache 2.0 means here": "Que significa Apache 2.0 aqui",
     "Apache 2.0 rights": "Derechos Apache 2.0",
     "Public site": "Sitio publico",
@@ -144,8 +143,8 @@ const TRANSLATIONS = {
     "Open Source, License, and PaaS Mode": "Open source, licence et mode PaaS",
     "Apache 2.0 rights, self-hosting, and PaaS mode":
       "Droits Apache 2.0, auto-hebergement et mode PaaS",
-    "Nora is open source first, and PaaS mode is yours to run.":
-      "Nora est d'abord open source, et le mode PaaS est a vous d'exploiter.",
+    "Open source licensing with room to operate.":
+      "La licence open source laisse de la place pour operer.",
     "What Apache 2.0 means here": "Ce que signifie Apache 2.0 ici",
     "Apache 2.0 rights": "Droits Apache 2.0",
     "Public site": "Site public",
@@ -215,8 +214,7 @@ const TRANSLATIONS = {
     "Could not create the account. Please try again.": "无法创建账户。请重试。",
     "Open Source, License, and PaaS Mode": "开源、许可和 PaaS 模式",
     "Apache 2.0 rights, self-hosting, and PaaS mode": "Apache 2.0 权利、自托管和 PaaS 模式",
-    "Nora is open source first, and PaaS mode is yours to run.":
-      "Nora 以开源为先，PaaS 模式由您来运营。",
+    "Open source licensing with room to operate.": "开源许可，保留运营空间。",
     "What Apache 2.0 means here": "Apache 2.0 在这里的含义",
     "Apache 2.0 rights": "Apache 2.0 权利",
     "Public site": "公共站点",
@@ -284,8 +282,7 @@ const TRANSLATIONS = {
     "Could not create the account. Please try again.": "無法建立帳戶。請重試。",
     "Open Source, License, and PaaS Mode": "開源、授權和 PaaS 模式",
     "Apache 2.0 rights, self-hosting, and PaaS mode": "Apache 2.0 權利、自託管和 PaaS 模式",
-    "Nora is open source first, and PaaS mode is yours to run.":
-      "Nora 以開源為先，PaaS 模式由您來營運。",
+    "Open source licensing with room to operate.": "開源授權，保留營運空間。",
     "What Apache 2.0 means here": "Apache 2.0 在這裡的含義",
     "Apache 2.0 rights": "Apache 2.0 權利",
     "Public site": "公共網站",

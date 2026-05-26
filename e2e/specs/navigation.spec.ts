@@ -27,7 +27,9 @@ test.describe("Public marketing pages", () => {
 
   test("pricing, login, and signup entry points are reachable", async ({ page }) => {
     await page.goto("/pricing");
-    await expect(page.getByRole("heading", { name: /open source first/i })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: /open source licensing with room to operate/i }),
+    ).toBeVisible();
     await expect(page.getByRole("heading", { name: /what apache 2\.0 means here/i })).toBeVisible();
     await expect(
       page
@@ -56,7 +58,7 @@ test.describe("Public marketing pages", () => {
     await page.goto("/fr/pricing");
     await expect(
       page.getByRole("heading", {
-        name: /nora est d'abord open source/i,
+        name: /la licence open source laisse de la place pour operer/i,
       }),
     ).toBeVisible();
     await expect(page.getByRole("link", { name: /creer un compte/i }).first()).toBeVisible();
