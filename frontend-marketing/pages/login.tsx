@@ -164,7 +164,7 @@ export default function Login() {
             </a>
             <Link
               href="/signup"
-              className="rounded-full bg-[#f2e3c5] px-4 py-2 text-sm font-black text-slate-950 transition-transform hover:-translate-y-0.5"
+              className="rounded-full bg-[#f2d7a1] px-4 py-2 text-sm font-black text-slate-950 transition-transform hover:-translate-y-0.5"
             >
               Create Account
             </Link>
@@ -235,7 +235,7 @@ export default function Login() {
             </div>
 
             <div className="mt-6 rounded-[28px] border border-[#8ae6ff]/18 bg-[#8ae6ff]/7 px-5 py-5">
-              <div className="text-xs font-black uppercase tracking-[0.28em] text-[#dff9ff]">
+              <div className="text-xs font-black uppercase tracking-[0.28em] text-[#eef4fb]">
                 Instance note
               </div>
               <p className="mt-3 text-sm leading-7 text-slate-300">

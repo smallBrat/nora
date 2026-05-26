@@ -66,7 +66,7 @@ export default function AgentTerminal({
           red: "#ef4444",
           green: "#22c55e",
           yellow: "#eab308",
-          blue: "#3b82f6",
+          blue: "#8ae6ff",
           magenta: "#a855f7",
           cyan: "#06b6d4",
           white: "#e2e8f0",

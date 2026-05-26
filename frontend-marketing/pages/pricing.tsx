@@ -138,7 +138,7 @@ export default function Pricing() {
             </Link>
             <Link
               href="/signup"
-              className="rounded-full bg-[#f2e3c5] px-4 py-2 text-sm font-black text-slate-950 transition-transform hover:-translate-y-0.5"
+              className="rounded-full bg-[#f2d7a1] px-4 py-2 text-sm font-black text-slate-950 transition-transform hover:-translate-y-0.5"
             >
               Create Account
             </Link>
@@ -166,7 +166,7 @@ export default function Pricing() {
                   href={QUICKSTART_URL}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center justify-center gap-2 rounded-full bg-[#f2e3c5] px-6 py-3 text-sm font-black text-slate-950 transition-transform hover:-translate-y-0.5"
+                  className="inline-flex items-center justify-center gap-2 rounded-full bg-[#f2d7a1] px-6 py-3 text-sm font-black text-slate-950 transition-transform hover:-translate-y-0.5"
                 >
                   Open Quick Start <ArrowRight size={16} />
                 </a>
@@ -180,7 +180,7 @@ export default function Pricing() {
                   href={OSS_REPO_URL}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center justify-center gap-2 rounded-full border border-[#8ae6ff]/20 bg-[#8ae6ff]/8 px-6 py-3 text-sm font-bold text-[#dff9ff] transition-colors hover:bg-[#8ae6ff]/14"
+                  className="inline-flex items-center justify-center gap-2 rounded-full border border-[#8ae6ff]/20 bg-[#8ae6ff]/8 px-6 py-3 text-sm font-bold text-[#eef4fb] transition-colors hover:bg-[#8ae6ff]/14"
                 >
                   View GitHub Repo <ArrowUpRight size={16} />
                 </a>

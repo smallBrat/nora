@@ -12,13 +12,13 @@ const ICONS = {
 const COLORS = {
   success: "bg-emerald-900/80 border-emerald-700 text-emerald-200",
   error: "bg-red-900/80 border-red-700 text-red-200",
-  info: "bg-blue-900/80 border-blue-700 text-blue-200",
+  info: "bg-[#071018]/90 border-[#8ae6ff]/35 text-[#eef4fb]",
 };
 
 const ICON_COLORS = {
   success: "text-emerald-400",
   error: "text-red-400",
-  info: "text-blue-400",
+  info: "text-[#8ae6ff]",
 };
 
 let toastId = 0;
@@ -30,14 +30,17 @@ export function ToastProvider({ children }) {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
-  const addToast = useCallback((message, variant = "info", duration = 4000) => {
-    const id = ++toastId;
-    setToasts((prev) => [...prev, { id, message, variant }]);
-    if (duration > 0) {
-      setTimeout(() => removeToast(id), duration);
-    }
-    return id;
-  }, [removeToast]);
+  const addToast = useCallback(
+    (message, variant = "info", duration = 4000) => {
+      const id = ++toastId;
+      setToasts((prev) => [...prev, { id, message, variant }]);
+      if (duration > 0) {
+        setTimeout(() => removeToast(id), duration);
+      }
+      return id;
+    },
+    [removeToast],
+  );
 
   const toast = useCallback(
     Object.assign((msg) => addToast(msg, "info"), {
@@ -45,14 +48,17 @@ export function ToastProvider({ children }) {
       error: (msg) => addToast(msg, "error"),
       info: (msg) => addToast(msg, "info"),
     }),
-    [addToast]
+    [addToast],
   );
 
   return (
     <ToastContext.Provider value={toast}>
       {children}
 
-      <div className="fixed top-4 right-4 z-[9999] flex flex-col gap-3 pointer-events-none" style={{ maxWidth: 420 }}>
+      <div
+        className="fixed top-4 right-4 z-[9999] flex flex-col gap-3 pointer-events-none"
+        style={{ maxWidth: 420 }}
+      >
         {toasts.map((t) => {
           const Icon = ICONS[t.variant] || Info;
           return (
@@ -60,7 +66,10 @@ export function ToastProvider({ children }) {
               key={t.id}
               className={`pointer-events-auto flex items-start gap-3 px-4 py-3 rounded-xl border shadow-lg animate-slide-in backdrop-blur-sm ${COLORS[t.variant] || COLORS.info}`}
             >
-              <Icon size={18} className={`mt-0.5 flex-shrink-0 ${ICON_COLORS[t.variant] || ICON_COLORS.info}`} />
+              <Icon
+                size={18}
+                className={`mt-0.5 flex-shrink-0 ${ICON_COLORS[t.variant] || ICON_COLORS.info}`}
+              />
               <p className="text-sm font-medium flex-1 leading-snug">{t.message}</p>
               <button
                 onClick={() => removeToast(t.id)}

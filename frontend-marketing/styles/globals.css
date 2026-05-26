@@ -1,18 +1,37 @@
 @import "tailwindcss";
+@config "../tailwind.config.ts";
+@source "../pages";
+@source "../components";
+
+@theme {
+  --color-brand-ink: #071018;
+  --color-brand-foreground: #eef4fb;
+  --color-brand-cyan: #8ae6ff;
+  --color-brand-gold: #f2d7a1;
+  --color-brand-orange: #ea8d3d;
+}
 
 :root {
-  --background: #071018;
-  --foreground: #eef4fb;
+  --brand-ink: #071018;
+  --brand-foreground: #eef4fb;
+  --brand-cyan: #8ae6ff;
+  --brand-gold: #f2d7a1;
+  --brand-orange: #ea8d3d;
+  --background: var(--brand-ink);
+  --foreground: var(--brand-foreground);
   --panel: rgba(9, 17, 28, 0.78);
   --panel-strong: rgba(6, 12, 20, 0.9);
-  --panel-warm: rgba(242, 233, 217, 0.94);
+  --panel-warm: rgba(242, 215, 161, 0.94);
   --line: rgba(255, 255, 255, 0.1);
   --line-soft: rgba(255, 255, 255, 0.06);
   --muted: #9da9b9;
-  --warm: #f2d7a1;
-  --accent: #ea8d3d;
-  --accent-cool: #8ae6ff;
-  --ink: #071018;
+  --warm: var(--brand-gold);
+  --accent: var(--brand-orange);
+  --accent-cool: var(--brand-cyan);
+  --ink: var(--brand-ink);
+  --brand-cyan-surface: rgba(138, 230, 255, 0.12);
+  --brand-cyan-border: rgba(138, 230, 255, 0.34);
+  --brand-cyan-hover: color-mix(in srgb, var(--brand-cyan) 86%, var(--brand-ink));
 }
 
 html {
@@ -175,7 +194,10 @@ a {
     font-size: 0.9rem;
     font-weight: 700;
     color: #f4f7fb;
-    transition: background-color 160ms ease, border-color 160ms ease, transform 160ms ease;
+    transition:
+      background-color 160ms ease,
+      border-color 160ms ease,
+      transform 160ms ease;
   }
 
   .link-chip:hover {
@@ -206,7 +228,10 @@ a {
       linear-gradient(180deg, rgba(255, 255, 255, 0.06), transparent 40%),
       linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
       linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
-    background-size: 100% 100%, 28px 28px, 28px 28px;
+    background-size:
+      100% 100%,
+      28px 28px,
+      28px 28px;
   }
 
   .glow-line {
@@ -225,6 +250,37 @@ a {
 
   .float-soft {
     animation: drift-up 7s ease-in-out infinite alternate;
+  }
+
+  .bg-blue-600,
+  .bg-blue-700 {
+    background-color: var(--brand-cyan);
+  }
+
+  .bg-blue-600.text-white,
+  .bg-blue-700.text-white,
+  .bg-blue-600 .text-white,
+  .bg-blue-700 .text-white {
+    color: var(--brand-ink);
+  }
+
+  .text-blue-200,
+  .text-blue-300,
+  .text-blue-400,
+  .text-blue-500,
+  .text-blue-600,
+  .text-blue-700 {
+    color: var(--brand-cyan);
+  }
+
+  .border-blue-500,
+  .border-blue-700 {
+    border-color: var(--brand-cyan-border);
+  }
+
+  .hover\:bg-blue-700:hover {
+    background-color: var(--brand-cyan-hover);
+    color: var(--brand-ink);
   }
 }
 

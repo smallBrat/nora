@@ -49,7 +49,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse, onClose }
   return (
     <div
       className={clsx(
-        "bg-slate-950 text-white flex flex-col border-r border-white/5 shadow-2xl z-50 overflow-y-auto transition-all duration-300",
+        "bg-brand-ink text-brand-foreground flex flex-col border-r border-brand-cyan/10 shadow-2xl z-50 overflow-y-auto transition-all duration-300",
         collapsed ? "w-[68px]" : "w-64",
       )}
     >
@@ -69,8 +69,10 @@ export default function Sidebar({ collapsed = false, onToggleCollapse, onClose }
         />
         {!collapsed && (
           <div className="flex flex-col min-w-0">
-            <span className="text-xl font-bold tracking-tight leading-none text-white">Nora</span>
-            <span className="text-[10px] text-slate-500 uppercase font-black tracking-widest mt-1 opacity-80">
+            <span className="text-xl font-bold tracking-tight leading-none text-brand-foreground">
+              Nora
+            </span>
+            <span className="mt-1 text-[10px] font-black uppercase tracking-widest text-brand-cyan/70">
               {t("Deploy intelligence anywhere.")}
             </span>
           </div>
@@ -79,7 +81,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse, onClose }
         {onClose && !collapsed && (
           <button
             onClick={onClose}
-            className="ml-auto p-1.5 text-slate-500 hover:text-white rounded-lg hover:bg-white/10 transition-colors lg:hidden"
+            className="ml-auto rounded-lg p-1.5 text-brand-foreground/50 transition-colors hover:bg-brand-cyan/10 hover:text-brand-foreground lg:hidden"
           >
             <X size={18} />
           </button>
@@ -89,9 +91,9 @@ export default function Sidebar({ collapsed = false, onToggleCollapse, onClose }
       {/* Nav Items */}
       <div className={clsx("flex-1 space-y-1", collapsed ? "px-2" : "px-4")}>
         {!collapsed && (
-          <div className="text-[10px] text-slate-500 font-bold px-4 mb-4 uppercase tracking-[0.2em] opacity-60 flex items-center gap-2">
+          <div className="mb-4 flex items-center gap-2 px-4 text-[10px] font-bold uppercase tracking-[0.2em] text-brand-cyan/55">
             {t("Main Operations")}
-            <div className="flex-1 h-[1px] bg-white/5 ml-2"></div>
+            <div className="ml-2 h-[1px] flex-1 bg-brand-cyan/10"></div>
           </div>
         )}
 
@@ -107,21 +109,23 @@ export default function Sidebar({ collapsed = false, onToggleCollapse, onClose }
                 "flex items-center gap-3 rounded-xl text-sm font-medium transition-all group relative",
                 collapsed ? "justify-center px-2 py-3" : "px-4 py-3",
                 isActive(item.href)
-                  ? "bg-blue-600 text-white shadow-lg shadow-blue-500/20"
-                  : "text-slate-400 hover:text-white hover:bg-white/5",
+                  ? "bg-brand-cyan text-brand-ink shadow-lg shadow-brand-cyan/20"
+                  : "text-brand-foreground/62 hover:bg-brand-cyan/10 hover:text-brand-foreground",
               )}
             >
               <item.icon
                 size={18}
                 className={clsx(
                   "transition-transform group-hover:scale-110 shrink-0",
-                  isActive(item.href) ? "text-white" : "text-slate-500 group-hover:text-blue-400",
+                  isActive(item.href)
+                    ? "text-brand-ink"
+                    : "text-brand-foreground/42 group-hover:text-brand-cyan",
                 )}
               />
               {!collapsed && t(item.name)}
 
               {isActive(item.href) && (
-                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-white rounded-r-full"></div>
+                <div className="absolute left-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-r-full bg-brand-ink"></div>
               )}
             </div>
           </a>
@@ -129,7 +133,12 @@ export default function Sidebar({ collapsed = false, onToggleCollapse, onClose }
       </div>
 
       {/* Footer */}
-      <div className={clsx("mt-auto border-t border-white/5 space-y-1", collapsed ? "p-2" : "p-4")}>
+      <div
+        className={clsx(
+          "mt-auto space-y-1 border-t border-brand-cyan/10",
+          collapsed ? "p-2" : "p-4",
+        )}
+      >
         <a
           href={REPO_URL}
           target="_blank"
@@ -140,7 +149,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse, onClose }
         >
           <div
             className={clsx(
-              "flex items-center gap-3 rounded-xl text-sm font-medium transition-all group text-slate-500 hover:text-white hover:bg-white/5",
+              "flex items-center gap-3 rounded-xl text-sm font-medium transition-all group text-brand-foreground/50 hover:bg-brand-cyan/10 hover:text-brand-foreground",
               collapsed ? "justify-center px-2 py-3" : "px-4 py-3",
             )}
           >
@@ -148,7 +157,10 @@ export default function Sidebar({ collapsed = false, onToggleCollapse, onClose }
             {!collapsed && (
               <>
                 <span className="flex-1">{t("GitHub Repo")}</span>
-                <ExternalLink size={14} className="text-slate-600 group-hover:text-slate-300" />
+                <ExternalLink
+                  size={14}
+                  className="text-brand-foreground/35 group-hover:text-brand-cyan"
+                />
               </>
             )}
           </div>
@@ -164,8 +176,8 @@ export default function Sidebar({ collapsed = false, onToggleCollapse, onClose }
               "flex items-center gap-3 rounded-xl text-sm font-medium transition-all group",
               collapsed ? "justify-center px-2 py-3" : "px-4 py-3",
               isActive("/app/settings")
-                ? "bg-white/10 text-white"
-                : "text-slate-500 hover:text-white hover:bg-white/5",
+                ? "bg-brand-cyan/16 text-brand-foreground"
+                : "text-brand-foreground/50 hover:bg-brand-cyan/10 hover:text-brand-foreground",
             )}
           >
             <Settings size={18} className="shrink-0" />
@@ -178,7 +190,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapse, onClose }
           <button
             onClick={onToggleCollapse}
             className={clsx(
-              "flex items-center gap-3 rounded-xl text-sm font-medium transition-all w-full text-slate-500 hover:text-white hover:bg-white/5",
+              "flex items-center gap-3 rounded-xl text-sm font-medium transition-all w-full text-brand-foreground/50 hover:bg-brand-cyan/10 hover:text-brand-foreground",
               collapsed ? "justify-center px-2 py-3" : "px-4 py-3",
             )}
             title={collapsed ? t("Expand sidebar") : t("Collapse sidebar")}

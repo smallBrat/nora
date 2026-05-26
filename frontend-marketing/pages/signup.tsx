@@ -120,7 +120,7 @@ export default function Signup() {
             </a>
             <Link
               href="/login"
-              className="rounded-full bg-[#f2e3c5] px-4 py-2 text-sm font-black text-slate-950 transition-transform hover:-translate-y-0.5"
+              className="rounded-full bg-[#f2d7a1] px-4 py-2 text-sm font-black text-slate-950 transition-transform hover:-translate-y-0.5"
             >
               Log In
             </Link>
@@ -153,7 +153,7 @@ export default function Signup() {
                     key={item}
                     className="flex items-start gap-3 text-sm leading-7 text-slate-300"
                   >
-                    <div className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-[#8ae6ff]/20 bg-[#8ae6ff]/10 text-[0.68rem] font-black text-[#dff9ff]">
+                    <div className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-[#8ae6ff]/20 bg-[#8ae6ff]/10 text-[0.68rem] font-black text-[#eef4fb]">
                       {index + 1}
                     </div>
                     <span>{item}</span>
@@ -195,7 +195,7 @@ export default function Signup() {
             </div>
 
             <div className="mt-6 rounded-[28px] border border-[#8ae6ff]/18 bg-[#8ae6ff]/7 px-5 py-5">
-              <div className="text-xs font-black uppercase tracking-[0.28em] text-[#dff9ff]">
+              <div className="text-xs font-black uppercase tracking-[0.28em] text-[#eef4fb]">
                 Instance note
               </div>
               <p className="mt-3 text-sm leading-7 text-slate-300">

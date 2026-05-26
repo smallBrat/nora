@@ -3,7 +3,7 @@ export default function StatusBadge({ status }) {
     running: "bg-green-100 text-green-700",
     stopped: "bg-slate-100 text-slate-500",
     deploying: "bg-yellow-100 text-yellow-700",
-    queued: "bg-blue-100 text-blue-700",
+    queued: "bg-brand-cyan/20 text-brand-ink",
     error: "bg-red-100 text-red-700",
     warning: "bg-orange-100 text-orange-700",
     active: "bg-green-100 text-green-700",
@@ -18,7 +18,7 @@ export default function StatusBadge({ status }) {
     running: "bg-green-500",
     stopped: "bg-slate-400",
     deploying: "bg-yellow-500",
-    queued: "bg-blue-500",
+    queued: "bg-brand-cyan",
     error: "bg-red-500",
     warning: "bg-orange-500",
     active: "bg-green-500",
@@ -30,7 +30,9 @@ export default function StatusBadge({ status }) {
   };
 
   return (
-    <span className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-full ${colors[status] || colors.stopped}`}>
+    <span
+      className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-full ${colors[status] || colors.stopped}`}
+    >
       <span className={`w-1.5 h-1.5 rounded-full ${dotColors[status] || dotColors.stopped}`} />
       {status}
     </span>

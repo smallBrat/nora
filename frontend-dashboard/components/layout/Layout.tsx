@@ -77,7 +77,7 @@ export default function Layout({ children }) {
   if (!authChecked) return null;
 
   return (
-    <div className="flex h-screen bg-[#f8fafc] overflow-hidden selection:bg-blue-500/20">
+    <div className="flex h-screen overflow-hidden bg-[#eef4fb] selection:bg-brand-cyan/25">
       {/* Sidebar - Desktop (collapsible) */}
       <div className="hidden lg:flex lg:flex-shrink-0 transition-all duration-300">
         <Sidebar collapsed={sidebarCollapsed} onToggleCollapse={toggleCollapsed} />
@@ -90,7 +90,7 @@ export default function Layout({ children }) {
             className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm"
             onClick={() => setSidebarOpen(false)}
           ></div>
-          <div className="relative flex flex-col w-64 bg-slate-950 animate-in slide-in-from-left duration-300">
+          <div className="relative flex w-64 flex-col bg-brand-ink animate-in slide-in-from-left duration-300">
             <Sidebar collapsed={false} onClose={() => setSidebarOpen(false)} />
           </div>
         </div>
@@ -101,7 +101,7 @@ export default function Layout({ children }) {
         <Topbar onMenuClick={() => setSidebarOpen(true)} />
 
         {/* Page Content */}
-        <main className="flex-1 flex flex-col overflow-hidden bg-[#f8fafc]">
+        <main className="flex-1 flex flex-col overflow-hidden bg-[#eef4fb]">
           {showSystemBanner ? (
             <section
               className={`shrink-0 border-b px-3 py-3 sm:px-4 md:px-6 lg:px-8 ${

@@ -66,21 +66,21 @@ function AdminAccessGate({ children }) {
 
   if (status === "error") {
     return (
-      <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center px-6">
-        <div className="max-w-md rounded-3xl border border-white/10 bg-white/5 p-8 text-center">
+      <div className="flex min-h-screen items-center justify-center bg-brand-ink px-6 text-brand-foreground">
+        <div className="max-w-md rounded-3xl border border-brand-cyan/10 bg-brand-cyan/6 p-8 text-center">
           <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-red-500/15 text-red-300">
             <ShieldAlert size={24} />
           </div>
           <h1 className="text-xl font-black">{t("Admin access check failed")}</h1>
-          <p className="mt-3 text-sm text-slate-300">{error}</p>
+          <p className="mt-3 text-sm text-brand-foreground/74">{error}</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center">
-      <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-5 py-4 text-sm font-bold">
+    <div className="flex min-h-screen items-center justify-center bg-brand-ink text-brand-foreground">
+      <div className="flex items-center gap-3 rounded-2xl border border-brand-cyan/10 bg-brand-cyan/6 px-5 py-4 text-sm font-bold">
         <Loader2 size={18} className="animate-spin" />
         {t("Checking admin access...")}
       </div>

@@ -44,7 +44,7 @@ export default function Privacy() {
             </Link>
             <Link
               href="/signup"
-              className="rounded-full bg-[#f2e3c5] px-4 py-2 text-sm font-black text-slate-950 transition-transform hover:-translate-y-0.5"
+              className="rounded-full bg-[#f2d7a1] px-4 py-2 text-sm font-black text-slate-950 transition-transform hover:-translate-y-0.5"
             >
               Create Account
             </Link>

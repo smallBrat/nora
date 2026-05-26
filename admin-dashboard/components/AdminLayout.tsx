@@ -104,10 +104,10 @@ export default function AdminLayout({ children }) {
   const systemBannerCritical = systemBanner?.severity === "critical";
 
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-950">
+    <div className="min-h-screen bg-[#eef4fb] text-brand-ink">
       <div className="flex min-h-screen flex-col md:flex-row">
-        <aside className="w-full bg-slate-950 text-white md:min-h-screen md:w-72">
-          <div className="border-b border-white/10 px-5 py-5 sm:px-6">
+        <aside className="w-full bg-brand-ink text-brand-foreground md:min-h-screen md:w-72">
+          <div className="border-b border-brand-cyan/10 px-5 py-5 sm:px-6">
             <div className="flex items-center gap-3">
               <img
                 src="/admin/logo-mark.png"
@@ -117,8 +117,10 @@ export default function AdminLayout({ children }) {
                 className="h-11 w-11"
               />
               <div>
-                <p className="text-lg font-black tracking-tight">{t("Nora Admin")}</p>
-                <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">
+                <p className="text-lg font-black tracking-tight text-brand-foreground">
+                  {t("Nora Admin")}
+                </p>
+                <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-brand-cyan/65">
                   {t("Full platform control")}
                 </p>
               </div>
@@ -136,7 +138,7 @@ export default function AdminLayout({ children }) {
                     "inline-flex items-center gap-3 whitespace-nowrap rounded-2xl px-4 py-3 text-sm font-semibold transition-all",
                     active
                       ? "bg-red-600 text-white shadow-lg shadow-red-600/20"
-                      : "text-slate-400 hover:bg-white/5 hover:text-white",
+                      : "text-brand-foreground/64 hover:bg-brand-cyan/10 hover:text-brand-foreground",
                   )}
                 >
                   <item.icon size={18} />
@@ -147,11 +149,11 @@ export default function AdminLayout({ children }) {
           </nav>
 
           <div className="hidden px-4 pb-4 md:block">
-            <div className="rounded-[1.5rem] border border-white/10 bg-white/5 p-4">
-              <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">
+            <div className="rounded-[1.5rem] border border-brand-cyan/10 bg-brand-cyan/6 p-4">
+              <p className="text-[11px] font-black uppercase tracking-[0.18em] text-brand-cyan/65">
                 {t("Guardrail")}
               </p>
-              <p className="mt-2 text-sm font-medium leading-relaxed text-slate-300">
+              <p className="mt-2 text-sm font-medium leading-relaxed text-brand-foreground/74">
                 {t(
                   "This surface is for admins only. Prefer inspect-first workflows, then use lifecycle and delete actions deliberately.",
                 )}
@@ -159,11 +161,11 @@ export default function AdminLayout({ children }) {
             </div>
           </div>
 
-          <div className="border-t border-white/10 p-3 md:mt-auto md:p-4">
+          <div className="border-t border-brand-cyan/10 p-3 md:mt-auto md:p-4">
             <LanguageSwitcher className="mb-3 w-full justify-center" />
             <button
               onClick={handleLogout}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-white/10 px-4 py-3 text-sm font-semibold text-slate-300 transition-colors hover:bg-white/5 hover:text-white"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-brand-cyan/12 px-4 py-3 text-sm font-semibold text-brand-foreground/72 transition-colors hover:bg-brand-cyan/10 hover:text-brand-foreground"
             >
               <LogOut size={18} />
               {t("Log Out")}

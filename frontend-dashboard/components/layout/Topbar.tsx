@@ -82,10 +82,10 @@ export default function Topbar({ onMenuClick }) {
   };
 
   return (
-    <div className="h-16 md:h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 px-4 md:px-8 flex items-center justify-between gap-4 z-40 sticky top-0">
+    <div className="sticky top-0 z-40 flex h-16 items-center justify-between gap-4 border-b border-brand-cyan/20 bg-white/82 px-4 backdrop-blur-md md:h-20 md:px-8">
       <div className="flex items-center gap-4 min-w-0">
         <button
-          className="lg:hidden p-2 text-slate-500 hover:bg-slate-50 rounded-xl transition-all shrink-0"
+          className="shrink-0 rounded-xl p-2 text-slate-500 transition-all hover:bg-brand-cyan/12 hover:text-brand-ink lg:hidden"
           onClick={onMenuClick}
         >
           <Menu size={24} />
@@ -112,7 +112,7 @@ export default function Topbar({ onMenuClick }) {
             className="flex items-center gap-2 md:gap-3 p-1 rounded-xl hover:bg-slate-50 transition-all border border-transparent hover:border-slate-200"
             onClick={() => setUserMenuOpen(!userMenuOpen)}
           >
-            <div className="w-8 h-8 md:w-10 md:h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center font-bold text-white shadow-lg shadow-blue-500/20 text-sm md:text-base">
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-brand-cyan text-sm font-bold text-brand-ink shadow-lg shadow-brand-cyan/25 md:h-10 md:w-10 md:text-base">
               {initial}
             </div>
             <div className="hidden sm:flex flex-col items-start mr-2">

@@ -12,13 +12,13 @@ const ICONS = {
 const COLORS = {
   success: "bg-emerald-50 border-emerald-200 text-emerald-900",
   error: "bg-red-50 border-red-200 text-red-900",
-  info: "bg-blue-50 border-blue-200 text-blue-900",
+  info: "bg-brand-cyan/16 border-brand-cyan/35 text-brand-ink",
 };
 
 const ICON_COLORS = {
   success: "text-emerald-500",
   error: "text-red-500",
-  info: "text-blue-500",
+  info: "text-brand-ink",
 };
 
 let nextToastId = 0;
@@ -39,7 +39,7 @@ export function ToastProvider({ children }) {
       }
       return id;
     },
-    [removeToast]
+    [removeToast],
   );
 
   const toast = useCallback(
@@ -48,16 +48,14 @@ export function ToastProvider({ children }) {
       error: (message) => addToast(message, "error"),
       info: (message) => addToast(message, "info"),
     }),
-    [addToast]
+    [addToast],
   );
 
   return (
     <ToastContext.Provider value={toast}>
       {children}
 
-      <div
-        className="fixed right-4 top-4 z-[9999] flex max-w-[420px] flex-col gap-3 pointer-events-none"
-      >
+      <div className="fixed right-4 top-4 z-[9999] flex max-w-[420px] flex-col gap-3 pointer-events-none">
         {toasts.map((toastItem) => {
           const Icon = ICONS[toastItem.variant] || Info;
           return (
@@ -69,9 +67,7 @@ export function ToastProvider({ children }) {
                 size={18}
                 className={`mt-0.5 shrink-0 ${ICON_COLORS[toastItem.variant] || ICON_COLORS.info}`}
               />
-              <p className="flex-1 text-sm font-medium leading-snug">
-                {toastItem.message}
-              </p>
+              <p className="flex-1 text-sm font-medium leading-snug">{toastItem.message}</p>
               <button
                 onClick={() => removeToast(toastItem.id)}
                 className="mt-0.5 shrink-0 opacity-60 transition-opacity hover:opacity-100"

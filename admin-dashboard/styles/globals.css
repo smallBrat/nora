@@ -1,16 +1,41 @@
 @import "tailwindcss";
+@config "../tailwind.config.ts";
+@source "../pages";
+@source "../components";
+
+@theme {
+  --color-brand-ink: #071018;
+  --color-brand-foreground: #eef4fb;
+  --color-brand-cyan: #8ae6ff;
+  --color-brand-gold: #f2d7a1;
+  --color-brand-orange: #ea8d3d;
+}
+
+:root {
+  --brand-ink: #071018;
+  --brand-foreground: #eef4fb;
+  --brand-cyan: #8ae6ff;
+  --brand-gold: #f2d7a1;
+  --brand-orange: #ea8d3d;
+  --brand-cyan-surface: rgba(138, 230, 255, 0.16);
+  --brand-cyan-surface-strong: rgba(138, 230, 255, 0.28);
+  --brand-cyan-border: rgba(138, 230, 255, 0.42);
+  --brand-cyan-readable: color-mix(in srgb, var(--brand-ink) 70%, var(--brand-cyan));
+  --brand-cyan-hover: color-mix(in srgb, var(--brand-cyan) 86%, var(--brand-ink));
+}
 
 @layer base {
   html {
-    background: #f1f5f9;
+    background: #eef4fb;
   }
 
   body {
     min-height: 100vh;
     background:
       radial-gradient(circle at top left, rgba(239, 68, 68, 0.08), transparent 30%),
-      linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%);
-    color: #0f172a;
+      radial-gradient(circle at 84% 8%, rgba(138, 230, 255, 0.16), transparent 30%),
+      linear-gradient(180deg, #eef4fb 0%, #f8fafc 44%, #eef4fb 100%);
+    color: var(--brand-ink);
   }
 
   * {
@@ -19,5 +44,97 @@
 
   ::selection {
     background: rgba(239, 68, 68, 0.18);
+  }
+}
+
+@layer utilities {
+  .bg-blue-50 {
+    background-color: var(--brand-cyan-surface);
+  }
+
+  .bg-blue-100 {
+    background-color: var(--brand-cyan-surface-strong);
+  }
+
+  .bg-blue-500,
+  .bg-blue-600,
+  .bg-blue-700 {
+    background-color: var(--brand-cyan);
+  }
+
+  .bg-blue-500.text-white,
+  .bg-blue-600.text-white,
+  .bg-blue-700.text-white,
+  .bg-blue-500 .text-white,
+  .bg-blue-600 .text-white,
+  .bg-blue-700 .text-white {
+    color: var(--brand-ink);
+  }
+
+  .text-blue-300,
+  .text-blue-400 {
+    color: var(--brand-cyan);
+  }
+
+  .text-blue-500,
+  .text-blue-600,
+  .text-blue-700,
+  .text-blue-800,
+  .text-blue-900 {
+    color: var(--brand-cyan-readable);
+  }
+
+  .border-blue-100,
+  .border-blue-200,
+  .border-blue-300,
+  .border-blue-400,
+  .border-blue-500,
+  .border-blue-500\/40 {
+    border-color: var(--brand-cyan-border);
+  }
+
+  .ring-blue-100,
+  .ring-blue-200,
+  .ring-blue-500,
+  .ring-blue-500\/20,
+  .ring-blue-500\/30 {
+    --tw-ring-color: var(--brand-cyan-border);
+  }
+
+  .shadow-blue-500\/20,
+  .shadow-blue-500\/30,
+  .shadow-blue-600\/20 {
+    --tw-shadow-color: rgba(138, 230, 255, 0.32);
+  }
+
+  .hover\:bg-blue-50:hover,
+  .hover\:bg-blue-100:hover,
+  .hover\:bg-blue-700:hover {
+    background-color: var(--brand-cyan-hover);
+    color: var(--brand-ink);
+  }
+
+  .hover\:text-blue-600:hover,
+  .hover\:text-blue-700:hover,
+  .hover\:text-blue-800:hover {
+    color: var(--brand-cyan-readable);
+  }
+
+  .hover\:border-blue-200:hover,
+  .hover\:border-blue-300:hover,
+  .focus\:border-blue-200:focus,
+  .focus\:border-blue-300:focus,
+  .focus\:border-blue-400:focus,
+  .focus\:border-blue-500:focus,
+  .focus\:border-blue-500\/40:focus {
+    border-color: var(--brand-cyan-border);
+  }
+
+  .focus\:ring-blue-100:focus,
+  .focus\:ring-blue-200:focus,
+  .focus\:ring-blue-500:focus,
+  .focus\:ring-blue-500\/20:focus,
+  .focus\:ring-blue-500\/30:focus {
+    --tw-ring-color: var(--brand-cyan-border);
   }
 }
