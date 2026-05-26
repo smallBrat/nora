@@ -335,9 +335,9 @@ export default function Home() {
                       <Zap size={14} />
                       Operator Surface
                     </div>
-                  <h2 className="max-w-sm text-3xl font-black leading-tight text-white">
-                    Deploy, observe, and control OpenClaw and Hermes from one operating loop.
-                  </h2>
+                    <h2 className="max-w-sm text-3xl font-black leading-tight text-white">
+                      Deploy, observe, and control OpenClaw and Hermes from one operating loop.
+                    </h2>
                   </div>
                   <div className="hidden text-right sm:block">
                     <div className="text-[0.62rem] font-black uppercase tracking-[0.28em] text-slate-500">
@@ -491,7 +491,8 @@ export default function Home() {
                 </h2>
                 <p className="mt-5 max-w-lg text-base leading-8 text-slate-700">
                   Operators can review the repo, run the quick start, evaluate the dashboard, and
-                  decide how far to take Nora without handing over control of keys or infrastructure.
+                  decide how far to take Nora without handing over control of keys or
+                  infrastructure.
                 </p>
               </div>
 
@@ -573,8 +574,8 @@ export default function Home() {
                 Nora
               </div>
               <p className="mt-3 text-sm leading-7 text-slate-600">
-                Deploy intelligence anywhere. Self-hosted, open source, and built for operator
-                teams running real agent infrastructure.
+                Deploy intelligence anywhere. Self-hosted, open source, and built for operator teams
+                running real agent infrastructure.
               </p>
             </div>
 

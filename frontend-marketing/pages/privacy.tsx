@@ -141,7 +141,10 @@ export default function Privacy() {
             <Section title="Contact">
               <p>
                 Questions about this policy? Email{" "}
-                <a className="font-bold text-brand-ink underline underline-offset-4" href={`mailto:${CONTACT_EMAIL}`}>
+                <a
+                  className="font-bold text-brand-ink underline underline-offset-4"
+                  href={`mailto:${CONTACT_EMAIL}`}
+                >
                   {CONTACT_EMAIL}
                 </a>{" "}
                 or open an issue on{" "}
