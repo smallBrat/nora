@@ -27,7 +27,7 @@ const LLM_ENV_VARS = new Set(providerCatalog.map((provider) => provider.envVar).
 
 const PROVIDER_MODEL_DEFAULTS = {
   anthropic: "claude-sonnet-4-5",
-  openai: "gpt-5.4",
+  openai: "gpt-5.5",
   google: "gemini-3.1-pro-preview",
   groq: "llama-3.3-70b-versatile",
   mistral: "mistral-large-latest",

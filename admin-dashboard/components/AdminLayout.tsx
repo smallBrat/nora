@@ -10,7 +10,6 @@ import {
   LogOut,
   SlidersHorizontal,
   Server,
-  Shield,
   ShieldCheck,
   ShoppingBag,
   TriangleAlert,
@@ -110,9 +109,13 @@ export default function AdminLayout({ children }) {
         <aside className="w-full bg-slate-950 text-white md:min-h-screen md:w-72">
           <div className="border-b border-white/10 px-5 py-5 sm:px-6">
             <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-red-600 shadow-lg shadow-red-500/20">
-                <Shield size={22} />
-              </div>
+              <img
+                src="/admin/logo-mark.png"
+                alt="Nora"
+                width={44}
+                height={44}
+                className="h-11 w-11"
+              />
               <div>
                 <p className="text-lg font-black tracking-tight">{t("Nora Admin")}</p>
                 <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">

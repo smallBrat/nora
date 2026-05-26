@@ -112,7 +112,7 @@ describe("Hermes helper execution", () => {
         container_id: "hermes-container-1",
       },
       {
-        defaultModel: "gpt-5.4",
+        defaultModel: "gpt-5.5",
         provider: "openai",
         baseUrl: "https://api.openai.com/v1",
       },
@@ -135,7 +135,7 @@ describe("Hermes persisted runtime state", () => {
   it("stores sensitive channel config encrypted and reads it back decrypted", async () => {
     await replacePersistedHermesState("agent-hermes-1", {
       modelConfig: {
-        defaultModel: "gpt-5.4",
+        defaultModel: "gpt-5.5",
         provider: "openai",
         baseUrl: "https://api.openai.com/v1",
       },
@@ -172,7 +172,7 @@ describe("Hermes persisted runtime state", () => {
 
     expect(state).toEqual({
       modelConfig: {
-        defaultModel: "gpt-5.4",
+        defaultModel: "gpt-5.5",
         provider: "openai",
         baseUrl: "https://api.openai.com/v1",
       },
@@ -193,7 +193,7 @@ describe("Hermes persisted runtime state", () => {
   it("derives persisted state from a live snapshot and skips empty channel payloads", () => {
     const state = snapshotToPersistedHermesState({
       modelConfig: {
-        defaultModel: "gpt-5.4",
+        defaultModel: "gpt-5.5",
         provider: "openai",
         baseUrl: "https://api.openai.com/v1",
       },
@@ -211,7 +211,7 @@ describe("Hermes persisted runtime state", () => {
 
     expect(state).toEqual({
       modelConfig: {
-        defaultModel: "gpt-5.4",
+        defaultModel: "gpt-5.5",
         provider: "openai",
         baseUrl: "https://api.openai.com/v1",
       },

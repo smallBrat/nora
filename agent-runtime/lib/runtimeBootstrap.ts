@@ -298,8 +298,8 @@ const FOUNDRY_OPENCLAW_PROVIDER_ID = "azure-openai-responses";
 const FOUNDRY_DEFAULT_MODELS = [
   { id: "gpt-5.5", name: "GPT-5.5 (Azure)", reasoning: true, contextWindow: 400000, maxTokens: 16384 },
   { id: "gpt-5.5-mini", name: "GPT-5.5 Mini (Azure)", reasoning: true, contextWindow: 400000, maxTokens: 16384 },
-  { id: "gpt-5.4-pro", name: "GPT-5.4 Pro (Azure)", reasoning: true, contextWindow: 200000, maxTokens: 128000 },
-  { id: "gpt-5.4", name: "GPT-5.4 (Azure)", reasoning: true, contextWindow: 200000, maxTokens: 128000 },
+  { id: "gpt-5.5-pro", name: "GPT-5.5 Pro (Azure)", reasoning: true, contextWindow: 200000, maxTokens: 128000 },
+  { id: "gpt-5.5", name: "GPT-5.5 (Azure)", reasoning: true, contextWindow: 200000, maxTokens: 128000 },
   { id: "gpt-5.2-codex", name: "GPT-5.2 Codex (Azure)", reasoning: true, contextWindow: 400000, maxTokens: 16384 },
   { id: "o3", name: "o3 (Azure)", reasoning: true, contextWindow: 200000, maxTokens: 100000 },
 ];

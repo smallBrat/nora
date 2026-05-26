@@ -162,7 +162,7 @@ const PROVIDER_ENV_ENDPOINT_MAP = Object.freeze({
 
 const PROVIDER_MODEL_DEFAULTS = Object.freeze({
   anthropic: "claude-sonnet-4-5",
-  openai: "gpt-5.4",
+  openai: "gpt-5.5",
   google: "gemini-3.1-pro-preview",
   groq: "llama-3.3-70b-versatile",
   mistral: "mistral-large-latest",

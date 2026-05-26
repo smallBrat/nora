@@ -10,19 +10,24 @@ import {
   Layers,
   Lock,
   Menu,
+  Scale,
   Server,
   Shield,
+  Star,
+  Tag,
   X,
   Zap,
 } from "lucide-react";
 import { useState } from "react";
 import LanguageSwitcher from "../components/LanguageSwitcher";
+import { trackEvent } from "../lib/analytics";
 
 const OSS_REPO_URL = "https://github.com/solomon2773/nora";
 const QUICKSTART_URL = `${OSS_REPO_URL}#quick-start`;
 const RAW_REPO_BASE_URL = "https://raw.githubusercontent.com/solomon2773/nora/master";
 const SETUP_SH_URL = `${RAW_REPO_BASE_URL}/setup.sh`;
 const SETUP_PS1_URL = `${RAW_REPO_BASE_URL}/setup.ps1`;
+const LATEST_VERSION = "v1.6.1";
 
 const TRUST_ITEMS = [
   {
@@ -259,6 +264,7 @@ export default function Home() {
               <div className="mt-10 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
                 <Link
                   href="/signup"
+                  onClick={() => trackEvent("Signup CTA", { location: "hero" })}
                   className="inline-flex items-center justify-center gap-2 rounded-full bg-[#f2e3c5] px-6 py-3 text-base font-black text-slate-950 transition-transform hover:-translate-y-0.5"
                 >
                   Create Account <ArrowRight size={18} />
@@ -273,10 +279,29 @@ export default function Home() {
                   href={OSS_REPO_URL}
                   target="_blank"
                   rel="noopener noreferrer"
+                  onClick={() => trackEvent("GitHub", { location: "hero-cta" })}
                   className="inline-flex items-center justify-center gap-2 rounded-full border border-[#8ae6ff]/20 bg-[#8ae6ff]/8 px-6 py-3 text-base font-bold text-[#dff9ff] transition-colors hover:bg-[#8ae6ff]/14"
                 >
                   View GitHub Repo <ArrowUpRight size={18} />
                 </a>
+              </div>
+
+              <div className="mt-6 flex flex-wrap items-center gap-2.5">
+                <a
+                  href={OSS_REPO_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => trackEvent("GitHub", { location: "hero-badge" })}
+                  className="inline-flex items-center gap-2 rounded-full border border-[#8ae6ff]/25 bg-[#8ae6ff]/10 px-3.5 py-1.5 text-sm font-bold text-[#dff9ff] transition-colors hover:bg-[#8ae6ff]/16"
+                >
+                  <Star size={14} /> Star on GitHub
+                </a>
+                <span className="inline-flex items-center gap-2 rounded-full border border-[#f2d7a1]/25 bg-[#f2d7a1]/10 px-3.5 py-1.5 text-sm font-bold text-[#f2d7a1]">
+                  <Scale size={14} /> Apache-2.0
+                </span>
+                <span className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/5 px-3.5 py-1.5 text-sm font-bold text-slate-200">
+                  <Tag size={14} /> {LATEST_VERSION}
+                </span>
               </div>
 
               <div className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-3 text-sm text-slate-400">
@@ -575,6 +600,12 @@ export default function Home() {
               <Link href="/pricing" className="hover:text-white">
                 License
               </Link>
+              <Link href="/privacy" className="hover:text-white">
+                Privacy
+              </Link>
+              <Link href="/terms" className="hover:text-white">
+                Terms
+              </Link>
               <Link href="/login" className="hover:text-white">
                 Log In
               </Link>
@@ -582,6 +613,9 @@ export default function Home() {
                 Create Account
               </Link>
             </div>
+          </div>
+          <div className="mx-auto mt-8 max-w-7xl text-xs text-slate-600">
+            © {new Date().getFullYear()} Nora · Open source under Apache 2.0
           </div>
         </footer>
       </div>

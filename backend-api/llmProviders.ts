@@ -13,7 +13,7 @@ const PROVIDERS = [
     envVar: "ANTHROPIC_API_KEY",
     models: ["claude-opus-4-6", "claude-sonnet-4-5"],
   },
-  { id: "openai", name: "OpenAI", envVar: "OPENAI_API_KEY", models: ["gpt-5.4", "gpt-5.4-pro"] },
+  { id: "openai", name: "OpenAI", envVar: "OPENAI_API_KEY", models: ["gpt-5.5", "gpt-5.5-pro"] },
   {
     id: "google",
     name: "Google (Gemini)",

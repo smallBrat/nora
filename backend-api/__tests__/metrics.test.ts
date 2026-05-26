@@ -14,7 +14,7 @@ describe("cost metrics", () => {
       ...originalEnv,
       COST_PER_1K_TOKENS: "0.01",
       COST_MODEL_RATES_JSON: JSON.stringify({
-        "openai/gpt-5.4": { input_per_1k: 0.002, output_per_1k: 0.008 },
+        "openai/gpt-5.5": { input_per_1k: 0.002, output_per_1k: 0.008 },
         "flat-model": { per_1k: 0.004 },
       }),
     };
@@ -32,7 +32,7 @@ describe("cost metrics", () => {
       .mockResolvedValueOnce({
         rows: [
           {
-            model: "gpt-5.4",
+            model: "gpt-5.5",
             provider: "openai",
             input_tokens: 100000,
             output_tokens: 50000,
@@ -53,7 +53,7 @@ describe("cost metrics", () => {
     expect(cost.output_tokens).toBe(50000);
     expect(cost.cost_details.tokens.models[0]).toEqual(
       expect.objectContaining({
-        model: "gpt-5.4",
+        model: "gpt-5.5",
         provider: "openai",
         rate_source: "model",
         token_cost: 0.6,
@@ -111,7 +111,7 @@ describe("cost metrics", () => {
       { id: "agent-1", runtime_family: "hermes" },
       "user-1",
       {
-        model: "openai/gpt-5.4",
+        model: "openai/gpt-5.5",
         usage: {
           input_tokens: 1200,
           output_tokens: 300,
@@ -130,7 +130,7 @@ describe("cost metrics", () => {
         "tokens_used",
         1500,
         JSON.stringify({
-          model: "openai/gpt-5.4",
+          model: "openai/gpt-5.5",
           provider: "openai",
           runtime_family: "hermes",
           source: "hermes-ui",

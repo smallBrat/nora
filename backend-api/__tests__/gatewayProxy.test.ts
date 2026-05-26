@@ -127,7 +127,7 @@ class mockFakeWebSocket extends EventEmitter {
                   event: "chat",
                   payload: {
                     state: "final",
-                    model: "openai/gpt-5.4",
+                    model: "openai/gpt-5.5",
                     provider: "openai",
                     message: { role: "assistant" },
                     usage: {
@@ -318,7 +318,7 @@ describe("gateway proxy control-plane routes", () => {
       expect.objectContaining({ id: "agent-1" }),
       "user-1",
       expect.objectContaining({
-        model: "openai/gpt-5.4",
+        model: "openai/gpt-5.5",
         provider: "openai",
         usage: {
           input_tokens: 1000,

@@ -725,7 +725,7 @@ describe("Hermes WebUI routes", () => {
       platformDetails: {},
       jobsCount: 0,
       modelConfig: {
-        defaultModel: "gpt-5.4",
+        defaultModel: "gpt-5.5",
         provider: "custom",
         baseUrl: "https://api.openai.com/v1",
       },
@@ -792,8 +792,8 @@ describe("Hermes WebUI routes", () => {
           retryable: false,
           error: null,
         }),
-        defaultModel: "gpt-5.4",
-        configuredModel: "gpt-5.4",
+        defaultModel: "gpt-5.5",
+        configuredModel: "gpt-5.5",
         configuredProvider: "custom",
         configuredBaseUrl: "https://api.openai.com/v1",
       }),
@@ -852,7 +852,7 @@ describe("Hermes WebUI routes", () => {
       platformDetails: {},
       jobsCount: 0,
       modelConfig: {
-        defaultModel: "gpt-5.4",
+        defaultModel: "gpt-5.5",
         provider: "custom",
         baseUrl: "https://api.openai.com/v1",
       },
@@ -928,7 +928,7 @@ describe("Hermes WebUI routes", () => {
       platformDetails: {},
       jobsCount: 0,
       modelConfig: {
-        defaultModel: "gpt-5.4",
+        defaultModel: "gpt-5.5",
         provider: "custom",
         baseUrl: "https://api.openai.com/v1",
       },

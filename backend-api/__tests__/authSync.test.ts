@@ -113,7 +113,7 @@ describe("auth sync", () => {
   it("syncs auth through the runtime endpoint and restarts supported non-docker agents", async () => {
     mockDb.query
       .mockResolvedValueOnce({
-        rows: [{ provider: "openai", model: "gpt-5.4" }],
+        rows: [{ provider: "openai", model: "gpt-5.5" }],
       })
       .mockResolvedValueOnce({
         rows: [
@@ -165,7 +165,7 @@ describe("auth sync", () => {
       }),
     );
     expect(JSON.parse(global.fetch.mock.calls[1][1].body).command).toContain(
-      'models" "set" "openai/gpt-5.4',
+      'models" "set" "openai/gpt-5.5',
     );
     expect(results).toEqual([{ agentId: "agent-k8s-1", status: "synced" }]);
   });
@@ -173,7 +173,7 @@ describe("auth sync", () => {
   it("returns a failed sync result when the runtime write command fails", async () => {
     mockDb.query
       .mockResolvedValueOnce({
-        rows: [{ provider: "openai", model: "gpt-5.4" }],
+        rows: [{ provider: "openai", model: "gpt-5.5" }],
       })
       .mockResolvedValueOnce({
         rows: [
@@ -302,7 +302,7 @@ describe("auth sync", () => {
     });
     mockDb.query
       .mockResolvedValueOnce({
-        rows: [{ provider: "openai", model: "gpt-5.4", config: {} }],
+        rows: [{ provider: "openai", model: "gpt-5.5", config: {} }],
       })
       .mockResolvedValueOnce({
         rows: [
@@ -343,7 +343,7 @@ describe("auth sync", () => {
     const configScript = decodeHermesScript(execSpy.mock.calls[0][1].cmd[2]);
     expect(configScript).toContain("payload = json.loads(");
     expect(configScript).toContain('\\"provider\\":\\"custom\\"');
-    expect(configScript).toContain('\\"defaultModel\\":\\"gpt-5.4\\"');
+    expect(configScript).toContain('\\"defaultModel\\":\\"gpt-5.5\\"');
     expect(configScript).toContain('\\"baseUrl\\":\\"https://api.openai.com/v1\\"');
     expect(configScript).toContain("repair_surrogates(load_config() or {})");
     expect(configScript).toContain("save_config(config)");

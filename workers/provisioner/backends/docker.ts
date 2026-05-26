@@ -521,7 +521,7 @@ class DockerBackend extends ProvisionerBackend {
     // Determine default model from the first auth profile provider
     const providerModelDefaults = {
       anthropic: "anthropic/claude-sonnet-4-5",
-      openai: "openai/gpt-5.4",
+      openai: "openai/gpt-5.5",
       google: "google/gemini-3-flash-preview",
       groq: "groq/llama-3.3-70b-versatile",
       mistral: "mistral/mistral-large-latest",

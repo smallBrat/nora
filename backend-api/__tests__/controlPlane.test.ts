@@ -1402,7 +1402,7 @@ describe("Hermes dashboard embed", () => {
       .put("/agents/agent-2/hermes-ui/embed/api/config")
       .set("Host", "nora.test")
       .set("Authorization", "Bearer hermes-session-token")
-      .send({ config: { model: "gpt-5.4" } });
+      .send({ config: { model: "gpt-5.5" } });
 
     expect(apiRes.status).toBe(200);
     expect(apiRes.text).toBe('{"ok":true}');
@@ -1417,7 +1417,7 @@ describe("Hermes dashboard embed", () => {
       expect.objectContaining({ "X-Hermes-Session-Token": "dash-session" }),
     );
     expect(configCall[1].headers).not.toHaveProperty("Authorization");
-    expect(configCall[1].body).toBe(JSON.stringify({ config: { model: "gpt-5.4" } }));
+    expect(configCall[1].body).toBe(JSON.stringify({ config: { model: "gpt-5.5" } }));
   });
 
   it("rejects embed requests for stopped Hermes agents", async () => {

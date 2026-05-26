@@ -206,8 +206,8 @@ function buildOpenClawRuntimeAuthBootstrapCommand() {
       compat: { supportsStore: false, supportsReasoningEffort: true },
     },
     {
-      id: "gpt-5.4-pro",
-      name: "GPT-5.4 Pro (Azure)",
+      id: "gpt-5.5-pro",
+      name: "GPT-5.5 Pro (Azure)",
       reasoning: true,
       input: ["text", "image"],
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
@@ -216,8 +216,8 @@ function buildOpenClawRuntimeAuthBootstrapCommand() {
       compat: { supportsStore: false, supportsReasoningEffort: true },
     },
     {
-      id: "gpt-5.4",
-      name: "GPT-5.4 (Azure)",
+      id: "gpt-5.5",
+      name: "GPT-5.5 (Azure)",
       reasoning: true,
       input: ["text", "image"],
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },

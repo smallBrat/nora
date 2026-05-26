@@ -356,7 +356,7 @@ These optional rates drive the Cost dashboards. Nora estimates spend from token 
 Example:
 
 ```env
-COST_MODEL_RATES_JSON={"openai/gpt-5.4":{"input_per_1k":0.002,"output_per_1k":0.008},"claude-sonnet-4-5":{"input_per_1k":0.003,"output_per_1k":0.015},"flat-model":{"per_1k":0.004}}
+COST_MODEL_RATES_JSON={"openai/gpt-5.5":{"input_per_1k":0.002,"output_per_1k":0.008},"claude-sonnet-4-5":{"input_per_1k":0.003,"output_per_1k":0.015},"flat-model":{"per_1k":0.004}}
 ```
 
 Use `input_per_1k` and `output_per_1k` when Nora records prompt/completion token splits. Use `per_1k` for total-token-only pricing.

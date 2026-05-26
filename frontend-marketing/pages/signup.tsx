@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ArrowUpRight, CheckCircle2, Loader2, Lock, Mail, Server, Shield, Zap } from "lucide-react";
 import LanguageSwitcher from "../components/LanguageSwitcher";
 import { normalizeLocale, useI18n } from "../lib/i18n";
+import { trackEvent } from "../lib/analytics";
 
 const OAUTH_LOGIN_ENABLED = process.env.NEXT_PUBLIC_OAUTH_LOGIN_ENABLED === "true";
 const IS_SELF_HOSTED = process.env.NEXT_PUBLIC_PLATFORM_MODE === "selfhosted";
@@ -44,6 +45,8 @@ export default function Signup() {
         setError(signupData.error || t("Could not create the account. Please try again."));
         return;
       }
+
+      trackEvent("Signup");
 
       const loginRes = await fetch("/api/auth/login", {
         method: "POST",
@@ -96,9 +99,7 @@ export default function Signup() {
       <div className="site-shell min-h-screen px-4 pb-10 pt-4 sm:px-6">
         <header className="mx-auto flex max-w-6xl items-center justify-between rounded-full border border-white/10 bg-black/25 px-4 py-3 backdrop-blur-xl sm:px-5">
           <Link href="/" className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/15 bg-white/10 text-sm font-black text-white">
-              N
-            </div>
+            <img src="/logo-mark.png" alt="Nora" width={40} height={40} className="h-10 w-10" />
             <div>
               <div className="text-sm font-black uppercase tracking-[0.28em] text-slate-300">
                 Nora
@@ -338,6 +339,23 @@ export default function Signup() {
                 )}
                 {loading ? "Creating account..." : "Create Account"}
               </button>
+              <p className="mt-3 text-xs leading-5 text-slate-500">
+                By creating an account you agree to our{" "}
+                <Link
+                  href="/terms"
+                  className="font-bold text-slate-700 underline underline-offset-2"
+                >
+                  Terms
+                </Link>{" "}
+                and{" "}
+                <Link
+                  href="/privacy"
+                  className="font-bold text-slate-700 underline underline-offset-2"
+                >
+                  Privacy Policy
+                </Link>
+                .
+              </p>
             </form>
 
             <div className="mt-6 flex flex-col gap-3 text-sm text-slate-700">

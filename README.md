@@ -1,4 +1,5 @@
 <div align="center">
+  <img src=".github/readme-assets/nora-logo.png" alt="Nora" width="112" height="112" />
   <h1>Nora</h1>
   <p><strong>The self-hosted AI agent ops platform.</strong></p>
   <p>

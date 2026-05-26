@@ -45,7 +45,7 @@ Returns an array of provider descriptors.
   {
     "id": "openai",
     "name": "OpenAI",
-    "models": ["gpt-5.4", "gpt-5.4-pro"]
+    "models": ["gpt-5.5", "gpt-5.5-pro"]
   },
   {
     "id": "nvidia",
@@ -117,7 +117,7 @@ POST /llm-providers
 </ParamField>
 
 <ParamField body="model" type="string">
-  Default model to use for this provider, e.g. `claude-opus-4-6` for Anthropic or `gpt-5.4` for OpenAI.
+  Default model to use for this provider, e.g. `claude-opus-4-6` for Anthropic or `gpt-5.5` for OpenAI.
 </ParamField>
 
 <ParamField body="config" type="object">

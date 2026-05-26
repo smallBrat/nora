@@ -60,9 +60,13 @@ export default function Sidebar({ collapsed = false, onToggleCollapse, onClose }
           collapsed ? "p-4 justify-center" : "p-6 pb-8",
         )}
       >
-        <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center font-bold text-2xl shadow-lg shadow-blue-500/20 text-white shrink-0">
-          N
-        </div>
+        <img
+          src="/app/logo-mark.png"
+          alt="Nora"
+          width={40}
+          height={40}
+          className="w-10 h-10 shrink-0"
+        />
         {!collapsed && (
           <div className="flex flex-col min-w-0">
             <span className="text-xl font-bold tracking-tight leading-none text-white">Nora</span>

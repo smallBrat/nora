@@ -1170,7 +1170,7 @@ async function ensureProviders(token) {
     {
       provider: "openai",
       apiKey: "sk-openai-demo-1234567890abcdef",
-      model: "gpt-5.4",
+      model: "gpt-5.5",
     },
     {
       provider: "anthropic",
