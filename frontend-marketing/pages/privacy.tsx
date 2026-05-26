@@ -10,7 +10,7 @@ const CONTACT_EMAIL = "privacy@solomontsao.com";
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section>
-      <h2 className="text-xl font-black text-white sm:text-2xl">{title}</h2>
+      <h2 className="text-xl font-black text-brand-ink sm:text-2xl">{title}</h2>
       <div className="mt-3 space-y-3">{children}</div>
     </section>
   );
@@ -27,24 +27,24 @@ export default function Privacy() {
         />
       </Head>
 
-      <div className="site-shell min-h-screen px-4 pb-16 pt-4 text-white sm:px-6">
-        <header className="mx-auto flex max-w-3xl items-center justify-between rounded-full border border-white/10 bg-black/25 px-4 py-3 backdrop-blur-xl sm:px-5">
+      <div className="site-shell min-h-screen px-4 pb-16 pt-4 text-brand-ink sm:px-6">
+        <header className="mx-auto flex max-w-3xl items-center justify-between rounded-2xl border border-brand-cyan/25 bg-white/90 px-4 py-3 shadow-xl shadow-brand-ink/10 backdrop-blur-xl sm:px-5">
           <Link href="/" className="flex items-center gap-3">
             <img src="/logo-mark.png" alt="Nora" width={40} height={40} className="h-10 w-10" />
-            <div className="text-sm font-black uppercase tracking-[0.28em] text-slate-300">
+            <div className="text-sm font-black uppercase tracking-[0.28em] text-brand-ink">
               Nora
             </div>
           </Link>
           <div className="flex items-center gap-3">
             <Link
               href="/login"
-              className="rounded-full border border-white/12 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-white/6"
+              className="rounded-full border border-brand-ink/10 px-4 py-2 text-sm font-bold text-brand-ink transition-colors hover:bg-brand-cyan/16"
             >
               Log In
             </Link>
             <Link
               href="/signup"
-              className="rounded-full bg-[#f2d7a1] px-4 py-2 text-sm font-black text-slate-950 transition-transform hover:-translate-y-0.5"
+              className="rounded-full bg-brand-cyan px-4 py-2 text-sm font-black text-brand-ink shadow-lg shadow-brand-cyan/25 transition-transform hover:-translate-y-0.5"
             >
               Create Account
             </Link>
@@ -52,12 +52,12 @@ export default function Privacy() {
         </header>
 
         <main className="mx-auto max-w-3xl pt-12">
-          <h1 className="text-4xl font-black leading-tight text-white sm:text-5xl">
+          <h1 className="text-4xl font-black leading-tight text-brand-ink sm:text-5xl">
             Privacy Policy
           </h1>
-          <p className="mt-3 text-sm text-slate-500">Last updated: {LAST_UPDATED}</p>
+          <p className="mt-3 text-sm font-semibold text-slate-600">Last updated: {LAST_UPDATED}</p>
 
-          <div className="mt-10 space-y-9 text-base leading-8 text-slate-300">
+          <div className="mt-10 space-y-9 text-base leading-8 text-slate-700">
             <Section title="Overview">
               <p>
                 Nora is open-source software you can run yourself. This Privacy Policy describes how
@@ -141,12 +141,12 @@ export default function Privacy() {
             <Section title="Contact">
               <p>
                 Questions about this policy? Email{" "}
-                <a className="text-[#8ae6ff] hover:underline" href={`mailto:${CONTACT_EMAIL}`}>
+                <a className="font-bold text-brand-ink underline underline-offset-4" href={`mailto:${CONTACT_EMAIL}`}>
                   {CONTACT_EMAIL}
                 </a>{" "}
                 or open an issue on{" "}
                 <a
-                  className="text-[#8ae6ff] hover:underline"
+                  className="font-bold text-brand-ink underline underline-offset-4"
                   href={REPO_URL}
                   target="_blank"
                   rel="noopener noreferrer"
@@ -158,11 +158,11 @@ export default function Privacy() {
             </Section>
           </div>
 
-          <div className="mt-12 flex flex-wrap gap-6 border-t border-white/8 pt-6 text-sm text-slate-400">
-            <Link href="/" className="hover:text-white">
+          <div className="mt-12 flex flex-wrap gap-6 border-t border-brand-ink/10 pt-6 text-sm font-semibold text-slate-600">
+            <Link href="/" className="hover:text-brand-ink">
               ← Back to home
             </Link>
-            <Link href="/terms" className="hover:text-white">
+            <Link href="/terms" className="hover:text-brand-ink">
               Terms of Service
             </Link>
           </div>

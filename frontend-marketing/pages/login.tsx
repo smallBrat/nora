@@ -11,9 +11,9 @@ const OSS_REPO_URL = "https://github.com/solomon2773/nora";
 const QUICKSTART_URL = `${OSS_REPO_URL}#quick-start`;
 
 const LOGIN_NOTES = [
-  "Inspect the public GitHub repo before you trust the platform.",
-  "Run Nora on infrastructure you control and use it commercially under Apache 2.0.",
-  "After login, add a provider key, deploy OpenClaw or Hermes, and validate the operator workflow.",
+  "Use this account to enter the operator dashboard for this Nora instance.",
+  "Provider keys, workspaces, deployments, logs, and alerts stay tied to the instance you control.",
+  "New environments route you to getting started so you can add a provider and deploy the first runtime.",
 ];
 
 type LanguageProfile = {
@@ -140,15 +140,15 @@ export default function Login() {
         />
       </Head>
 
-      <div className="site-shell min-h-screen px-4 pb-10 pt-4 sm:px-6">
-        <header className="mx-auto flex max-w-6xl items-center justify-between rounded-full border border-white/10 bg-black/25 px-4 py-3 backdrop-blur-xl sm:px-5">
+      <div className="site-shell min-h-screen px-4 pb-10 pt-4 text-brand-ink sm:px-6">
+        <header className="mx-auto flex max-w-6xl items-center justify-between rounded-2xl border border-brand-cyan/25 bg-white/90 px-4 py-3 shadow-xl shadow-brand-ink/10 backdrop-blur-xl sm:px-5">
           <Link href="/" className="flex items-center gap-3">
             <img src="/logo-mark.png" alt="Nora" width={40} height={40} className="h-10 w-10" />
             <div>
-              <div className="text-sm font-black uppercase tracking-[0.28em] text-slate-300">
+              <div className="text-sm font-black uppercase tracking-[0.28em] text-brand-ink">
                 Nora
               </div>
-              <div className="text-xs text-slate-500">Deploy intelligence anywhere.</div>
+              <div className="text-xs text-slate-600">Deploy intelligence anywhere.</div>
             </div>
           </Link>
 
@@ -158,13 +158,13 @@ export default function Login() {
               href={OSS_REPO_URL}
               target="_blank"
               rel="noopener noreferrer"
-              className="hidden rounded-full border border-white/12 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-white/6 sm:inline-flex sm:items-center sm:gap-2"
+              className="hidden rounded-full border border-brand-ink/10 px-4 py-2 text-sm font-bold text-brand-ink transition-colors hover:bg-brand-cyan/16 sm:inline-flex sm:items-center sm:gap-2"
             >
               GitHub <ArrowUpRight size={16} />
             </a>
             <Link
               href="/signup"
-              className="rounded-full bg-[#f2d7a1] px-4 py-2 text-sm font-black text-slate-950 transition-transform hover:-translate-y-0.5"
+              className="rounded-full bg-brand-cyan px-4 py-2 text-sm font-black text-brand-ink shadow-lg shadow-brand-cyan/25 transition-transform hover:-translate-y-0.5"
             >
               Create Account
             </Link>
@@ -178,17 +178,17 @@ export default function Login() {
               Public repo first
             </div>
             <h1 className="max-w-xl text-4xl font-black leading-tight text-white sm:text-5xl">
-              Log back into the Nora workspace you control.
+              Log in to the Nora instance you operate.
             </h1>
             <p className="mt-5 max-w-xl text-base leading-8 text-slate-300">
-              Nora is built for operator teams that want the product code, the self-host path, and
-              the runtime control surface for OpenClaw and Hermes visible in the open. The login
-              flow should stay simple while the trust model stays explicit.
+              Continue to the dashboard for your workspaces, provider keys, runtime deployments,
+              monitoring, logs, and terminal access. Nora keeps the account flow simple while the
+              control plane stays self-hostable and open source.
             </p>
 
             <div className="mt-8 rounded-[28px] border border-white/10 bg-white/[0.03] p-5">
               <div className="text-xs font-black uppercase tracking-[0.28em] text-[#f2d7a1]">
-                Why this page exists
+                After login
               </div>
               <div className="mt-4 space-y-4">
                 {LOGIN_NOTES.map((item) => (

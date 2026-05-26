@@ -17,20 +17,22 @@
   --brand-cyan: #8ae6ff;
   --brand-gold: #f2d7a1;
   --brand-orange: #ea8d3d;
-  --background: var(--brand-ink);
-  --foreground: var(--brand-foreground);
-  --panel: rgba(9, 17, 28, 0.78);
-  --panel-strong: rgba(6, 12, 20, 0.9);
-  --panel-warm: rgba(242, 215, 161, 0.94);
-  --line: rgba(255, 255, 255, 0.1);
-  --line-soft: rgba(255, 255, 255, 0.06);
-  --muted: #9da9b9;
+  --background: #eef4fb;
+  --foreground: var(--brand-ink);
+  --panel: rgba(255, 255, 255, 0.84);
+  --panel-strong: rgba(7, 16, 24, 0.94);
+  --panel-warm: rgba(255, 255, 255, 0.9);
+  --line: rgba(7, 16, 24, 0.1);
+  --line-soft: rgba(7, 16, 24, 0.06);
+  --muted: #64748b;
   --warm: var(--brand-gold);
   --accent: var(--brand-orange);
   --accent-cool: var(--brand-cyan);
   --ink: var(--brand-ink);
-  --brand-cyan-surface: rgba(138, 230, 255, 0.12);
-  --brand-cyan-border: rgba(138, 230, 255, 0.34);
+  --brand-cyan-surface: rgba(138, 230, 255, 0.16);
+  --brand-cyan-surface-strong: rgba(138, 230, 255, 0.28);
+  --brand-cyan-border: rgba(138, 230, 255, 0.42);
+  --brand-cyan-readable: color-mix(in srgb, var(--brand-ink) 70%, var(--brand-cyan));
   --brand-cyan-hover: color-mix(in srgb, var(--brand-cyan) 86%, var(--brand-ink));
 }
 
@@ -42,12 +44,10 @@ body {
   min-height: 100vh;
   color: var(--foreground);
   background:
-    radial-gradient(circle at 14% 18%, rgba(234, 141, 61, 0.18), transparent 34%),
-    radial-gradient(circle at 84% 12%, rgba(138, 230, 255, 0.11), transparent 28%),
-    radial-gradient(circle at 52% 82%, rgba(255, 255, 255, 0.06), transparent 26%),
-    linear-gradient(180deg, #071018 0%, #091522 45%, #061019 100%);
+    radial-gradient(circle at 85% 0%, rgba(138, 230, 255, 0.16), transparent 28%),
+    linear-gradient(180deg, #eef4fb 0%, #f8fafc 52%, #eef4fb 100%);
   background-attachment: fixed;
-  font-family: "Avenir Next", "Trebuchet MS", "Segoe UI", sans-serif;
+  font-family: "Inter", "Avenir Next", "Trebuchet MS", "Segoe UI", sans-serif;
 }
 
 body::before {
@@ -56,11 +56,11 @@ body::before {
   inset: 0;
   pointer-events: none;
   background-image:
-    linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+    linear-gradient(rgba(7, 16, 24, 0.026) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(7, 16, 24, 0.026) 1px, transparent 1px);
   background-size: 72px 72px;
   mask-image: radial-gradient(circle at center, black 55%, transparent 92%);
-  opacity: 0.4;
+  opacity: 0.52;
 }
 
 a {
@@ -69,7 +69,7 @@ a {
 
 ::selection {
   background: rgba(138, 230, 255, 0.24);
-  color: #ffffff;
+  color: var(--brand-ink);
 }
 
 @keyframes aura-float {
@@ -112,7 +112,7 @@ a {
   h4,
   h5,
   h6 {
-    letter-spacing: -0.04em;
+    letter-spacing: 0;
   }
 }
 
@@ -132,33 +132,29 @@ a {
     position: absolute;
     inset: -16%;
     z-index: -1;
-    background:
-      radial-gradient(circle at 18% 22%, rgba(234, 141, 61, 0.14), transparent 32%),
-      radial-gradient(circle at 82% 16%, rgba(138, 230, 255, 0.1), transparent 26%),
-      radial-gradient(circle at 58% 74%, rgba(255, 255, 255, 0.08), transparent 28%);
-    filter: blur(34px);
-    animation: aura-float 18s ease-in-out infinite alternate;
+    background: linear-gradient(135deg, rgba(138, 230, 255, 0.1), transparent 44%);
     pointer-events: none;
   }
 
   .panel-shell {
-    background: linear-gradient(180deg, rgba(9, 17, 28, 0.84), rgba(7, 15, 24, 0.64));
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow: 0 30px 110px rgba(0, 0, 0, 0.28);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(248, 250, 252, 0.78));
+    border: 1px solid rgba(138, 230, 255, 0.28);
+    box-shadow: 0 22px 70px rgba(7, 16, 24, 0.12);
     backdrop-filter: blur(18px);
+    color: var(--brand-ink);
   }
 
   .panel-shell-strong {
-    background: linear-gradient(180deg, rgba(7, 13, 22, 0.92), rgba(5, 10, 18, 0.84));
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    box-shadow: 0 30px 110px rgba(0, 0, 0, 0.34);
+    background: linear-gradient(180deg, rgba(7, 16, 24, 0.96), rgba(5, 12, 20, 0.92));
+    border: 1px solid rgba(138, 230, 255, 0.18);
+    box-shadow: 0 28px 90px rgba(7, 16, 24, 0.28);
     backdrop-filter: blur(18px);
   }
 
   .panel-warm {
-    background: linear-gradient(180deg, rgba(247, 241, 229, 0.96), rgba(237, 227, 209, 0.92));
-    border: 1px solid rgba(255, 255, 255, 0.44);
-    box-shadow: 0 28px 88px rgba(0, 0, 0, 0.22);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(238, 244, 251, 0.9));
+    border: 1px solid rgba(138, 230, 255, 0.36);
+    box-shadow: 0 24px 78px rgba(7, 16, 24, 0.14);
     color: var(--ink);
   }
 
@@ -167,20 +163,20 @@ a {
     align-items: center;
     gap: 0.5rem;
     border-radius: 999px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(138, 230, 255, 0.34);
+    background: rgba(138, 230, 255, 0.16);
     padding: 0.45rem 0.8rem;
     font-size: 0.7rem;
     font-weight: 800;
     letter-spacing: 0.18em;
     text-transform: uppercase;
-    color: #d9e4f2;
+    color: var(--brand-ink);
   }
 
   .eyebrow-warm {
-    border-color: rgba(7, 16, 24, 0.1);
-    background: rgba(7, 16, 24, 0.05);
-    color: rgba(7, 16, 24, 0.8);
+    border-color: rgba(138, 230, 255, 0.34);
+    background: rgba(138, 230, 255, 0.16);
+    color: rgba(7, 16, 24, 0.82);
   }
 
   .link-chip {
@@ -188,12 +184,12 @@ a {
     align-items: center;
     gap: 0.55rem;
     border-radius: 999px;
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(138, 230, 255, 0.34);
+    background: rgba(138, 230, 255, 0.14);
     padding: 0.7rem 1rem;
     font-size: 0.9rem;
     font-weight: 700;
-    color: #f4f7fb;
+    color: var(--brand-ink);
     transition:
       background-color 160ms ease,
       border-color 160ms ease,
@@ -201,18 +197,18 @@ a {
   }
 
   .link-chip:hover {
-    border-color: rgba(255, 255, 255, 0.22);
-    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(138, 230, 255, 0.58);
+    background: rgba(138, 230, 255, 0.24);
     transform: translateY(-1px);
   }
 
   .soft-rule {
     height: 1px;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.22), transparent);
+    background: linear-gradient(90deg, transparent, rgba(7, 16, 24, 0.18), transparent);
   }
 
   .warm-copy {
-    color: #f5e9cf;
+    color: var(--brand-ink);
   }
 
   .ink-copy {
@@ -226,12 +222,25 @@ a {
   .surface-grid {
     background:
       linear-gradient(180deg, rgba(255, 255, 255, 0.06), transparent 40%),
-      linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+      linear-gradient(rgba(138, 230, 255, 0.07) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(138, 230, 255, 0.07) 1px, transparent 1px);
     background-size:
       100% 100%,
       28px 28px,
       28px 28px;
+  }
+
+  .surface-grid-dark {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.07), transparent 40%),
+      linear-gradient(rgba(138, 230, 255, 0.08) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(138, 230, 255, 0.08) 1px, transparent 1px),
+      linear-gradient(180deg, rgba(7, 16, 24, 0.96), rgba(5, 12, 20, 0.92));
+    background-size:
+      100% 100%,
+      28px 28px,
+      28px 28px,
+      100% 100%;
   }
 
   .glow-line {
@@ -250,6 +259,34 @@ a {
 
   .float-soft {
     animation: drift-up 7s ease-in-out infinite alternate;
+  }
+
+  .panel-shell .text-white {
+    color: var(--brand-ink);
+  }
+
+  .panel-shell .text-slate-200,
+  .panel-shell .text-slate-300,
+  .panel-shell .text-slate-400 {
+    color: #475569;
+  }
+
+  .panel-shell .text-slate-500 {
+    color: #64748b;
+  }
+
+  .panel-shell [class*="border-white"] {
+    border-color: rgba(7, 16, 24, 0.1);
+  }
+
+  .panel-shell [class*="bg-white"] {
+    background-color: rgba(255, 255, 255, 0.72);
+  }
+
+  .panel-shell-strong .eyebrow {
+    border-color: rgba(138, 230, 255, 0.24);
+    background: rgba(138, 230, 255, 0.1);
+    color: var(--brand-foreground);
   }
 
   .bg-blue-600,

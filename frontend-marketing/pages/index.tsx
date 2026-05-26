@@ -31,20 +31,20 @@ const LATEST_VERSION = "v1.6.1";
 
 const TRUST_ITEMS = [
   {
-    label: "Fully open source",
-    text: "The public repo is the trust anchor. Teams can inspect the product before they adopt it.",
+    label: "Open source",
+    text: "Read the source, audit the architecture, and run Nora before you commit to it.",
   },
   {
-    label: "Commercial self-hosting",
-    text: "Apache 2.0 allows companies to run Nora on their own infrastructure and use it commercially.",
+    label: "Self-hosted control",
+    text: "Deploy the control plane on infrastructure you operate, from Docker to Kubernetes or Proxmox.",
   },
   {
-    label: "Operator workflow",
-    text: "Deploy OpenClaw or Hermes runtimes, manage keys, inspect logs, and work from the same control surface.",
+    label: "Runtime operations",
+    text: "Deploy OpenClaw or Hermes, manage provider keys, inspect logs, and open runtime terminals.",
   },
   {
-    label: "User-run PaaS mode",
-    text: "PaaS mode is part of the open product. Operators can host Nora for their own business or internal platform.",
+    label: "PaaS-ready",
+    text: "Use the same open product as an internal platform or hosted service when your team is ready.",
   },
 ];
 
@@ -52,40 +52,40 @@ const CONTROL_LANES = [
   {
     label: "Deploy",
     title: "Launch agent runtimes without stitching together the stack by hand.",
-    detail: "OpenClaw is the broadest path today. Hermes is supported as a Docker runtime.",
+    detail: "OpenClaw and Hermes across Docker, Kubernetes, Proxmox, and NemoClaw profiles.",
   },
   {
     label: "Observe",
     title: "Keep chat, logs, metrics, and runtime state in the same operator loop.",
-    detail: "OpenClaw chat and metrics or Hermes WebUI, plus logs and terminal access.",
+    detail: "Chat, runtime health, cost signals, log streams, and terminal access.",
   },
   {
     label: "Control",
     title: "Store provider keys, wire integrations, and manage access from one place.",
-    detail: "Built for teams that care about infrastructure ownership.",
+    detail: "RBAC, encrypted credentials, integrations, workspaces, and alerts.",
   },
 ];
 
 const PLATFORM_ROWS = [
   {
     icon: Server,
-    title: "Isolated runtime infrastructure",
-    copy: "Provision dedicated OpenClaw or Hermes environments instead of squeezing operations into a thin dashboard shell.",
+    title: "Provision real runtime targets",
+    copy: "Place agents on Docker, Kubernetes, Proxmox, or NemoClaw-backed targets without changing the operator workflow.",
   },
   {
     icon: Lock,
-    title: "Secrets and operator controls",
-    copy: "Keep provider keys and integration credentials inside an operator platform built for real operations.",
+    title: "Keep credentials under control",
+    copy: "Store provider keys and integration secrets encrypted, scope them by workspace, and rotate them when needed.",
   },
   {
     icon: Globe,
-    title: "Channels and integrations",
-    copy: "Connect communication channels, developer systems, and cloud tools from a single operating surface.",
+    title: "Connect the systems agents need",
+    copy: "Configure communication channels, developer tools, cloud providers, and automation endpoints from one surface.",
   },
   {
     icon: BarChart3,
-    title: "Logs, metrics, and terminal access",
-    copy: "Confirm runtime behavior with OpenClaw chat and metrics or Hermes WebUI, plus logs and terminal access in one operator surface.",
+    title: "Debug from the same place",
+    copy: "Use chat, metrics, logs, terminal access, alert rules, and cost views to understand what each runtime is doing.",
   },
 ];
 
@@ -93,29 +93,29 @@ const WORKFLOW = [
   {
     step: "01",
     title: "Create an operator account",
-    body: "Sign in on the hosted instance or create the first account on a self-hosted Nora deployment.",
+    body: "Create the first account on your Nora instance, then land in the dashboard with the right setup path.",
   },
   {
     step: "02",
-    title: "Add one provider and one runtime",
-    body: "Save an LLM key, choose OpenClaw or Hermes, and configure the first deployment.",
+    title: "Connect providers and choose a target",
+    body: "Add an LLM provider, pick OpenClaw or Hermes, then choose Docker, Kubernetes, Proxmox, or NemoClaw where available.",
   },
   {
     step: "03",
     title: "Validate the operator loop",
-    body: "Use OpenClaw chat, logs, metrics, and terminal access or Hermes WebUI, logs, and terminal access to verify that the runtime is actually usable.",
+    body: "Check readiness, chat, logs, metrics, terminal access, and alert signals before treating the runtime as production-ready.",
   },
 ];
 
 const TRUST_SURFACES = [
   {
     title: "Public GitHub repo",
-    copy: "Read the source, architecture, and quick start in the open before you trust the platform.",
+    copy: "Review the source, architecture, release notes, and contribution path in the open.",
     href: OSS_REPO_URL,
   },
   {
     title: "README quick start",
-    copy: "Clone the repo or use the installer paths to get Nora running on infrastructure you control.",
+    copy: "Clone the repo or use the installer path to run Nora on infrastructure you control.",
     href: QUICKSTART_URL,
   },
   {
@@ -143,30 +143,30 @@ export default function Home() {
         />
       </Head>
 
-      <div className="site-shell min-h-screen text-white">
+      <div className="site-shell min-h-screen text-brand-ink">
         <header className="fixed inset-x-0 top-0 z-50 px-4 sm:px-6">
-          <div className="mx-auto mt-4 flex max-w-7xl items-center justify-between rounded-full border border-white/10 bg-black/25 px-4 py-3 backdrop-blur-xl sm:px-5">
+          <div className="mx-auto mt-4 flex max-w-7xl items-center justify-between rounded-2xl border border-brand-cyan/25 bg-white/90 px-4 py-3 shadow-xl shadow-brand-ink/10 backdrop-blur-xl sm:px-5">
             <Link href="/" className="flex items-center gap-3">
               <img src="/logo-mark.png" alt="Nora" width={40} height={40} className="h-10 w-10" />
               <div>
-                <div className="text-sm font-black uppercase tracking-[0.28em] text-slate-300">
+                <div className="text-sm font-black uppercase tracking-[0.28em] text-brand-ink">
                   Nora
                 </div>
-                <div className="text-xs text-slate-500">Deploy intelligence anywhere.</div>
+                <div className="text-xs text-slate-600">Deploy intelligence anywhere.</div>
               </div>
             </Link>
 
-            <nav className="hidden items-center gap-8 text-sm font-semibold text-slate-300 md:flex">
-              <a href="#platform" className="transition-colors hover:text-white">
+            <nav className="hidden items-center gap-8 text-sm font-semibold text-slate-600 md:flex">
+              <a href="#platform" className="transition-colors hover:text-brand-ink">
                 Platform
               </a>
-              <a href="#workflow" className="transition-colors hover:text-white">
+              <a href="#workflow" className="transition-colors hover:text-brand-ink">
                 Workflow
               </a>
-              <a href="#trust" className="transition-colors hover:text-white">
+              <a href="#trust" className="transition-colors hover:text-brand-ink">
                 Trust
               </a>
-              <Link href="/pricing" className="transition-colors hover:text-white">
+              <Link href="/pricing" className="transition-colors hover:text-brand-ink">
                 License
               </Link>
             </nav>
@@ -183,13 +183,13 @@ export default function Home() {
               </a>
               <Link
                 href="/login"
-                className="rounded-full border border-white/12 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-white/6"
+                className="rounded-full border border-brand-ink/10 px-4 py-2 text-sm font-bold text-brand-ink transition-colors hover:bg-brand-cyan/16"
               >
                 Log In
               </Link>
               <Link
                 href="/signup"
-                className="rounded-full bg-[#f2d7a1] px-4 py-2 text-sm font-black text-slate-950 transition-transform hover:-translate-y-0.5"
+                className="rounded-full bg-brand-cyan px-4 py-2 text-sm font-black text-brand-ink shadow-lg shadow-brand-cyan/25 transition-transform hover:-translate-y-0.5"
               >
                 Create Account
               </Link>
@@ -198,7 +198,7 @@ export default function Home() {
             <button
               type="button"
               onClick={() => setMobileMenuOpen((open) => !open)}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-slate-200 md:hidden"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-brand-ink/10 bg-white/80 text-brand-ink md:hidden"
               aria-label="Toggle navigation"
             >
               {mobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
@@ -206,7 +206,7 @@ export default function Home() {
           </div>
 
           {mobileMenuOpen && (
-            <div className="mx-auto mt-3 max-w-7xl rounded-[28px] border border-white/10 bg-[#09131d]/94 p-5 text-sm text-slate-200 backdrop-blur-xl md:hidden">
+            <div className="mx-auto mt-3 max-w-7xl rounded-2xl border border-brand-cyan/25 bg-white/95 p-5 text-sm font-semibold text-slate-700 shadow-xl shadow-brand-ink/10 backdrop-blur-xl md:hidden">
               <div className="flex flex-col gap-4">
                 <a href="#platform" onClick={() => setMobileMenuOpen(false)}>
                   Platform
@@ -248,30 +248,28 @@ export default function Home() {
                 Fully open source. Commercial self-hosting allowed.
               </div>
 
-              <h1 className="max-w-4xl text-5xl font-black leading-[0.95] text-white sm:text-6xl lg:text-7xl">
+              <h1 className="max-w-4xl text-5xl font-black leading-[0.95] text-brand-ink sm:text-6xl lg:text-7xl">
                 Deploy intelligence anywhere.
               </h1>
 
-              <p className="mt-6 max-w-xl text-base leading-7 text-slate-300 sm:text-lg">
-                Nora gives operator teams one place to deploy OpenClaw and Hermes runtimes, manage
-                provider keys, inspect logs, open terminals, and monitor activity. OpenClaw is the
-                broadest operator path today, while Hermes is supported as a Docker-managed runtime
-                with its own WebUI. The product is fully open source, self-hostable, and
-                commercially usable under Apache 2.0, whether you are running it for your own team
-                or operating Nora in PaaS mode for your own business.
+              <p className="mt-6 max-w-xl text-base leading-7 text-slate-700 sm:text-lg">
+                Nora is a self-hosted control plane for AI agents. Deploy OpenClaw and Hermes
+                runtimes, manage provider keys, watch logs and metrics, open terminals, and operate
+                workspaces from one dashboard across Docker, Kubernetes, Proxmox, and NemoClaw
+                profiles.
               </p>
 
               <div className="mt-10 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
                 <Link
                   href="/signup"
                   onClick={() => trackEvent("Signup CTA", { location: "hero" })}
-                  className="inline-flex items-center justify-center gap-2 rounded-full bg-[#f2d7a1] px-6 py-3 text-base font-black text-slate-950 transition-transform hover:-translate-y-0.5"
+                  className="inline-flex items-center justify-center gap-2 rounded-full bg-brand-cyan px-6 py-3 text-base font-black text-brand-ink shadow-lg shadow-brand-cyan/25 transition-transform hover:-translate-y-0.5"
                 >
                   Create Account <ArrowRight size={18} />
                 </Link>
                 <Link
                   href="/login"
-                  className="inline-flex items-center justify-center gap-2 rounded-full border border-white/12 px-6 py-3 text-base font-bold text-white transition-colors hover:bg-white/6"
+                  className="inline-flex items-center justify-center gap-2 rounded-full border border-brand-ink/10 bg-white/70 px-6 py-3 text-base font-bold text-brand-ink transition-colors hover:bg-brand-cyan/16"
                 >
                   Log In
                 </Link>
@@ -280,7 +278,7 @@ export default function Home() {
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={() => trackEvent("GitHub", { location: "hero-cta" })}
-                  className="inline-flex items-center justify-center gap-2 rounded-full border border-[#8ae6ff]/20 bg-[#8ae6ff]/8 px-6 py-3 text-base font-bold text-[#eef4fb] transition-colors hover:bg-[#8ae6ff]/14"
+                  className="inline-flex items-center justify-center gap-2 rounded-full border border-brand-cyan/40 bg-brand-cyan/20 px-6 py-3 text-base font-bold text-brand-ink transition-colors hover:bg-brand-cyan/30"
                 >
                   View GitHub Repo <ArrowUpRight size={18} />
                 </a>
@@ -292,24 +290,24 @@ export default function Home() {
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={() => trackEvent("GitHub", { location: "hero-badge" })}
-                  className="inline-flex items-center gap-2 rounded-full border border-[#8ae6ff]/25 bg-[#8ae6ff]/10 px-3.5 py-1.5 text-sm font-bold text-[#eef4fb] transition-colors hover:bg-[#8ae6ff]/16"
+                  className="inline-flex items-center gap-2 rounded-full border border-brand-cyan/40 bg-brand-cyan/20 px-3.5 py-1.5 text-sm font-bold text-brand-ink transition-colors hover:bg-brand-cyan/30"
                 >
                   <Star size={14} /> Star on GitHub
                 </a>
-                <span className="inline-flex items-center gap-2 rounded-full border border-[#f2d7a1]/25 bg-[#f2d7a1]/10 px-3.5 py-1.5 text-sm font-bold text-[#f2d7a1]">
+                <span className="inline-flex items-center gap-2 rounded-full border border-brand-gold/50 bg-brand-gold/35 px-3.5 py-1.5 text-sm font-bold text-brand-ink">
                   <Scale size={14} /> Apache-2.0
                 </span>
-                <span className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/5 px-3.5 py-1.5 text-sm font-bold text-slate-200">
+                <span className="inline-flex items-center gap-2 rounded-full border border-brand-ink/10 bg-white/70 px-3.5 py-1.5 text-sm font-bold text-slate-700">
                   <Tag size={14} /> {LATEST_VERSION}
                 </span>
               </div>
 
-              <div className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-3 text-sm text-slate-400">
+              <div className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-3 text-sm font-semibold text-slate-600">
                 <a
                   href={QUICKSTART_URL}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="hover:text-white"
+                  className="hover:text-brand-ink"
                 >
                   Open self-host quick start
                 </a>
@@ -317,11 +315,11 @@ export default function Home() {
                   href={SETUP_SH_URL}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="hover:text-white"
+                  className="hover:text-brand-ink"
                 >
                   Install from bash
                 </a>
-                <Link href="/pricing" className="hover:text-white">
+                <Link href="/pricing" className="hover:text-brand-ink">
                   Read license and self-hosting details
                 </Link>
               </div>
@@ -329,7 +327,7 @@ export default function Home() {
 
             <div className="relative">
               <div className="absolute inset-0 rounded-[36px] bg-[radial-gradient(circle_at_top_left,rgba(242,215,161,0.24),transparent_36%),radial-gradient(circle_at_bottom_right,rgba(138,230,255,0.2),transparent_28%)] blur-2xl" />
-              <div className="panel-shell-strong surface-grid float-soft relative overflow-hidden rounded-[36px] p-5 sm:p-6">
+              <div className="panel-shell-strong surface-grid-dark float-soft relative overflow-hidden rounded-[36px] p-5 sm:p-6">
                 <div className="absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-[#8ae6ff] to-transparent opacity-70" />
                 <div className="flex items-end justify-between gap-6 border-b border-white/10 pb-6">
                   <div>
@@ -337,9 +335,9 @@ export default function Home() {
                       <Zap size={14} />
                       Operator Surface
                     </div>
-                    <h2 className="max-w-sm text-3xl font-black leading-tight text-white">
-                      Deploy, observe, and control OpenClaw and Hermes from one operating loop.
-                    </h2>
+                  <h2 className="max-w-sm text-3xl font-black leading-tight text-white">
+                    Deploy, observe, and control OpenClaw and Hermes from one operating loop.
+                  </h2>
                   </div>
                   <div className="hidden text-right sm:block">
                     <div className="text-[0.62rem] font-black uppercase tracking-[0.28em] text-slate-500">
@@ -396,32 +394,32 @@ export default function Home() {
                   <Cpu size={14} />
                   Built for operators
                 </div>
-                <h2 className="max-w-lg text-4xl font-black leading-tight text-white sm:text-5xl">
-                  Nora is the working surface, not a wrapper around missing infrastructure.
+                <h2 className="max-w-lg text-4xl font-black leading-tight text-brand-ink sm:text-5xl">
+                  One dashboard for the agent lifecycle.
                 </h2>
-                <p className="mt-5 max-w-lg text-base leading-8 text-slate-300">
-                  The public product story is simple: teams can create an account quickly, inspect
-                  the repo, and move from first deploy to live OpenClaw or Hermes operations without
-                  hiding the operational details.
+                <p className="mt-5 max-w-lg text-base leading-8 text-slate-700">
+                  Nora keeps deployment, secrets, runtime status, logs, alerts, and cost visibility
+                  in one operator surface, so teams do not have to stitch together separate tools
+                  for every agent backend.
                 </p>
                 <div className="mt-8 grid gap-3 sm:grid-cols-3">
-                  <div className="rounded-[24px] border border-white/10 bg-white/[0.03] px-4 py-4">
+                  <div className="rounded-2xl border border-brand-cyan/25 bg-white/75 px-4 py-4 shadow-sm">
                     <div className="text-xs font-black uppercase tracking-[0.24em] text-slate-500">
                       Surface
                     </div>
-                    <div className="mt-2 text-lg font-black text-white">Deploy</div>
+                    <div className="mt-2 text-lg font-black text-brand-ink">Deploy</div>
                   </div>
-                  <div className="rounded-[24px] border border-white/10 bg-white/[0.03] px-4 py-4">
+                  <div className="rounded-2xl border border-brand-cyan/25 bg-white/75 px-4 py-4 shadow-sm">
                     <div className="text-xs font-black uppercase tracking-[0.24em] text-slate-500">
                       Surface
                     </div>
-                    <div className="mt-2 text-lg font-black text-white">Observe</div>
+                    <div className="mt-2 text-lg font-black text-brand-ink">Observe</div>
                   </div>
-                  <div className="rounded-[24px] border border-white/10 bg-white/[0.03] px-4 py-4">
+                  <div className="rounded-2xl border border-brand-cyan/25 bg-white/75 px-4 py-4 shadow-sm">
                     <div className="text-xs font-black uppercase tracking-[0.24em] text-slate-500">
                       Surface
                     </div>
-                    <div className="mt-2 text-lg font-black text-white">Control</div>
+                    <div className="mt-2 text-lg font-black text-brand-ink">Control</div>
                   </div>
                 </div>
               </div>
@@ -457,7 +455,7 @@ export default function Home() {
                   <Layers size={14} />
                   Fast path to value
                 </div>
-                <h2 className="text-4xl font-black leading-tight text-white sm:text-5xl">
+                <h2 className="text-4xl font-black leading-tight text-brand-ink sm:text-5xl">
                   Move from account creation to a working runtime in one short loop.
                 </h2>
               </div>
@@ -488,12 +486,12 @@ export default function Home() {
                   <Shield size={14} />
                   Public trust path
                 </div>
-                <h2 className="max-w-lg text-4xl font-black leading-tight text-white sm:text-5xl">
-                  The public repo should answer the first trust questions without extra gatekeeping.
+                <h2 className="max-w-lg text-4xl font-black leading-tight text-brand-ink sm:text-5xl">
+                  The trust path starts with source you can inspect.
                 </h2>
-                <p className="mt-5 max-w-lg text-base leading-8 text-slate-300">
-                  Nora’s strongest public claim is simple: operators can read the code, run the
-                  product, and bring the self-host path online before making a bigger commitment.
+                <p className="mt-5 max-w-lg text-base leading-8 text-slate-700">
+                  Operators can review the repo, run the quick start, evaluate the dashboard, and
+                  decide how far to take Nora without handing over control of keys or infrastructure.
                 </p>
               </div>
 
@@ -532,19 +530,19 @@ export default function Home() {
                     Start with the repo or start with an account
                   </div>
                   <h2 className="max-w-2xl text-4xl font-black leading-tight text-slate-950 sm:text-5xl">
-                    Keep the public path simple: inspect the code, then log in or self-host.
+                    Start with the repo, then run Nora where it belongs.
                   </h2>
                   <p className="mt-5 max-w-xl text-base leading-8 text-slate-700">
-                    Nora should feel straightforward to adopt. The product is fully open source.
-                    Self-hosting is allowed. Commercial use is allowed. The GitHub repo stays public
-                    and the account flow stays easy.
+                    Nora is open source under Apache 2.0. Self-host it for your team, use it
+                    commercially, or operate it as an internal platform when you need hosted-style
+                    onboarding.
                   </p>
                 </div>
 
                 <div className="flex flex-col gap-3 sm:flex-row lg:flex-col">
                   <Link
                     href="/signup"
-                    className="inline-flex items-center justify-center gap-2 rounded-full bg-slate-950 px-6 py-3 text-sm font-black text-white transition-transform hover:-translate-y-0.5"
+                    className="inline-flex items-center justify-center gap-2 rounded-full bg-brand-cyan px-6 py-3 text-sm font-black text-brand-ink transition-transform hover:-translate-y-0.5"
                   >
                     Create Account <ArrowRight size={16} />
                   </Link>
@@ -569,23 +567,23 @@ export default function Home() {
         </main>
 
         <footer className="px-4 pb-10 pt-16 sm:px-6">
-          <div className="mx-auto flex max-w-7xl flex-col gap-8 border-t border-white/8 pt-8 md:flex-row md:items-end md:justify-between">
+          <div className="mx-auto flex max-w-7xl flex-col gap-8 border-t border-brand-ink/10 pt-8 md:flex-row md:items-end md:justify-between">
             <div className="max-w-lg">
               <div className="text-xs font-black uppercase tracking-[0.32em] text-slate-500">
                 Nora
               </div>
-              <p className="mt-3 text-sm leading-7 text-slate-400">
-                Deploy intelligence anywhere. Open source, self-hostable, and commercially usable
-                under Apache 2.0.
+              <p className="mt-3 text-sm leading-7 text-slate-600">
+                Deploy intelligence anywhere. Self-hosted, open source, and built for operator
+                teams running real agent infrastructure.
               </p>
             </div>
 
-            <div className="flex flex-col gap-3 text-sm text-slate-400 sm:flex-row sm:flex-wrap sm:items-center sm:gap-6">
+            <div className="flex flex-col gap-3 text-sm font-semibold text-slate-600 sm:flex-row sm:flex-wrap sm:items-center sm:gap-6">
               <a
                 href={OSS_REPO_URL}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="hover:text-white"
+                className="hover:text-brand-ink"
               >
                 GitHub
               </a>
@@ -593,23 +591,23 @@ export default function Home() {
                 href={QUICKSTART_URL}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="hover:text-white"
+                className="hover:text-brand-ink"
               >
                 Quick Start
               </a>
-              <Link href="/pricing" className="hover:text-white">
+              <Link href="/pricing" className="hover:text-brand-ink">
                 License
               </Link>
-              <Link href="/privacy" className="hover:text-white">
+              <Link href="/privacy" className="hover:text-brand-ink">
                 Privacy
               </Link>
-              <Link href="/terms" className="hover:text-white">
+              <Link href="/terms" className="hover:text-brand-ink">
                 Terms
               </Link>
-              <Link href="/login" className="hover:text-white">
+              <Link href="/login" className="hover:text-brand-ink">
                 Log In
               </Link>
-              <Link href="/signup" className="hover:text-white">
+              <Link href="/signup" className="hover:text-brand-ink">
                 Create Account
               </Link>
             </div>

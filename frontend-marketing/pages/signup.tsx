@@ -12,10 +12,10 @@ const OSS_REPO_URL = "https://github.com/solomon2773/nora";
 const QUICKSTART_URL = `${OSS_REPO_URL}#quick-start`;
 
 const NEXT_STEPS = [
-  "Create the operator account for this Nora instance.",
-  "Add an LLM provider key in Settings.",
-  "Deploy the first OpenClaw or Hermes runtime and open the operator surface.",
-  "Validate OpenClaw chat and metrics or Hermes WebUI, plus logs and terminal access from one place.",
+  "Create the first operator account for this Nora instance.",
+  "Add an LLM provider key and confirm workspace access.",
+  "Deploy OpenClaw or Hermes to the runtime target that fits your environment.",
+  "Validate readiness with chat, logs, metrics, terminal access, and alerts.",
 ];
 
 export default function Signup() {
@@ -96,15 +96,15 @@ export default function Signup() {
         />
       </Head>
 
-      <div className="site-shell min-h-screen px-4 pb-10 pt-4 sm:px-6">
-        <header className="mx-auto flex max-w-6xl items-center justify-between rounded-full border border-white/10 bg-black/25 px-4 py-3 backdrop-blur-xl sm:px-5">
+      <div className="site-shell min-h-screen px-4 pb-10 pt-4 text-brand-ink sm:px-6">
+        <header className="mx-auto flex max-w-6xl items-center justify-between rounded-2xl border border-brand-cyan/25 bg-white/90 px-4 py-3 shadow-xl shadow-brand-ink/10 backdrop-blur-xl sm:px-5">
           <Link href="/" className="flex items-center gap-3">
             <img src="/logo-mark.png" alt="Nora" width={40} height={40} className="h-10 w-10" />
             <div>
-              <div className="text-sm font-black uppercase tracking-[0.28em] text-slate-300">
+              <div className="text-sm font-black uppercase tracking-[0.28em] text-brand-ink">
                 Nora
               </div>
-              <div className="text-xs text-slate-500">Deploy intelligence anywhere.</div>
+              <div className="text-xs text-slate-600">Deploy intelligence anywhere.</div>
             </div>
           </Link>
 
@@ -114,13 +114,13 @@ export default function Signup() {
               href={OSS_REPO_URL}
               target="_blank"
               rel="noopener noreferrer"
-              className="hidden rounded-full border border-white/12 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-white/6 sm:inline-flex sm:items-center sm:gap-2"
+              className="hidden rounded-full border border-brand-ink/10 px-4 py-2 text-sm font-bold text-brand-ink transition-colors hover:bg-brand-cyan/16 sm:inline-flex sm:items-center sm:gap-2"
             >
               GitHub <ArrowUpRight size={16} />
             </a>
             <Link
               href="/login"
-              className="rounded-full bg-[#f2d7a1] px-4 py-2 text-sm font-black text-slate-950 transition-transform hover:-translate-y-0.5"
+              className="rounded-full bg-brand-cyan px-4 py-2 text-sm font-black text-brand-ink shadow-lg shadow-brand-cyan/25 transition-transform hover:-translate-y-0.5"
             >
               Log In
             </Link>
@@ -137,10 +137,9 @@ export default function Signup() {
               Create the operator account for this Nora instance.
             </h1>
             <p className="mt-5 max-w-xl text-base leading-8 text-slate-300">
-              Nora is fully open source, self-hostable, and commercially usable under Apache 2.0.
-              This page should help teams get into the product quickly without hiding the fact that
-              the repo stays public and the trust model stays OSS-first. From there, operators can
-              launch OpenClaw or Hermes on the same Nora instance.
+              Use this account to enter the Nora dashboard, add provider keys, create workspaces,
+              and deploy OpenClaw or Hermes runtimes on infrastructure you control. The source stays
+              public, and the deployment path stays self-hostable.
             </p>
 
             <div className="mt-8 rounded-[28px] border border-white/10 bg-white/[0.03] p-5">

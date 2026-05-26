@@ -10,14 +10,14 @@ export default function LanguageSwitcher({ className = "" }: { className?: strin
 
   return (
     <label
-      className={`inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/[0.04] px-3 py-2 text-xs font-bold text-slate-200 ${className}`}
+      className={`inline-flex items-center gap-2 rounded-full border border-brand-ink/10 bg-white/75 px-3 py-2 text-xs font-bold text-brand-ink ${className}`}
     >
       <Globe2 size={14} />
       <span className="sr-only">Language</span>
       <select
         value={locale}
         onChange={(event) => handleChange(event.target.value as Locale)}
-        className="bg-transparent text-xs font-bold text-slate-200 outline-none"
+        className="bg-transparent text-xs font-bold text-brand-ink outline-none"
         aria-label="Language"
       >
         {LOCALES.map((item) => (

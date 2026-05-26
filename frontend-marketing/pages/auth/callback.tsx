@@ -11,10 +11,10 @@ export default function AuthCallback() {
   }, [localizePath]);
 
   return (
-    <div className="min-h-screen bg-[#071018] text-white flex items-center justify-center">
+    <div className="site-shell flex min-h-screen items-center justify-center text-brand-ink">
       <div className="flex flex-col items-center gap-4">
-        <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-        <p className="text-sm text-slate-400 font-medium">{t("Signing you in...")}</p>
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-brand-cyan border-t-transparent"></div>
+        <p className="text-sm font-medium text-slate-600">{t("Signing you in...")}</p>
       </div>
     </div>
   );
