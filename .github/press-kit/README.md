@@ -68,11 +68,16 @@ Source of truth: `agent-runtime/lib/backendCatalog.ts`. Lead coverage with the G
 
 In [`logos/`](./logos):
 
-| File            | Use                                         |
-| --------------- | ------------------------------------------- |
-| `logo-mark.png` | Square emblem (app icon, avatars, favicons) |
-| `logo-full.png` | Full vertical lockup (emblem + wordmark)    |
-| `og-image.png`  | 1200×630 social / hero card                 |
+| File                  | Use                                                         |
+| --------------------- | ----------------------------------------------------------- |
+| `logo-mark.png`       | Square — emblem only, no text (app icon, avatars, favicons) |
+| `logo-vertical.png`   | Vertical lockup — emblem + “Nora” title + subtitle          |
+| `logo-horizontal.png` | Horizontal lockup — emblem + “Nora” title + subtitle        |
+| `og-image.png`        | 1200×630 social / hero card                                 |
+
+All logo variants are cyan (`#8ae6ff`) on transparent for dark backgrounds; on light
+backgrounds use a darkened treatment (see `docs/logo/light.png`). `logo-full.png` is kept as
+an alias of `logo-vertical.png` for backward compatibility.
 
 Product screenshots (12, operator + admin surfaces) live in
 [`../readme-assets/`](../readme-assets) — e.g. `proof-operator-dashboard.png`,
