@@ -130,7 +130,8 @@ export default function SkillSelectionTray({
               ? deploying
                 ? "Deploying..."
                 : "Deploy Agent & Open Validation"
-              : installLabel || (isDeleteMode ? "Delete Selected Skills" : "Install Selected Skills")}
+              : installLabel ||
+                (isDeleteMode ? "Delete Selected Skills" : "Install Selected Skills")}
           </button>
         </div>
       </div>

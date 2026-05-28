@@ -1,11 +1,7 @@
 // @ts-nocheck
 const express = require("express");
 const { getSkillDetail, listSkills, searchSkills } = require("../clawhubClient");
-const {
-  addClawhubJob,
-  findInFlightClawhubJob,
-  getClawhubJobStatus,
-} = require("../redisQueue");
+const { addClawhubJob, findInFlightClawhubJob, getClawhubJobStatus } = require("../redisQueue");
 const db = require("../db");
 const { runContainerCommand } = require("../authSync");
 const {

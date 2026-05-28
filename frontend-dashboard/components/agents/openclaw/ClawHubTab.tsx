@@ -53,7 +53,9 @@ export default function ClawHubTab({ agentId, refreshToken, onInstallSuccess }: 
   const [error, setError] = useState<string | null>(null);
   const [selectedSkill, setSelectedSkill] = useState<SkillSummary | null>(null);
   const [selectedSkillDetail, setSelectedSkillDetail] = useState<SkillDetail | null>(null);
-  const [selectedSkillContext, setSelectedSkillContext] = useState<"catalog" | "installed">("catalog");
+  const [selectedSkillContext, setSelectedSkillContext] = useState<"catalog" | "installed">(
+    "catalog",
+  );
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [selectedInstallSkills, setSelectedInstallSkills] = useState<SkillDetail[]>([]);
@@ -99,7 +101,11 @@ export default function ClawHubTab({ agentId, refreshToken, onInstallSuccess }: 
     [selectedInstallSkills],
   );
   const displayedSelectedInstallSlugs = useMemo(
-    () => new Set([...pendingInstallSelectionSlugs, ...selectedInstallSkills.map((skill) => skill.slug)]),
+    () =>
+      new Set([
+        ...pendingInstallSelectionSlugs,
+        ...selectedInstallSkills.map((skill) => skill.slug),
+      ]),
     [pendingInstallSelectionSlugs, selectedInstallSkills],
   );
   const selectedDeleteSlugs = useMemo(
@@ -573,8 +579,8 @@ export default function ClawHubTab({ agentId, refreshToken, onInstallSuccess }: 
             </div>
             <h3 className="text-2xl font-black text-slate-900">Manage skills on this agent</h3>
             <p className="max-w-2xl text-sm leading-6 text-slate-600">
-              Review installed ClawHub skills, remove skills from the running agent, and browse
-              the public registry to queue new installs.
+              Review installed ClawHub skills, remove skills from the running agent, and browse the
+              public registry to queue new installs.
             </p>
           </div>
 
@@ -621,7 +627,8 @@ export default function ClawHubTab({ agentId, refreshToken, onInstallSuccess }: 
                 Selected Skills
               </div>
               <p className="text-sm font-semibold text-slate-900">
-                {selectedInstallSkills.length} skill{selectedInstallSkills.length === 1 ? "" : "s"} selected for install.
+                {selectedInstallSkills.length} skill{selectedInstallSkills.length === 1 ? "" : "s"}{" "}
+                selected for install.
               </p>
               <div className="flex flex-wrap gap-2">
                 {selectedInstallSkills.map((skill) => (
@@ -641,7 +648,9 @@ export default function ClawHubTab({ agentId, refreshToken, onInstallSuccess }: 
                   </span>
                 ))}
               </div>
-              {installError ? <p className="text-sm font-medium text-red-600">{installError}</p> : null}
+              {installError ? (
+                <p className="text-sm font-medium text-red-600">{installError}</p>
+              ) : null}
             </div>
 
             <div className="flex flex-col gap-3 sm:flex-row">

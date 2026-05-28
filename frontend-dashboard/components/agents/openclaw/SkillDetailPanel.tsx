@@ -1,13 +1,5 @@
 import type { ReactNode } from "react";
-import {
-  ChevronLeft,
-  Download,
-  Star,
-  Box,
-  Cpu,
-  FileText,
-  CircleAlert,
-} from "lucide-react";
+import { ChevronLeft, Download, Star, Box, Cpu, FileText, CircleAlert } from "lucide-react";
 
 export type SkillRequirementItem = {
   kind?: string;

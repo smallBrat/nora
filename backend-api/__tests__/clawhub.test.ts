@@ -16,11 +16,7 @@ jest.mock("../redisQueue", () => ({
 const { normalizeSkillDetailPayload, parseSkillMarkdown } = require("../clawhubClient");
 const db = require("../db");
 const { runContainerCommand } = require("../authSync");
-const {
-  addClawhubJob,
-  findInFlightClawhubJob,
-  getClawhubJobStatus,
-} = require("../redisQueue");
+const { addClawhubJob, findInFlightClawhubJob, getClawhubJobStatus } = require("../redisQueue");
 const router = require("../routes/clawhub");
 
 function mockJsonResponse(status, payload) {
@@ -303,7 +299,9 @@ Install and manage repos.
           runtime_family: "openclaw",
           deploy_target: "docker",
           sandbox_profile: "standard",
-          clawhub_skills: [{ installSlug: "github", author: "steipete", pagePath: "steipete/github" }],
+          clawhub_skills: [
+            { installSlug: "github", author: "steipete", pagePath: "steipete/github" },
+          ],
         },
       ],
     });
