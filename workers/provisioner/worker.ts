@@ -464,6 +464,16 @@ function pickProviderConfigApiVersion(config = {}) {
   return "";
 }
 
+// Azure deployment name (arbitrary per resource). Prefer an explicit config
+// field; fall back to the provider row's `model` column.
+function pickProviderDeployment(config = {}, model = "") {
+  for (const key of ["deployment", "deployment_name", "deploymentName"]) {
+    const value = config[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return typeof model === "string" ? model.trim() : "";
+}
+
 async function fetchUserLlmEnvVars(userId) {
   if (!userId || (process.env.KEY_STORAGE || "database") !== "database") {
     return {};
@@ -471,7 +481,7 @@ async function fetchUserLlmEnvVars(userId) {
 
   try {
     const keysResult = await db.query(
-      "SELECT provider, api_key, config FROM llm_providers WHERE user_id = $1",
+      "SELECT provider, api_key, model, config FROM llm_providers WHERE user_id = $1",
       [userId],
     );
     const { decrypt } = require("./crypto");
@@ -496,6 +506,13 @@ async function fetchUserLlmEnvVars(userId) {
       const apiVersionEnv = envName.replace(/_API_KEY$|_TOKEN$/, "_API_VERSION");
       if (baseUrl && baseUrlEnv !== envName) llmEnvVars[baseUrlEnv] = baseUrl;
       if (apiVersion && apiVersionEnv !== envName) llmEnvVars[apiVersionEnv] = apiVersion;
+      // Foundry deployment names are arbitrary per Azure resource — carry the
+      // saved deployment so the runtime targets the right one (not a hardcoded
+      // "gpt-5.5"). See buildFoundryModelEntries / foundryDefaultModel.
+      if (row.provider === "microsoft-foundry") {
+        const deployment = pickProviderDeployment(cfg, row.model);
+        if (deployment) llmEnvVars.MICROSOFT_FOUNDRY_DEPLOYMENT = deployment;
+      }
     }
     return normalizeEnvValueMap(llmEnvVars);
   } catch (error) {
