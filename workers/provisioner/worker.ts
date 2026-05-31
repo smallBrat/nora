@@ -973,10 +973,14 @@ async function removeSavedClawhubSkill(agentId, slug, skillEntry) {
 
 async function installClawhubSkill(provisioner, containerId, slug) {
   await ensureClawhubCli(provisioner, containerId);
+  // Keep the install invocation unwrapped (no nested in-container `timeout ... /bin/sh -lc ...`).
+  // A nested timeout caused Nora-driven ClawHub installs to hang even though the same CLI command
+  // completed quickly when run directly in the container. The outer exec timeout below is the single
+  // guardrail. `slug` is shell-quoted (single quotes) so it cannot inject into the container shell.
   await runProvisionerExecCommand(
     provisioner,
     containerId,
-    `cd ${JSON.stringify(OPENCLAW_WORKSPACE_PATH)} && clawhub install ${JSON.stringify(
+    `cd ${JSON.stringify(OPENCLAW_WORKSPACE_PATH)} && clawhub install ${shellSingleQuote(
       slug,
     )} --no-input`,
     {
@@ -989,10 +993,11 @@ async function installClawhubSkill(provisioner, containerId, slug) {
 
 async function uninstallClawhubSkill(provisioner, containerId, slug) {
   await ensureClawhubCli(provisioner, containerId);
+  // `slug` is shell-quoted (single quotes) so it cannot inject into the container shell.
   await runProvisionerExecCommand(
     provisioner,
     containerId,
-    `cd ${JSON.stringify(OPENCLAW_WORKSPACE_PATH)} && clawhub uninstall ${JSON.stringify(
+    `cd ${JSON.stringify(OPENCLAW_WORKSPACE_PATH)} && clawhub uninstall ${shellSingleQuote(
       slug,
     )} --yes`,
     {
@@ -1072,26 +1077,40 @@ async function reconcileClawhubSkills({
     }
   }
 
-  if (orphanedSkills.length) {
-    console.log(
-      `${logPrefix} agent=${agentId} Reconciling ${orphanedSkills.length} orphaned ClawHub skill(s)`,
+  // Pruning orphaned runtime skills (installed in the container but not tracked in the agents
+  // table) is destructive and OFF by default: it would silently delete skills an operator
+  // installed manually inside the container. Drift is always surfaced in the merged skill view
+  // and can be removed explicitly via the delete route; set CLAWHUB_PRUNE_ORPHANED_SKILLS=true
+  // to opt into automatic pruning during reconciliation.
+  const pruneOrphans = process.env.CLAWHUB_PRUNE_ORPHANED_SKILLS === "true";
+
+  if (orphanedSkills.length && !pruneOrphans) {
+    console.warn(
+      `${logPrefix} agent=${agentId} Detected ${orphanedSkills.length} orphaned ClawHub skill(s) not in saved state; ` +
+        `automatic pruning is disabled (set CLAWHUB_PRUNE_ORPHANED_SKILLS=true to enable). ` +
+        `Leaving runtime skills in place: ${orphanedSkills.map((skill) => skill.slug).join(", ")}`,
     );
   }
 
-  for (const skill of orphanedSkills) {
-    try {
-      console.log(
-        `${logPrefix} agent=${agentId} slug=${skill.slug} Removing orphaned runtime skill`,
-      );
-      await uninstallClawhubSkill(provisioner, containerId, skill.slug);
-      console.log(
-        `${logPrefix} agent=${agentId} slug=${skill.slug} Reconciliation uninstall completed`,
-      );
-    } catch (error) {
-      const message = String(error?.message || "");
-      console.warn(
-        `${logPrefix} agent=${agentId} slug=${skill.slug} Reconciliation uninstall failed: ${message}`,
-      );
+  if (orphanedSkills.length && pruneOrphans) {
+    console.warn(
+      `${logPrefix} agent=${agentId} Pruning ${orphanedSkills.length} orphaned ClawHub skill(s) (CLAWHUB_PRUNE_ORPHANED_SKILLS=true)`,
+    );
+    for (const skill of orphanedSkills) {
+      try {
+        console.warn(
+          `${logPrefix} agent=${agentId} slug=${skill.slug} Removing orphaned runtime skill`,
+        );
+        await uninstallClawhubSkill(provisioner, containerId, skill.slug);
+        console.warn(
+          `${logPrefix} agent=${agentId} slug=${skill.slug} Reconciliation uninstall completed`,
+        );
+      } catch (error) {
+        const message = String(error?.message || "");
+        console.warn(
+          `${logPrefix} agent=${agentId} slug=${skill.slug} Reconciliation uninstall failed: ${message}`,
+        );
+      }
     }
   }
 }

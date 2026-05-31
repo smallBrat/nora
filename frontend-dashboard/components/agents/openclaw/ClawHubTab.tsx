@@ -550,7 +550,9 @@ export default function ClawHubTab({ agentId, refreshToken, onInstallSuccess }: 
               onInstallSuccess?.();
             } else {
               removeSelectedDeleteSkill({ slug: data.slug });
-              toast.success(`${data.slug} deleted. Restart your agent session to activate it.`);
+              toast.success(
+                `${data.slug} deleted. Restart your agent session to apply the removal.`,
+              );
             }
           }
 
