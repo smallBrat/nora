@@ -14,9 +14,7 @@ const {
   HERMES_DASHBOARD_PORT,
 } = require("../../../agent-runtime/lib/contracts");
 const { getHermesDockerAgentImage } = require("../../../agent-runtime/lib/agentImages");
-const {
-  buildContainerBootstrap,
-} = require("../../../agent-runtime/lib/containerCommand");
+const { buildContainerBootstrap } = require("../../../agent-runtime/lib/containerCommand");
 const {
   HERMES_MANAGED_ENV_ENV,
   HERMES_MODEL_CONFIG_ENV,

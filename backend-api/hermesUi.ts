@@ -4,9 +4,7 @@ const containerManager = require("./containerManager");
 const { decrypt, encrypt, ensureEncryptionConfigured } = require("./crypto");
 const { runContainerCommand } = require("./authSync");
 const { waitForAgentReadiness } = require("./healthChecks");
-const {
-  buildHermesRuntimeBootstrapEnv,
-} = require("../agent-runtime/lib/hermesRuntimeBootstrap");
+const { buildHermesRuntimeBootstrapEnv } = require("../agent-runtime/lib/hermesRuntimeBootstrap");
 
 const HERMES_CHANNEL_REDACTED = "[REDACTED]";
 
@@ -674,7 +672,10 @@ print(json.dumps({
 }
 
 async function persistHermesModelConfig(agent, modelConfig = {}) {
-  if (typeof containerManager.isKubernetesAgent === "function" && containerManager.isKubernetesAgent(agent)) {
+  if (
+    typeof containerManager.isKubernetesAgent === "function" &&
+    containerManager.isKubernetesAgent(agent)
+  ) {
     await containerManager.updateEnv(agent, buildHermesRuntimeBootstrapEnv({ modelConfig }));
     return { ok: true };
   }

@@ -16,9 +16,7 @@ const {
   buildOpenClawCustomProviders,
   mapNoraProviderIdToOpenClaw,
 } = require("../agent-runtime/lib/runtimeBootstrap");
-const {
-  buildHermesRuntimeBootstrapEnv,
-} = require("../agent-runtime/lib/hermesRuntimeBootstrap");
+const { buildHermesRuntimeBootstrapEnv } = require("../agent-runtime/lib/hermesRuntimeBootstrap");
 
 const providerCatalog = Array.isArray(llmProviders.PROVIDERS)
   ? llmProviders.PROVIDERS
@@ -103,7 +101,9 @@ function getProviderEnvVar(providerId) {
 }
 
 function normalizeUrlForCompare(value) {
-  return String(value || "").trim().replace(/\/+$/, "");
+  return String(value || "")
+    .trim()
+    .replace(/\/+$/, "");
 }
 
 function resolveHermesModelApiKey(defaultProvider = null, envVars = {}) {
@@ -461,7 +461,10 @@ async function writeAuthToContainer(agent, authProfiles) {
 }
 
 async function writeHermesEnvToContainer(agent, envVars) {
-  if (typeof containerManager.isKubernetesAgent === "function" && containerManager.isKubernetesAgent(agent)) {
+  if (
+    typeof containerManager.isKubernetesAgent === "function" &&
+    containerManager.isKubernetesAgent(agent)
+  ) {
     return containerManager.updateEnv(agent, {
       ...envVars,
       ...buildHermesRuntimeBootstrapEnv({ envVars }),
