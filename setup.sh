@@ -952,18 +952,21 @@ fi
 
 header "Generating Secrets"
 
-# Preserve existing auth/encryption secrets on reconfigure so live sessions stay
-# valid and AES-encrypted provider keys remain decryptable; only a fresh install
-# (no readable 64-hex value in .env) generates new ones.
+# Preserve existing secrets on reconfigure so live sessions, AES-encrypted
+# provider keys, managed backups, Agent Hub keys, and the initialized Postgres
+# volume remain usable. Only a first install with no value generates new ones.
 JWT_SECRET="$(read_env_value "$ENV_FILE" "JWT_SECRET" "")"
 [[ "$JWT_SECRET" =~ ^[0-9a-fA-F]{64}$ ]] || JWT_SECRET=$(openssl rand -hex 32)
 ENCRYPTION_KEY="$(read_env_value "$ENV_FILE" "ENCRYPTION_KEY" "")"
 [[ "$ENCRYPTION_KEY" =~ ^[0-9a-fA-F]{64}$ ]] || ENCRYPTION_KEY=$(openssl rand -hex 32)
-NORA_BACKUP_ENCRYPTION_KEY=$(openssl rand -hex 32)
-NORA_AGENT_HUB_API_KEY_HASH_SECRET=$(openssl rand -hex 32)
+NORA_BACKUP_ENCRYPTION_KEY="$(read_env_value "$ENV_FILE" "NORA_BACKUP_ENCRYPTION_KEY" "")"
+[[ "$NORA_BACKUP_ENCRYPTION_KEY" =~ ^[0-9a-fA-F]{64}$ ]] || NORA_BACKUP_ENCRYPTION_KEY=$(openssl rand -hex 32)
+NORA_AGENT_HUB_API_KEY_HASH_SECRET="$(read_env_value "$ENV_FILE" "NORA_AGENT_HUB_API_KEY_HASH_SECRET" "")"
+[[ "$NORA_AGENT_HUB_API_KEY_HASH_SECRET" =~ ^[0-9a-fA-F]{64}$ ]] || NORA_AGENT_HUB_API_KEY_HASH_SECRET=$(openssl rand -hex 32)
 DB_USER="nora"
 DB_NAME="nora"
-DB_PASSWORD=$(openssl rand -hex 24)
+DB_PASSWORD="$(read_env_value "$ENV_FILE" "DB_PASSWORD" "")"
+[ -n "$DB_PASSWORD" ] || DB_PASSWORD=$(openssl rand -hex 24)
 
 ok "JWT_SECRET            (64-char hex)"
 ok "ENCRYPTION_KEY        (64-char hex — AES-256-GCM)"

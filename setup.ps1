@@ -918,18 +918,21 @@ if ($SETUP_MODE -eq "clean-reinstall") {
 
 Write-Header "Generating Secrets"
 
-# Preserve existing auth/encryption secrets on reconfigure so live sessions stay
-# valid and AES-encrypted provider keys remain decryptable; only a fresh install
-# (no readable 64-hex value in .env) generates new ones.
+# Preserve existing secrets on reconfigure so live sessions, AES-encrypted
+# provider keys, managed backups, Agent Hub keys, and the initialized Postgres
+# volume remain usable. Only a first install with no value generates new ones.
 $JWT_SECRET = Read-EnvValue -EnvPath $ENV_FILE -Name "JWT_SECRET" -Default ""
 if ($JWT_SECRET -notmatch '^[0-9a-fA-F]{64}$') { $JWT_SECRET = New-HexSecret }
 $ENCRYPTION_KEY = Read-EnvValue -EnvPath $ENV_FILE -Name "ENCRYPTION_KEY" -Default ""
 if ($ENCRYPTION_KEY -notmatch '^[0-9a-fA-F]{64}$') { $ENCRYPTION_KEY = New-HexSecret }
-$NORA_BACKUP_ENCRYPTION_KEY = New-HexSecret
-$NORA_AGENT_HUB_API_KEY_HASH_SECRET = New-HexSecret
+$NORA_BACKUP_ENCRYPTION_KEY = Read-EnvValue -EnvPath $ENV_FILE -Name "NORA_BACKUP_ENCRYPTION_KEY" -Default ""
+if ($NORA_BACKUP_ENCRYPTION_KEY -notmatch '^[0-9a-fA-F]{64}$') { $NORA_BACKUP_ENCRYPTION_KEY = New-HexSecret }
+$NORA_AGENT_HUB_API_KEY_HASH_SECRET = Read-EnvValue -EnvPath $ENV_FILE -Name "NORA_AGENT_HUB_API_KEY_HASH_SECRET" -Default ""
+if ($NORA_AGENT_HUB_API_KEY_HASH_SECRET -notmatch '^[0-9a-fA-F]{64}$') { $NORA_AGENT_HUB_API_KEY_HASH_SECRET = New-HexSecret }
 $DB_USER         = "nora"
 $DB_NAME         = "nora"
-$DB_PASSWORD     = New-HexSecret -Bytes 24
+$DB_PASSWORD     = Read-EnvValue -EnvPath $ENV_FILE -Name "DB_PASSWORD" -Default ""
+if (-not $DB_PASSWORD) { $DB_PASSWORD = New-HexSecret -Bytes 24 }
 
 Write-Ok "JWT_SECRET            (64-char hex)"
 Write-Ok "ENCRYPTION_KEY        (64-char hex — AES-256-GCM)"
