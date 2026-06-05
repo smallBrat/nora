@@ -11,15 +11,15 @@ const { getHermesDockerAgentImage } = require("../../../agent-runtime/lib/agentI
 const { HERMES_DASHBOARD_PORT } = require("../../../agent-runtime/lib/contracts");
 const {
   buildContainerBootstrap,
-  shellSingleQuote,
-  toDockerLaunch,
 } = require("../../../agent-runtime/lib/containerCommand");
+const {
+  buildHermesRuntimeConfigBootstrapCommand,
+} = require("../../../agent-runtime/lib/hermesRuntimeBootstrap");
 
 const HERMES_RUNTIME_PORT = 8642;
 const HERMES_HOME = "/opt/data";
 const HERMES_WORKSPACE = `${HERMES_HOME}/workspace`;
 const HERMES_DASHBOARD_LOG = `${HERMES_HOME}/hermes-dashboard.log`;
-const HERMES_ENTRYPOINT = "/opt/hermes/docker/entrypoint.sh";
 const HERMES_BIN = "/opt/hermes/.venv/bin/hermes";
 
 function isMutableImageReference(imgName) {
@@ -34,19 +34,13 @@ function isMutableImageReference(imgName) {
 }
 
 function buildHermesStartCommand() {
-  const hermesRuntimeCommand = [
+  return [
     "set -eu",
+    buildHermesRuntimeConfigBootstrapCommand(),
     `HERMES_BIN="${HERMES_BIN}"`,
     '[ -x "$HERMES_BIN" ] || HERMES_BIN="$(command -v hermes)"',
     `nohup "$HERMES_BIN" dashboard --host 0.0.0.0 --insecure --no-open >> ${HERMES_DASHBOARD_LOG} 2>&1 &`,
     'exec "$HERMES_BIN" gateway run',
-  ].join("\n");
-
-  return [
-    "set -eu",
-    // Bootstrap the mounted Hermes home once, then fork dashboard and gateway
-    // from that initialized session so first-run file seeding cannot race.
-    `exec ${HERMES_ENTRYPOINT} bash -lc ${shellSingleQuote(hermesRuntimeCommand)}`,
   ].join("\n");
 }
 
@@ -188,15 +182,9 @@ class HermesBackend extends DockerBackend {
         name: containerName,
         Hostname: hostname,
         Env: envArray,
-        // Hermes needs a login bash so its image's /etc/profile (nvm / python
-        // venv / CUDA env) is sourced; everything else here is identical to
-        // the shared contract in agent-runtime/lib/containerCommand.ts.
-        ...toDockerLaunch(
-          buildContainerBootstrap(buildHermesStartCommand(), {
-            shell: "/bin/bash",
-            login: true,
-          }),
-        ),
+        // Keep the image ENTRYPOINT intact so s6 init runs on current Hermes
+        // images; main-wrapper then executes this bash command after bootstrap.
+        Cmd: ["bash", "-lc", buildHermesStartCommand()],
         WorkingDir: HERMES_HOME,
         ExposedPorts: {
           [`${HERMES_RUNTIME_PORT}/tcp`]: {},

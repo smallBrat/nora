@@ -1,0 +1,124 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  width="1512"
+  height="1080"
+  viewBox="0 0 1512 1080"
+  role="img"
+  aria-labelledby="title desc"
+>
+  <title id="title">AWS Console EKS cluster overview</title>
+  <desc id="desc">
+    Reference screenshot showing an Amazon EKS cluster overview page with the cluster name and
+    region highlighted for the aws eks update-kubeconfig command.
+  </desc>
+  <defs>
+    <style>
+      .bg { fill: #f2f3f3; }
+      .topnav { fill: #232f3e; }
+      .subnav { fill: #161e2d; }
+      .panel { fill: #ffffff; stroke: #d5dbdb; stroke-width: 1; }
+      .muted { fill: #687078; font: 24px "Amazon Ember", "Segoe UI", Arial, sans-serif; }
+      .text { fill: #16191f; font: 26px "Amazon Ember", "Segoe UI", Arial, sans-serif; }
+      .small { fill: #414750; font: 21px "Amazon Ember", "Segoe UI", Arial, sans-serif; }
+      .tiny { fill: #687078; font: 18px "Amazon Ember", "Segoe UI", Arial, sans-serif; }
+      .title { fill: #16191f; font: 38px "Amazon Ember", "Segoe UI", Arial, sans-serif; font-weight: 700; }
+      .mono { fill: #0f172a; font: 19px Consolas, "Courier New", monospace; }
+      .link { fill: #007eb9; font: 24px "Amazon Ember", "Segoe UI", Arial, sans-serif; }
+      .crumb { fill: #007eb9; font: 21px "Amazon Ember", "Segoe UI", Arial, sans-serif; }
+      .highlight { fill: #fff6cc; stroke: #f2c94c; stroke-width: 3; }
+      .active { fill: #1d8102; }
+      .tabon { fill: #16191f; font: 22px "Amazon Ember", "Segoe UI", Arial, sans-serif; font-weight: 600; }
+      .taboff { fill: #687078; font: 22px "Amazon Ember", "Segoe UI", Arial, sans-serif; }
+    </style>
+  </defs>
+
+  <rect class="bg" width="1512" height="1080" />
+
+  <!-- top navigation -->
+  <rect class="topnav" width="1512" height="56" />
+  <text x="30" y="38" fill="#ff9900" font-family="Amazon Ember, Segoe UI, Arial, sans-serif" font-size="27" font-weight="700">aws</text>
+  <rect x="270" y="12" width="520" height="32" rx="4" fill="#ffffff" opacity="0.95" />
+  <text x="290" y="34" class="tiny">Search [Option+S]</text>
+  <text x="1150" y="35" fill="#ffffff" font-family="Amazon Ember, Segoe UI, Arial" font-size="20">N. Virginia ▾</text>
+  <text x="1360" y="35" fill="#ffffff" font-family="Amazon Ember, Segoe UI, Arial" font-size="20">nora-ops ▾</text>
+
+  <!-- service sub-bar -->
+  <rect class="subnav" y="56" width="1512" height="44" />
+  <text x="30" y="85" fill="#ffffff" font-family="Amazon Ember, Segoe UI, Arial" font-size="22" font-weight="600">Amazon Elastic Kubernetes Service</text>
+
+  <!-- left service nav -->
+  <rect x="0" y="100" width="250" height="980" fill="#ffffff" />
+  <line x1="250" y1="100" x2="250" y2="1080" stroke="#d5dbdb" />
+  <text x="28" y="158" class="muted">Clusters</text>
+  <rect x="0" y="186" width="250" height="46" fill="#f1faff" />
+  <rect x="0" y="186" width="4" height="46" fill="#ec7211" />
+  <text x="28" y="216" class="small" fill="#16191f">nora-eks-prod</text>
+  <text x="48" y="280" class="muted">Overview</text>
+  <text x="48" y="334" class="muted">Compute</text>
+  <text x="48" y="388" class="muted">Networking</text>
+  <text x="48" y="442" class="muted">Add-ons</text>
+  <text x="48" y="496" class="muted">Access</text>
+
+  <!-- breadcrumb + heading -->
+  <text x="290" y="150" class="crumb">EKS  ›  Clusters  ›  nora-eks-prod</text>
+  <text x="290" y="208" class="title">nora-eks-prod</text>
+  <rect x="1340" y="178" width="120" height="46" rx="4" fill="#ffffff" stroke="#687078" />
+  <text x="1362" y="208" class="small">Delete</text>
+
+  <!-- tabs -->
+  <text x="292" y="262" class="tabon">Overview</text>
+  <rect x="290" y="278" width="116" height="4" fill="#ec7211" />
+  <text x="440" y="262" class="taboff">Resources</text>
+  <text x="610" y="262" class="taboff">Compute</text>
+  <text x="760" y="262" class="taboff">Networking</text>
+  <text x="950" y="262" class="taboff">Add-ons</text>
+  <line x1="290" y1="282" x2="1470" y2="282" stroke="#e5e7eb" />
+
+  <!-- cluster info panel -->
+  <text x="290" y="346" class="title" font-size="30">Cluster info</text>
+  <rect x="290" y="378" width="1180" height="232" rx="6" class="panel" />
+
+  <rect x="316" y="412" width="520" height="64" rx="6" class="highlight" />
+  <text x="336" y="438" class="tiny">Cluster name</text>
+  <text x="336" y="467" class="text">nora-eks-prod</text>
+
+  <rect x="316" y="498" width="520" height="64" rx="6" class="highlight" />
+  <text x="336" y="524" class="tiny">Region</text>
+  <text x="336" y="553" class="text">us-east-1</text>
+
+  <text x="884" y="438" class="tiny">Status</text>
+  <circle cx="900" cy="460" r="9" class="active" />
+  <text x="920" y="468" class="text">Active</text>
+
+  <text x="884" y="524" class="tiny">Kubernetes version</text>
+  <text x="884" y="553" class="text">1.30</text>
+
+  <text x="1150" y="438" class="tiny">Support period</text>
+  <text x="1150" y="467" class="text">Standard</text>
+  <text x="1150" y="524" class="tiny">API server endpoint</text>
+  <text x="1150" y="553" class="mono">https://A1B2.gr7.us-east-1.eks...</text>
+
+  <!-- lower cards -->
+  <rect x="290" y="640" width="568" height="252" rx="6" class="panel" />
+  <text x="320" y="686" class="text">Cluster health</text>
+  <line x1="320" y1="722" x2="828" y2="722" stroke="#e5e7eb" />
+  <text x="320" y="770" class="small">Node groups</text>
+  <text x="760" y="770" class="text">1</text>
+  <text x="320" y="822" class="small">Ready nodes</text>
+  <text x="760" y="822" class="text">2</text>
+  <text x="320" y="874" class="small">Health issues</text>
+  <text x="760" y="874" class="active" font-family="Amazon Ember, Segoe UI, Arial" font-size="26">None</text>
+
+  <rect x="902" y="640" width="568" height="252" rx="6" class="panel" />
+  <text x="932" y="686" class="text">Authentication</text>
+  <line x1="932" y1="722" x2="1440" y2="722" stroke="#e5e7eb" />
+  <text x="932" y="770" class="small">Authentication mode</text>
+  <text x="932" y="806" class="text">API and ConfigMap</text>
+  <text x="932" y="858" class="small">Endpoint access</text>
+  <text x="932" y="894" class="text" font-size="22">Public</text>
+
+  <!-- footer hint -->
+  <rect x="290" y="930" width="1180" height="72" rx="6" fill="#f8fafc" stroke="#d5dbdb" />
+  <text x="316" y="966" class="small">Use the highlighted name and region in:</text>
+  <text x="316" y="994" class="mono">aws eks update-kubeconfig --name nora-eks-prod --region us-east-1</text>
+</svg>

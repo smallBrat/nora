@@ -12,11 +12,11 @@ export default function Dashboard() {
 
   useEffect(() => {
     Promise.all([
-      fetchWithAuth("/api/agents").then((r) => r.json()),
+      fetchWithAuth("/api/agents").then((r) => (r.ok ? r.json() : [])),
       fetchWithAuth("/api/monitoring/metrics").then((r) => r.json()).catch(() => null),
     ])
       .then(([agentData, metricsData]) => {
-        setAgents(agentData);
+        setAgents(Array.isArray(agentData) ? agentData : []);
         setMetrics(metricsData);
         setLoading(false);
       })

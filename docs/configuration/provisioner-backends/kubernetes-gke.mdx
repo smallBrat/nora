@@ -14,7 +14,7 @@ GKE uses the same Kubernetes adapter as every Kubernetes provider. Nora stores p
 - `kubectl` installed on the host that runs Nora.
 
 <Frame caption="GCP Console — Kubernetes Engine cluster details">
-  ![GKE cluster details](/images/provisioner-backends/k8s/gke/cluster-details.png)
+  ![GKE cluster details](/images/provisioner-backends/k8s/gke/cluster-details.svg)
 </Frame>
 
 ### 2. Create the kubeconfig
@@ -30,7 +30,7 @@ KUBECONFIG=./.secrets/gke-kubeconfig \
 Use `--zone <zone>` instead of `--region <region>` for zonal clusters. You can copy the exact command from the cluster's **Connect** dialog.
 
 <Frame caption="GCP Console — Cluster → Connect dialog (get-credentials command)">
-  ![GKE connect dialog](/images/provisioner-backends/k8s/gke/connect-dialog.png)
+  ![GKE connect dialog](/images/provisioner-backends/k8s/gke/connect-dialog.svg)
 </Frame>
 
 ### 3. Verify access from the host
@@ -54,7 +54,7 @@ For two or more GKE clusters, put each kubeconfig under `NORA_KUBECONFIGS_DIR` a
 Confirm region / VPC alignment in the Console's **Networking** tab before exposing services to the public internet.
 
 <Frame caption="GCP Console — Cluster → Networking (region + VPC)">
-  ![GKE networking](/images/provisioner-backends/k8s/gke/networking.png)
+  ![GKE networking](/images/provisioner-backends/k8s/gke/networking.svg)
 </Frame>
 
 ### 5. Start the stack

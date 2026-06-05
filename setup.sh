@@ -908,6 +908,13 @@ if [ "$SETUP_MODE" = "update" ]; then
 
   header "Updating Nora"
   info "Code update mode keeps $ENV_FILE, Postgres/backup volumes, and provisioned instances."
+  # A leftover public-mode docker-compose.override.yml is auto-loaded by
+  # `docker compose` and would pin a LOCAL stack to prod/TLS wiring (443 + cert
+  # mounts). If .env selects the local nginx.conf, retire the stale override.
+  if [ "$(read_env_value "$ENV_FILE" "NGINX_CONFIG_FILE" "nginx.conf")" = "nginx.conf" ] && [ -f "$COMPOSE_OVERRIDE_FILE" ]; then
+    mv "$COMPOSE_OVERRIDE_FILE" "${COMPOSE_OVERRIDE_FILE}.disabled-$(date -u +%Y%m%d-%H%M%SZ)"
+    warn "Disabled a stale ${COMPOSE_OVERRIDE_FILE} (it did not match local mode in $ENV_FILE)."
+  fi
   update_source_checkout
   refresh_release_tags
   ensure_agent_hub_hash_secret_env "$ENV_FILE"
@@ -945,8 +952,13 @@ fi
 
 header "Generating Secrets"
 
-JWT_SECRET=$(openssl rand -hex 32)
-ENCRYPTION_KEY=$(openssl rand -hex 32)
+# Preserve existing auth/encryption secrets on reconfigure so live sessions stay
+# valid and AES-encrypted provider keys remain decryptable; only a fresh install
+# (no readable 64-hex value in .env) generates new ones.
+JWT_SECRET="$(read_env_value "$ENV_FILE" "JWT_SECRET" "")"
+[[ "$JWT_SECRET" =~ ^[0-9a-fA-F]{64}$ ]] || JWT_SECRET=$(openssl rand -hex 32)
+ENCRYPTION_KEY="$(read_env_value "$ENV_FILE" "ENCRYPTION_KEY" "")"
+[[ "$ENCRYPTION_KEY" =~ ^[0-9a-fA-F]{64}$ ]] || ENCRYPTION_KEY=$(openssl rand -hex 32)
 NORA_BACKUP_ENCRYPTION_KEY=$(openssl rand -hex 32)
 NORA_AGENT_HUB_API_KEY_HASH_SECRET=$(openssl rand -hex 32)
 DB_USER="nora"
@@ -1117,7 +1129,7 @@ ok "Enabled sandbox profiles: ${ENABLED_SANDBOX_PROFILES}"
 header "Access Mode"
 
 printf "  How should users reach Nora?\n"
-printf "    1) Local only (default) — http://localhost:8080\n"
+printf "    1) Local only (default) — http://localhost:8080 (auto-picks the next free port if 8080 is busy)\n"
 printf "    2) Public domain behind HTTPS proxy — nginx listens on port 80\n"
 printf "    3) Public domain with TLS at nginx — nginx listens on ports 80 and 443\n"
 printf "  Select [1/2/3]: "
@@ -1130,6 +1142,7 @@ NEXTAUTH_URL="http://localhost:8080"
 CORS_ORIGINS="http://localhost:8080"
 NGINX_CONFIG_FILE="nginx.conf"
 NGINX_HTTP_PORT="8080"
+NORA_FORCE_SECURE_COOKIES=""
 CAN_START_NORA=true
 
 case "$access_answer" in
@@ -1171,6 +1184,7 @@ case "$access_answer" in
     ACCESS_MODE=$([ "$access_answer" = "3" ] && printf "public-tls" || printf "public-proxy")
     NEXTAUTH_URL="${PUBLIC_SCHEME}://${PUBLIC_DOMAIN}"
     CORS_ORIGINS="${NEXTAUTH_URL}"
+    [ "$PUBLIC_SCHEME" = "https" ] && NORA_FORCE_SECURE_COOKIES=1
     NGINX_CONFIG_FILE="$PUBLIC_NGINX_CONF"
     NGINX_HTTP_PORT="80"
     ;;
@@ -1180,6 +1194,10 @@ case "$access_answer" in
     NEXTAUTH_URL="http://localhost:${NGINX_HTTP_PORT}"
     CORS_ORIGINS="${NEXTAUTH_URL}"
     ok "Local mode — Nora will be available at ${NEXTAUTH_URL}"
+    if [ "$NGINX_HTTP_PORT" != "8080" ]; then
+      warn "Port 8080 was busy — Nora will run at ${NEXTAUTH_URL}."
+      warn "Open THAT URL (not http://localhost:8080) to sign in."
+    fi
     ;;
 esac
 
@@ -1319,6 +1337,10 @@ BACKEND_API_PORT=4100
 # ── Access / URL ─────────────────────────────────────────────
 NGINX_CONFIG_FILE=${NGINX_CONFIG_FILE}
 NGINX_HTTP_PORT=${NGINX_HTTP_PORT}
+# Forces the Secure flag on the session cookie for always-on-TLS public deploys
+# (set to 1 for https public modes; empty for local http). Guards against an
+# upstream proxy that strips X-Forwarded-Proto.
+NORA_FORCE_SECURE_COOKIES=${NORA_FORCE_SECURE_COOKIES}
 
 # ── OAuth ────────────────────────────────────────────────────
 OAUTH_LOGIN_ENABLED=${OAUTH_LOGIN_ENABLED}
@@ -1465,7 +1487,7 @@ printf "  Database:     PostgreSQL 15 (Docker Compose)\n"
 printf "  DB Access:    %s / auto-generated / %s (.env)\n" "$DB_USER" "$DB_NAME"
 printf "  Redis:        Redis 7 (Docker Compose)\n"
 if [ "$ACCESS_MODE" = "local" ]; then
-  printf "  Access:       Local only\n"
+  printf "  Access:       %s\n" "$NEXTAUTH_URL"
   printf "  Runtime:      Development services\n"
 else
   printf "  Access:       %s\n" "$NEXTAUTH_URL"

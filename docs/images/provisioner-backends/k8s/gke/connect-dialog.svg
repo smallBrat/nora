@@ -1,0 +1,78 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  width="1512"
+  height="1080"
+  viewBox="0 0 1512 1080"
+  role="img"
+  aria-labelledby="title desc"
+>
+  <title id="title">GCP Console GKE Connect dialog</title>
+  <desc id="desc">
+    Reference screenshot showing the Google Kubernetes Engine Connect dialog with the gcloud
+    get-credentials command highlighted and a Copy button.
+  </desc>
+  <defs>
+    <style>
+      .scrim { fill: #202124; opacity: 0.55; }
+      .bg { fill: #f1f3f4; }
+      .top { fill: #ffffff; }
+      .dialog { fill: #ffffff; stroke: #dadce0; stroke-width: 1; }
+      .muted { fill: #5f6368; font: 24px "Google Sans", Roboto, Arial, sans-serif; }
+      .text { fill: #202124; font: 26px "Google Sans", Roboto, Arial, sans-serif; }
+      .small { fill: #3c4043; font: 21px Roboto, Arial, sans-serif; }
+      .tiny { fill: #5f6368; font: 18px Roboto, Arial, sans-serif; }
+      .h2 { fill: #202124; font: 32px "Google Sans", Roboto, Arial, sans-serif; }
+      .mono { fill: #e8eaed; font: 21px "Roboto Mono", Consolas, monospace; }
+      .link { fill: #1a73e8; font: 23px "Google Sans", Roboto, Arial, sans-serif; }
+      .crumb { fill: #5f6368; font: 21px Roboto, Arial, sans-serif; }
+      .highlight { fill: none; stroke: #f9ab00; stroke-width: 3; }
+      .tabon { fill: #1a73e8; font: 22px "Google Sans", Roboto, Arial, sans-serif; }
+      .taboff { fill: #5f6368; font: 22px "Google Sans", Roboto, Arial, sans-serif; }
+    </style>
+  </defs>
+
+  <!-- faded console behind -->
+  <rect class="bg" width="1512" height="1080" />
+  <rect class="top" width="1512" height="64" />
+  <line x1="0" y1="64" x2="1512" y2="64" stroke="#dadce0" />
+  <g stroke="#5f6368" stroke-width="2.5">
+    <line x1="28" y1="26" x2="52" y2="26" /><line x1="28" y1="34" x2="52" y2="34" /><line x1="28" y1="42" x2="52" y2="42" />
+  </g>
+  <text x="74" y="41" fill="#5f6368" font-family="Google Sans, Roboto, Arial" font-size="26">Google Cloud</text>
+  <rect x="300" y="16" width="240" height="34" rx="17" fill="#f1f3f4" stroke="#dadce0" />
+  <text x="322" y="39" class="tiny">nora-prod ▾</text>
+  <text x="306" y="118" class="crumb">Kubernetes Engine  ›  Clusters  ›  nora-gke-prod</text>
+
+  <!-- scrim -->
+  <rect class="scrim" width="1512" height="1080" />
+
+  <!-- dialog -->
+  <rect x="356" y="270" width="800" height="540" rx="10" class="dialog" />
+  <text x="396" y="346" class="h2">Connect to the cluster</text>
+  <text x="396" y="392" class="small" fill="#5f6368">nora-gke-prod · us-central1</text>
+  <text x="1104" y="344" class="muted">✕</text>
+  <line x1="356" y1="416" x2="1156" y2="416" stroke="#e8eaed" />
+
+  <!-- tabs in dialog -->
+  <text x="396" y="466" class="tabon">Command-line access</text>
+  <rect x="394" y="482" width="232" height="3" fill="#1a73e8" />
+  <text x="676" y="466" class="taboff">Cloud Shell</text>
+  <line x1="356" y1="485" x2="1156" y2="485" stroke="#e8eaed" />
+
+  <text x="396" y="540" class="small">Configure kubectl command line access by running the following command:</text>
+
+  <!-- command block -->
+  <rect x="396" y="566" width="720" height="118" rx="8" fill="#202124" />
+  <rect x="396" y="566" width="720" height="118" rx="8" class="highlight" />
+  <text x="420" y="612" class="mono">gcloud container clusters get-credentials \</text>
+  <text x="420" y="644" class="mono">  nora-gke-prod --region us-central1 \</text>
+  <text x="420" y="676" class="mono">  --project nora-prod</text>
+  <rect x="1016" y="582" width="84" height="40" rx="6" fill="#3c4043" />
+  <text x="1034" y="609" fill="#8ab4f8" font-family="Roboto, Arial" font-size="20">Copy</text>
+
+  <text x="396" y="732" class="tiny">Use --zone &lt;zone&gt; instead of --region for zonal clusters.</text>
+
+  <!-- dialog buttons -->
+  <line x1="356" y1="752" x2="1156" y2="752" stroke="#e8eaed" />
+  <text x="1086" y="790" class="link">OK</text>
+</svg>

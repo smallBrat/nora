@@ -617,7 +617,7 @@ describe("GET /agents/:id/gateway-url", () => {
     delete process.env.NEXTAUTH_URL;
   });
 
-  it("uses the forwarded request protocol for published gateway urls when the control plane is behind https", async () => {
+  it("keeps published gateway urls on http when the control plane is behind https", async () => {
     process.env.NEXTAUTH_URL = "https://app.nora.test";
     mockDb.query.mockResolvedValueOnce({
       rows: [
@@ -637,11 +637,38 @@ describe("GET /agents/:id/gateway-url", () => {
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
+      url: "http://app.nora.test:19123",
+      port: 19123,
+    });
+
+    delete process.env.NEXTAUTH_URL;
+  });
+
+  it("allows an explicit https override for published gateway urls", async () => {
+    process.env.NEXTAUTH_URL = "https://app.nora.test";
+    process.env.GATEWAY_PROTOCOL = "https";
+    mockDb.query.mockResolvedValueOnce({
+      rows: [
+        {
+          id: "a-https-gateway",
+          container_id: "container-https-gateway",
+          gateway_host_port: 19123,
+          user_id: "user-1",
+          status: "running",
+        },
+      ],
+    });
+
+    const res = await auth(request(app).get("/agents/a-https-gateway/gateway-url"));
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
       url: "https://app.nora.test:19123",
       port: 19123,
     });
 
     delete process.env.NEXTAUTH_URL;
+    delete process.env.GATEWAY_PROTOCOL;
   });
 
   it("uses explicit gateway host and port when the backend records them", async () => {

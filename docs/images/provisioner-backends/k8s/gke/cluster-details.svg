@@ -1,0 +1,118 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  width="1512"
+  height="1080"
+  viewBox="0 0 1512 1080"
+  role="img"
+  aria-labelledby="title desc"
+>
+  <title id="title">GCP Console GKE cluster details</title>
+  <desc id="desc">
+    Reference screenshot showing a Google Kubernetes Engine cluster details page with the cluster
+    name and region highlighted for the gcloud get-credentials command.
+  </desc>
+  <defs>
+    <style>
+      .bg { fill: #f1f3f4; }
+      .top { fill: #ffffff; }
+      .panel { fill: #ffffff; stroke: #dadce0; stroke-width: 1; }
+      .muted { fill: #5f6368; font: 24px "Google Sans", Roboto, Arial, sans-serif; }
+      .text { fill: #202124; font: 26px "Google Sans", Roboto, Arial, sans-serif; }
+      .small { fill: #3c4043; font: 21px Roboto, Arial, sans-serif; }
+      .tiny { fill: #5f6368; font: 18px Roboto, Arial, sans-serif; }
+      .title { fill: #202124; font: 38px "Google Sans", Roboto, Arial, sans-serif; }
+      .mono { fill: #202124; font: 20px "Roboto Mono", Consolas, monospace; }
+      .link { fill: #1a73e8; font: 24px "Google Sans", Roboto, Arial, sans-serif; }
+      .crumb { fill: #5f6368; font: 21px Roboto, Arial, sans-serif; }
+      .highlight { fill: #fef7e0; stroke: #f9ab00; stroke-width: 3; }
+      .ok { fill: #188038; }
+      .tabon { fill: #1a73e8; font: 22px "Google Sans", Roboto, Arial, sans-serif; }
+      .taboff { fill: #5f6368; font: 22px "Google Sans", Roboto, Arial, sans-serif; }
+    </style>
+  </defs>
+
+  <rect class="bg" width="1512" height="1080" />
+
+  <!-- top bar -->
+  <rect class="top" width="1512" height="64" />
+  <line x1="0" y1="64" x2="1512" y2="64" stroke="#dadce0" />
+  <g stroke="#5f6368" stroke-width="2.5">
+    <line x1="28" y1="26" x2="52" y2="26" /><line x1="28" y1="34" x2="52" y2="34" /><line x1="28" y1="42" x2="52" y2="42" />
+  </g>
+  <text x="74" y="41" fill="#5f6368" font-family="Google Sans, Roboto, Arial" font-size="26">Google Cloud</text>
+  <rect x="300" y="16" width="240" height="34" rx="17" fill="#f1f3f4" stroke="#dadce0" />
+  <text x="322" y="39" class="tiny">nora-prod ▾</text>
+  <rect x="580" y="16" width="520" height="34" rx="17" fill="#f1f3f4" />
+  <text x="604" y="39" class="tiny">Search (/) for resources, docs, products, and more</text>
+  <circle cx="1460" cy="33" r="16" fill="#1a73e8" opacity="0.85" />
+
+  <!-- left nav -->
+  <rect x="0" y="64" width="270" height="1016" fill="#ffffff" />
+  <line x1="270" y1="64" x2="270" y2="1080" stroke="#dadce0" />
+  <text x="28" y="128" class="muted">Kubernetes Engine</text>
+  <rect x="0" y="156" width="270" height="46" fill="#e8f0fe" />
+  <rect x="0" y="156" width="4" height="46" fill="#1a73e8" />
+  <text x="28" y="186" class="small" fill="#1a73e8">Clusters</text>
+  <text x="28" y="246" class="muted">Workloads</text>
+  <text x="28" y="300" class="muted">Services &amp; Ingress</text>
+  <text x="28" y="354" class="muted">Applications</text>
+  <text x="28" y="408" class="muted">Secrets &amp; ConfigMaps</text>
+  <text x="28" y="462" class="muted">Config</text>
+
+  <!-- breadcrumb + heading -->
+  <text x="306" y="118" class="crumb">Kubernetes Engine  ›  Clusters  ›  nora-gke-prod</text>
+  <circle cx="320" cy="170" r="13" class="ok" />
+  <path d="M313 170 l5 5 l9 -10" fill="none" stroke="#ffffff" stroke-width="3" />
+  <text x="348" y="182" class="title">nora-gke-prod</text>
+  <text x="1140" y="180" class="link">Connect</text>
+  <text x="1290" y="180" class="link">Edit</text>
+  <text x="1392" y="180" class="link">Delete</text>
+
+  <!-- tabs -->
+  <text x="306" y="244" class="tabon">DETAILS</text>
+  <rect x="304" y="260" width="96" height="3" fill="#1a73e8" />
+  <text x="440" y="244" class="taboff">NODES</text>
+  <text x="560" y="244" class="taboff">STORAGE</text>
+  <text x="720" y="244" class="taboff">OBSERVABILITY</text>
+  <text x="960" y="244" class="taboff">LOGS</text>
+  <line x1="306" y1="263" x2="1470" y2="263" stroke="#e8eaed" />
+
+  <!-- cluster basics -->
+  <text x="306" y="324" class="title" font-size="28">Cluster basics</text>
+  <rect x="306" y="356" width="1164" height="248" rx="8" class="panel" />
+
+  <rect x="332" y="390" width="520" height="64" rx="6" class="highlight" />
+  <text x="352" y="416" class="tiny">Name</text>
+  <text x="352" y="445" class="text">nora-gke-prod</text>
+
+  <rect x="332" y="476" width="520" height="64" rx="6" class="highlight" />
+  <text x="352" y="502" class="tiny">Region</text>
+  <text x="352" y="531" class="text">us-central1</text>
+
+  <text x="900" y="416" class="tiny">Location type</text>
+  <text x="900" y="445" class="text">Regional</text>
+  <text x="900" y="502" class="tiny">Control plane version</text>
+  <text x="900" y="531" class="text">1.30.4-gke.1</text>
+
+  <text x="1180" y="416" class="tiny">Total size</text>
+  <text x="1180" y="445" class="text">3 nodes</text>
+  <text x="1180" y="502" class="tiny">Endpoint</text>
+  <text x="1180" y="531" class="mono">34.121.8.42</text>
+
+  <text x="352" y="586" class="tiny">Release channel: Regular  ·  Mode: Standard  ·  Status: Running</text>
+
+  <!-- node pool card -->
+  <rect x="306" y="636" width="1164" height="216" rx="8" class="panel" />
+  <text x="336" y="682" class="text">Node pool: default-pool</text>
+  <line x1="336" y1="716" x2="1440" y2="716" stroke="#e8eaed" />
+  <text x="336" y="766" class="small">Nodes</text>
+  <text x="1180" y="766" class="text">3</text>
+  <text x="336" y="816" class="small">Machine type</text>
+  <text x="1180" y="816" class="text">e2-standard-4</text>
+
+  <!-- footer hint -->
+  <rect x="306" y="884" width="1164" height="120" rx="8" fill="#e8f0fe" stroke="#d2e3fc" />
+  <text x="334" y="928" class="small">Use the highlighted name and region in:</text>
+  <text x="334" y="966" class="mono">gcloud container clusters get-credentials nora-gke-prod \</text>
+  <text x="334" y="994" class="mono">  --region us-central1 --project nora-prod</text>
+</svg>

@@ -219,6 +219,22 @@ describe("OpenClaw bootstrap helpers", () => {
         expect(model.compat).toEqual(expect.objectContaining({ supportsStore: false }));
       }
     });
+
+    it("adds the saved Foundry deployment name as an OpenClaw model", () => {
+      const result = buildOpenClawCustomProviders({
+        MICROSOFT_FOUNDRY_API_KEY: "ms-key",
+        MICROSOFT_FOUNDRY_BASE_URL: "https://st-eastus2.openai.azure.com/openai/v1/",
+        MICROSOFT_FOUNDRY_DEPLOYMENT: "gpt-5.5-1",
+      });
+
+      expect(result["azure-openai-responses"].models[0]).toEqual(
+        expect.objectContaining({
+          id: "gpt-5.5-1",
+          name: "gpt-5.5-1 (Azure deployment)",
+          api: "azure-openai-responses",
+        }),
+      );
+    });
   });
 
   describe("mapNoraProviderIdToOpenClaw", () => {

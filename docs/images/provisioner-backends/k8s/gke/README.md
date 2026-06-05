@@ -1,9 +1,11 @@
 # GCP Console screenshots — GKE setup
 
-Manual captures from the Google Cloud Console. Drop these files in to replace the placeholder Frame blocks in `docs/configuration/provisioner-backends/kubernetes-gke.mdx`.
+Reference images for the GKE setup guide. The checked-in SVGs are screenshot-style references for
+the fields operators need to find in the Google Cloud Console; replace them with manual console
+captures if you need exact project-specific screenshots.
 
 ## Expected files
 
-- `cluster-details.png` — Kubernetes Engine cluster details page.
-- `connect-dialog.png` — **Connect** dialog showing the `gcloud container clusters get-credentials` command.
-- `networking.png` — Cluster **Networking** tab (region / VPC).
+- `cluster-details.svg` — Kubernetes Engine cluster details. Shows the cluster name + region used by `gcloud container clusters get-credentials`.
+- `connect-dialog.svg` — **Connect** dialog showing the `gcloud container clusters get-credentials` command.
+- `networking.svg` — Cluster **Networking** section (region / VPC network).

@@ -310,8 +310,19 @@ const FOUNDRY_DEFAULT_MODELS = [
 // unset so existing single-deployment setups keep working.
 const FOUNDRY_FALLBACK_DEPLOYMENT = "gpt-5.5";
 
+function normalizeFoundryDeployment(value) {
+  let deployment = String(value || "").trim();
+  const providerPrefix = `${FOUNDRY_OPENCLAW_PROVIDER_ID}/`;
+  if (deployment.startsWith(providerPrefix)) {
+    deployment = deployment.slice(providerPrefix.length).trim();
+  }
+  return deployment && !deployment.includes("/") ? deployment : "";
+}
+
 function resolveFoundryDeployment(env = {}) {
-  const configured = String(env.MICROSOFT_FOUNDRY_DEPLOYMENT || "").trim();
+  const configured = normalizeFoundryDeployment(
+    env.MICROSOFT_FOUNDRY_DEPLOYMENT || env.NORA_DEFAULT_OPENCLAW_MODEL,
+  );
   return configured || FOUNDRY_FALLBACK_DEPLOYMENT;
 }
 
@@ -327,11 +338,7 @@ function buildFoundryModelEntries(env = {}) {
   // for the very deployment we set as default.
   const deployment = resolveFoundryDeployment(env);
   const seen = new Set();
-  const entries = [
-    { id: deployment, name: `${deployment} (Azure)`, reasoning: true, contextWindow: 400000, maxTokens: 16384 },
-    ...FOUNDRY_DEFAULT_MODELS,
-  ];
-  return entries
+  const models = FOUNDRY_DEFAULT_MODELS
     .filter((entry) => {
       if (seen.has(entry.id)) return false;
       seen.add(entry.id);
@@ -348,6 +355,21 @@ function buildFoundryModelEntries(env = {}) {
       maxTokens: entry.maxTokens,
       compat: { supportsStore: false, supportsReasoningEffort: true },
     }));
+  if (!deployment || models.some((model) => model.id === deployment)) return models;
+
+  const baseModelId = deployment.replace(/-\d+$/, "");
+  const template =
+    models.find((model) => model.id === baseModelId) ||
+    models.find((model) => model.id === "gpt-5.5") ||
+    models[0];
+  return [
+    {
+      ...template,
+      id: deployment,
+      name: `${deployment} (Azure deployment)`,
+    },
+    ...models,
+  ];
 }
 
 // Builds the `models.providers.*` map injected into openclaw.json for

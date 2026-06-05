@@ -1,0 +1,95 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  width="1512"
+  height="1080"
+  viewBox="0 0 1512 1080"
+  role="img"
+  aria-labelledby="title desc"
+>
+  <title id="title">GCP Console GKE cluster networking</title>
+  <desc id="desc">
+    Reference screenshot showing the Google Kubernetes Engine cluster Networking section with the
+    region and VPC network highlighted.
+  </desc>
+  <defs>
+    <style>
+      .bg { fill: #f1f3f4; }
+      .top { fill: #ffffff; }
+      .panel { fill: #ffffff; stroke: #dadce0; stroke-width: 1; }
+      .muted { fill: #5f6368; font: 24px "Google Sans", Roboto, Arial, sans-serif; }
+      .text { fill: #202124; font: 26px "Google Sans", Roboto, Arial, sans-serif; }
+      .small { fill: #3c4043; font: 21px Roboto, Arial, sans-serif; }
+      .tiny { fill: #5f6368; font: 18px Roboto, Arial, sans-serif; }
+      .title { fill: #202124; font: 38px "Google Sans", Roboto, Arial, sans-serif; }
+      .mono { fill: #202124; font: 20px "Roboto Mono", Consolas, monospace; }
+      .link { fill: #1a73e8; font: 24px "Google Sans", Roboto, Arial, sans-serif; }
+      .crumb { fill: #5f6368; font: 21px Roboto, Arial, sans-serif; }
+      .highlight { fill: #fef7e0; stroke: #f9ab00; stroke-width: 3; }
+      .ok { fill: #188038; }
+      .tabon { fill: #1a73e8; font: 22px "Google Sans", Roboto, Arial, sans-serif; }
+      .taboff { fill: #5f6368; font: 22px "Google Sans", Roboto, Arial, sans-serif; }
+    </style>
+  </defs>
+
+  <rect class="bg" width="1512" height="1080" />
+
+  <rect class="top" width="1512" height="64" />
+  <line x1="0" y1="64" x2="1512" y2="64" stroke="#dadce0" />
+  <g stroke="#5f6368" stroke-width="2.5">
+    <line x1="28" y1="26" x2="52" y2="26" /><line x1="28" y1="34" x2="52" y2="34" /><line x1="28" y1="42" x2="52" y2="42" />
+  </g>
+  <text x="74" y="41" fill="#5f6368" font-family="Google Sans, Roboto, Arial" font-size="26">Google Cloud</text>
+  <rect x="300" y="16" width="240" height="34" rx="17" fill="#f1f3f4" stroke="#dadce0" />
+  <text x="322" y="39" class="tiny">nora-prod ▾</text>
+
+  <rect x="0" y="64" width="270" height="1016" fill="#ffffff" />
+  <line x1="270" y1="64" x2="270" y2="1080" stroke="#dadce0" />
+  <text x="28" y="128" class="muted">Kubernetes Engine</text>
+  <rect x="0" y="156" width="270" height="46" fill="#e8f0fe" />
+  <rect x="0" y="156" width="4" height="46" fill="#1a73e8" />
+  <text x="28" y="186" class="small" fill="#1a73e8">Clusters</text>
+  <text x="28" y="246" class="muted">Workloads</text>
+  <text x="28" y="300" class="muted">Services &amp; Ingress</text>
+
+  <text x="306" y="118" class="crumb">Kubernetes Engine  ›  Clusters  ›  nora-gke-prod</text>
+  <circle cx="320" cy="170" r="13" class="ok" />
+  <path d="M313 170 l5 5 l9 -10" fill="none" stroke="#ffffff" stroke-width="3" />
+  <text x="348" y="182" class="title">nora-gke-prod</text>
+
+  <!-- tabs, DETAILS active, Networking section -->
+  <text x="306" y="244" class="tabon">DETAILS</text>
+  <rect x="304" y="260" width="96" height="3" fill="#1a73e8" />
+  <text x="440" y="244" class="taboff">NODES</text>
+  <text x="560" y="244" class="taboff">STORAGE</text>
+  <text x="720" y="244" class="taboff">OBSERVABILITY</text>
+  <line x1="306" y1="263" x2="1470" y2="263" stroke="#e8eaed" />
+
+  <text x="306" y="324" class="title" font-size="28">Networking</text>
+  <rect x="306" y="356" width="1164" height="328" rx="8" class="panel" />
+
+  <rect x="332" y="392" width="540" height="64" rx="6" class="highlight" />
+  <text x="352" y="418" class="tiny">Network</text>
+  <text x="352" y="447" class="text">nora-vpc</text>
+
+  <rect x="332" y="478" width="540" height="64" rx="6" class="highlight" />
+  <text x="352" y="504" class="tiny">Cluster location (region)</text>
+  <text x="352" y="533" class="text">us-central1</text>
+
+  <text x="920" y="418" class="tiny">Subnet</text>
+  <text x="920" y="447" class="text">nora-subnet-uc1</text>
+  <text x="920" y="504" class="tiny">Stack type</text>
+  <text x="920" y="533" class="text">IPv4</text>
+
+  <text x="352" y="596" class="tiny">Cluster pod IPv4 range</text>
+  <text x="352" y="625" class="mono">10.4.0.0/14</text>
+  <text x="920" y="596" class="tiny">Control plane access</text>
+  <text x="920" y="625" class="text" font-size="22">Public endpoint enabled</text>
+
+  <text x="352" y="668" class="tiny">Subnet IPv4 range: 10.128.0.0/20  ·  HTTP load balancing: Enabled</text>
+
+  <!-- footer hint -->
+  <rect x="306" y="716" width="1164" height="120" rx="8" fill="#e8f0fe" stroke="#d2e3fc" />
+  <text x="334" y="760" class="small">Confirm the cluster region and VPC network match where you intend to expose Nora agent</text>
+  <text x="334" y="792" class="small">Services. The region here is the same value you pass to gcloud container clusters</text>
+  <text x="334" y="824" class="small">get-credentials --region.</text>
+</svg>

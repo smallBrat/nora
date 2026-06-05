@@ -874,6 +874,14 @@ if ($SETUP_MODE -eq "update") {
 
     Write-Header "Updating Nora"
     Write-Info "Code update mode keeps $ENV_FILE, Postgres/backup volumes, and provisioned instances."
+    # A leftover public-mode docker-compose.override.yml is auto-loaded by docker
+    # compose and would pin a LOCAL stack to prod/TLS wiring (443 + cert mounts).
+    # If .env selects the local nginx.conf, retire the stale override.
+    if (((Read-EnvValue -EnvPath $ENV_FILE -Name "NGINX_CONFIG_FILE" -Default "nginx.conf") -eq "nginx.conf") -and (Test-Path $COMPOSE_OVERRIDE_FILE)) {
+        $overrideStamp = ((Get-Date).ToUniversalTime().ToString("yyyyMMdd-HHmmss") + "Z")
+        Move-Item $COMPOSE_OVERRIDE_FILE "$COMPOSE_OVERRIDE_FILE.disabled-$overrideStamp"
+        Write-Warn "Disabled a stale $COMPOSE_OVERRIDE_FILE (it did not match local mode in $ENV_FILE)."
+    }
     Update-SourceCheckout
     Refresh-ReleaseTags
     Ensure-AgentHubHashSecretEnv -EnvPath $ENV_FILE
@@ -910,8 +918,13 @@ if ($SETUP_MODE -eq "clean-reinstall") {
 
 Write-Header "Generating Secrets"
 
-$JWT_SECRET      = New-HexSecret
-$ENCRYPTION_KEY  = New-HexSecret
+# Preserve existing auth/encryption secrets on reconfigure so live sessions stay
+# valid and AES-encrypted provider keys remain decryptable; only a fresh install
+# (no readable 64-hex value in .env) generates new ones.
+$JWT_SECRET = Read-EnvValue -EnvPath $ENV_FILE -Name "JWT_SECRET" -Default ""
+if ($JWT_SECRET -notmatch '^[0-9a-fA-F]{64}$') { $JWT_SECRET = New-HexSecret }
+$ENCRYPTION_KEY = Read-EnvValue -EnvPath $ENV_FILE -Name "ENCRYPTION_KEY" -Default ""
+if ($ENCRYPTION_KEY -notmatch '^[0-9a-fA-F]{64}$') { $ENCRYPTION_KEY = New-HexSecret }
 $NORA_BACKUP_ENCRYPTION_KEY = New-HexSecret
 $NORA_AGENT_HUB_API_KEY_HASH_SECRET = New-HexSecret
 $DB_USER         = "nora"
@@ -960,21 +973,9 @@ if ($modeAnswer -eq "2") {
 Write-Header "Deploy Backends"
 
 $DOCKER_BACKEND_ENABLED = $true
-$K8S_BACKEND_ENABLED = $false
-$K8S_BACKEND_ID = "k3s"
 $PROXMOX_BACKEND_ENABLED = $false
 $HERMES_RUNTIME_ENABLED = $false
 $NEMOCLAW_SANDBOX_ENABLED = $false
-$K8S_NAMESPACE = "openclaw-agents"
-$K8S_EXPOSURE_MODE = "cluster-ip"
-$K8S_RUNTIME_NODE_PORT = ""
-$K8S_GATEWAY_NODE_PORT = ""
-$K8S_RUNTIME_HOST = ""
-$K8S_SERVICE_ANNOTATIONS_JSON = ""
-$K8S_LOAD_BALANCER_SOURCE_RANGES = ""
-$K8S_LOAD_BALANCER_CLASS = ""
-$K8S_LOAD_BALANCER_READY_TIMEOUT_MS = "600000"
-$K8S_LOAD_BALANCER_READY_INTERVAL_MS = "5000"
 $PROXMOX_API_URL = ""
 $PROXMOX_TOKEN_ID = ""
 $PROXMOX_TOKEN_SECRET = ""
@@ -998,32 +999,7 @@ if ($dockerBackendAnswer -match '^[Nn]$') {
     Write-Ok "Docker backend enabled"
 }
 
-$k8sBackendAnswer = Read-Host "  Enable K3s/Kubernetes backend? [y/N]"
-if ($k8sBackendAnswer -match '^[Yy]$') {
-    $K8S_BACKEND_ENABLED = $true
-    $targetInput = Read-Host "  Kubernetes-compatible target [k3s] (enter k8s for AKS/GKE/EKS or upstream Kubernetes)"
-    $normalizedTarget = if ($targetInput) { $targetInput.Trim().ToLowerInvariant() } else { "k3s" }
-    switch ($normalizedTarget) {
-        "k3s" {
-            $K8S_BACKEND_ID = "k3s"
-            Write-Ok "K3s backend enabled — ensure kubeconfig is available in backend-api and worker-provisioner"
-        }
-        "k8s" {
-            $K8S_BACKEND_ID = "k8s"
-            Write-Ok "Kubernetes backend enabled — ensure kubeconfig is available in backend-api and worker-provisioner"
-        }
-        "kubernetes" {
-            $K8S_BACKEND_ID = "k8s"
-            Write-Ok "Kubernetes backend enabled — ensure kubeconfig is available in backend-api and worker-provisioner"
-        }
-        default {
-            $K8S_BACKEND_ID = "k3s"
-            Write-Warn "Unknown Kubernetes-compatible target '$targetInput' — using k3s. Set ENABLED_BACKENDS to k8s later to switch."
-        }
-    }
-} else {
-    Write-Info "K3s/Kubernetes backend disabled"
-}
+Write-Info "Kubernetes clusters are registered after setup in Admin -> Kubernetes."
 
 $proxmoxBackendAnswer = Read-Host "  Enable Proxmox backend? [y/N]"
 if ($proxmoxBackendAnswer -match '^[Yy]$') {
@@ -1078,7 +1054,6 @@ if ($nemoclawSandboxAnswer -match '^[Yy]$') {
 
 $enabledBackends = @()
 if ($DOCKER_BACKEND_ENABLED) { $enabledBackends += "docker" }
-if ($K8S_BACKEND_ENABLED) { $enabledBackends += $K8S_BACKEND_ID }
 if ($PROXMOX_BACKEND_ENABLED) { $enabledBackends += "proxmox" }
 
 if ($enabledBackends.Count -eq 0) {
@@ -1105,7 +1080,7 @@ Write-Ok "Enabled sandbox profiles: $ENABLED_SANDBOX_PROFILES"
 Write-Header "Access Mode"
 
 Write-Host "  How should users reach Nora?"
-Write-Host "    1) Local only (default) — http://localhost:8080"
+Write-Host "    1) Local only (default) — http://localhost:8080 (auto-picks the next free port if 8080 is busy)"
 Write-Host "    2) Public domain behind HTTPS proxy — nginx listens on port 80"
 Write-Host "    3) Public domain with TLS at nginx — nginx listens on ports 80 and 443"
 $accessAnswer = Read-Host "  Select [1/2/3]"
@@ -1117,6 +1092,7 @@ $NEXTAUTH_URL = "http://localhost:8080"
 $CORS_ORIGINS = "http://localhost:8080"
 $NGINX_CONFIG_FILE = "nginx.conf"
 $NGINX_HTTP_PORT = "8080"
+$NORA_FORCE_SECURE_COOKIES = ""
 $CAN_START_NORA = $true
 
 switch ($accessAnswer) {
@@ -1140,6 +1116,7 @@ switch ($accessAnswer) {
         $ACCESS_MODE = "public-proxy"
         $NEXTAUTH_URL = "${PUBLIC_SCHEME}://${PUBLIC_DOMAIN}"
         $CORS_ORIGINS = $NEXTAUTH_URL
+        if ($PUBLIC_SCHEME -eq "https") { $NORA_FORCE_SECURE_COOKIES = "1" }
         $NGINX_CONFIG_FILE = $PUBLIC_NGINX_CONF
         $NGINX_HTTP_PORT = "80"
         Write-Ok "Public proxy mode — nginx will serve $PUBLIC_DOMAIN on port 80"
@@ -1158,6 +1135,7 @@ switch ($accessAnswer) {
         $PUBLIC_SCHEME = "https"
         $NEXTAUTH_URL = "https://${PUBLIC_DOMAIN}"
         $CORS_ORIGINS = $NEXTAUTH_URL
+        $NORA_FORCE_SECURE_COOKIES = "1"
         $NGINX_CONFIG_FILE = $PUBLIC_NGINX_CONF
         $NGINX_HTTP_PORT = "80"
 
@@ -1176,6 +1154,10 @@ switch ($accessAnswer) {
         $NEXTAUTH_URL = "http://localhost:$NGINX_HTTP_PORT"
         $CORS_ORIGINS = $NEXTAUTH_URL
         Write-Ok "Local mode — Nora will be available at $NEXTAUTH_URL"
+        if ("$NGINX_HTTP_PORT" -ne "8080") {
+            Write-Warn "Port 8080 was busy — Nora will run at $NEXTAUTH_URL."
+            Write-Warn "Open THAT URL (not http://localhost:8080) to sign in."
+        }
     }
 }
 
@@ -1303,6 +1285,10 @@ BACKEND_API_PORT=4100
 # ── Access / URL ─────────────────────────────────────────────
 NGINX_CONFIG_FILE=$NGINX_CONFIG_FILE
 NGINX_HTTP_PORT=$NGINX_HTTP_PORT
+# Forces the Secure flag on the session cookie for always-on-TLS public deploys
+# (set to 1 for https public modes; empty for local http). Guards against an
+# upstream proxy that strips X-Forwarded-Proto.
+NORA_FORCE_SECURE_COOKIES=$NORA_FORCE_SECURE_COOKIES
 
 # ── OAuth ────────────────────────────────────────────────────
 OAUTH_LOGIN_ENABLED=$OAUTH_LOGIN_ENABLED
@@ -1380,6 +1366,11 @@ NORA_UPGRADE_REPO=https://github.com/solomon2773/nora.git
 NORA_UPGRADE_REF=master
 NORA_UPGRADE_RUNNER_IMAGE=docker:29-cli
 NORA_UPGRADE_STATE_VOLUME=nora_upgrade_state
+NORA_ENV_FILE=.env
+NORA_UPGRADE_COMPOSE_FILES=
+NORA_UPGRADE_PUBLIC_HEALTH_URL=
+NORA_UPGRADE_HEALTHCHECK_ATTEMPTS=40
+NORA_UPGRADE_HEALTHCHECK_INTERVAL_SECONDS=3
 NORA_INSTALL_METHOD=source
 NORA_MANUAL_UPGRADE_COMMAND=./setup.sh --update
 NORA_MANUAL_UPGRADE_STEPS=
@@ -1388,20 +1379,6 @@ NORA_MANUAL_UPGRADE_STEPS=
 ENABLED_RUNTIME_FAMILIES=$ENABLED_RUNTIME_FAMILIES
 ENABLED_BACKENDS=$ENABLED_BACKENDS
 ENABLED_SANDBOX_PROFILES=$ENABLED_SANDBOX_PROFILES
-
-# ── K3s/Kubernetes (when ENABLED_BACKENDS includes k3s or k8s) ─
-# K3s is the default Kubernetes-compatible target id. Use k8s for
-# upstream Kubernetes, AKS, GKE, or EKS. Both ids use the same adapter.
-K8S_NAMESPACE=$K8S_NAMESPACE
-K8S_EXPOSURE_MODE=$K8S_EXPOSURE_MODE
-K8S_RUNTIME_NODE_PORT=$K8S_RUNTIME_NODE_PORT
-K8S_GATEWAY_NODE_PORT=$K8S_GATEWAY_NODE_PORT
-K8S_RUNTIME_HOST=$K8S_RUNTIME_HOST
-K8S_SERVICE_ANNOTATIONS_JSON=$K8S_SERVICE_ANNOTATIONS_JSON
-K8S_LOAD_BALANCER_SOURCE_RANGES=$K8S_LOAD_BALANCER_SOURCE_RANGES
-K8S_LOAD_BALANCER_CLASS=$K8S_LOAD_BALANCER_CLASS
-K8S_LOAD_BALANCER_READY_TIMEOUT_MS=$K8S_LOAD_BALANCER_READY_TIMEOUT_MS
-K8S_LOAD_BALANCER_READY_INTERVAL_MS=$K8S_LOAD_BALANCER_READY_INTERVAL_MS
 
 # ── Proxmox (when ENABLED_BACKENDS includes proxmox) ─────────
 PROXMOX_API_URL=$PROXMOX_API_URL
@@ -1461,7 +1438,7 @@ Write-Host "  Database:     PostgreSQL 15 (Docker Compose)"
 Write-Host "  DB Access:    $DB_USER / auto-generated / $DB_NAME (.env)"
 Write-Host "  Redis:        Redis 7 (Docker Compose)"
 if ($ACCESS_MODE -eq "local") {
-    Write-Host "  Access:       Local only"
+    Write-Host "  Access:       $NEXTAUTH_URL"
     Write-Host "  Runtime:      Development services"
 } else {
     Write-Host "  Access:       $NEXTAUTH_URL"
@@ -1517,6 +1494,24 @@ if (-not $CAN_START_NORA) {
 
 Write-Host ""
 Assert-NoraHostPortsAvailable -Checks (Get-NoraHostPortChecks -EnvPath $ENV_FILE -NginxHttpPort ([int]$NGINX_HTTP_PORT))
+Write-Info "Building nora-openclaw-agent:local (prebaked openclaw + tsx)..."
+Write-Host ""
+docker build -f agent-runtime/Dockerfile.openclaw-agent -t nora-openclaw-agent:local agent-runtime/
+if ($LASTEXITCODE -ne 0) { Write-Err "Failed to build nora-openclaw-agent:local"; exit 1 }
+Write-Ok "OpenClaw agent image ready"
+
+# Only build the NemoClaw variant when the operator enabled the sandbox profile.
+# The NemoClaw adapter pulls (never builds) nora-nemoclaw-agent:local, so without
+# this build a nemoclaw deploy fails — unlike the standard OpenClaw image, which
+# the Docker backend builds on demand.
+if (($ENABLED_SANDBOX_PROFILES -split ',') -contains 'nemoclaw') {
+    Write-Host ""
+    Write-Info "Building nora-nemoclaw-agent:local (OpenShell sandbox + tsx)..."
+    Write-Host ""
+    docker build -f agent-runtime/Dockerfile.nemoclaw-agent -t nora-nemoclaw-agent:local agent-runtime/
+    if ($LASTEXITCODE -ne 0) { Write-Err "Failed to build nora-nemoclaw-agent:local"; exit 1 }
+    Write-Ok "NemoClaw sandbox image ready"
+}
 Start-NoraComposeStack
 
 # ── Done ─────────────────────────────────────────────────────

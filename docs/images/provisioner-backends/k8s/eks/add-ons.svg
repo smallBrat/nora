@@ -1,0 +1,113 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  width="1512"
+  height="1080"
+  viewBox="0 0 1512 1080"
+  role="img"
+  aria-labelledby="title desc"
+>
+  <title id="title">AWS Console EKS Add-ons tab</title>
+  <desc id="desc">
+    Reference screenshot showing the Amazon EKS cluster Add-ons tab with the AWS Load Balancer
+    Controller add-on installed and Active.
+  </desc>
+  <defs>
+    <style>
+      .bg { fill: #f2f3f3; }
+      .topnav { fill: #232f3e; }
+      .subnav { fill: #161e2d; }
+      .panel { fill: #ffffff; stroke: #d5dbdb; stroke-width: 1; }
+      .muted { fill: #687078; font: 24px "Amazon Ember", "Segoe UI", Arial, sans-serif; }
+      .text { fill: #16191f; font: 26px "Amazon Ember", "Segoe UI", Arial, sans-serif; }
+      .small { fill: #414750; font: 21px "Amazon Ember", "Segoe UI", Arial, sans-serif; }
+      .tiny { fill: #687078; font: 18px "Amazon Ember", "Segoe UI", Arial, sans-serif; }
+      .th { fill: #687078; font: 20px "Amazon Ember", "Segoe UI", Arial, sans-serif; font-weight: 600; }
+      .title { fill: #16191f; font: 38px "Amazon Ember", "Segoe UI", Arial, sans-serif; font-weight: 700; }
+      .link { fill: #007eb9; font: 23px "Amazon Ember", "Segoe UI", Arial, sans-serif; }
+      .crumb { fill: #007eb9; font: 21px "Amazon Ember", "Segoe UI", Arial, sans-serif; }
+      .highlight { fill: #fff6cc; stroke: #f2c94c; stroke-width: 3; }
+      .active { fill: #1d8102; }
+      .tabon { fill: #16191f; font: 22px "Amazon Ember", "Segoe UI", Arial, sans-serif; font-weight: 600; }
+      .taboff { fill: #687078; font: 22px "Amazon Ember", "Segoe UI", Arial, sans-serif; }
+    </style>
+  </defs>
+
+  <rect class="bg" width="1512" height="1080" />
+
+  <rect class="topnav" width="1512" height="56" />
+  <text x="30" y="38" fill="#ff9900" font-family="Amazon Ember, Segoe UI, Arial, sans-serif" font-size="27" font-weight="700">aws</text>
+  <rect x="270" y="12" width="520" height="32" rx="4" fill="#ffffff" opacity="0.95" />
+  <text x="290" y="34" class="tiny">Search [Option+S]</text>
+  <text x="1150" y="35" fill="#ffffff" font-family="Amazon Ember, Segoe UI, Arial" font-size="20">N. Virginia ▾</text>
+  <text x="1360" y="35" fill="#ffffff" font-family="Amazon Ember, Segoe UI, Arial" font-size="20">nora-ops ▾</text>
+
+  <rect class="subnav" y="56" width="1512" height="44" />
+  <text x="30" y="85" fill="#ffffff" font-family="Amazon Ember, Segoe UI, Arial" font-size="22" font-weight="600">Amazon Elastic Kubernetes Service</text>
+
+  <rect x="0" y="100" width="250" height="980" fill="#ffffff" />
+  <line x1="250" y1="100" x2="250" y2="1080" stroke="#d5dbdb" />
+  <text x="28" y="158" class="muted">Clusters</text>
+  <rect x="0" y="186" width="250" height="46" fill="#f1faff" />
+  <rect x="0" y="186" width="4" height="46" fill="#ec7211" />
+  <text x="28" y="216" class="small" fill="#16191f">nora-eks-prod</text>
+  <text x="48" y="280" class="muted">Overview</text>
+  <text x="48" y="334" class="muted">Compute</text>
+  <text x="48" y="388" class="muted">Networking</text>
+  <text x="48" y="442" class="muted">Add-ons</text>
+
+  <text x="290" y="150" class="crumb">EKS  ›  Clusters  ›  nora-eks-prod</text>
+  <text x="290" y="208" class="title">nora-eks-prod</text>
+
+  <!-- tabs, Add-ons active -->
+  <text x="292" y="262" class="taboff">Overview</text>
+  <text x="450" y="262" class="taboff">Resources</text>
+  <text x="620" y="262" class="taboff">Compute</text>
+  <text x="780" y="262" class="taboff">Networking</text>
+  <text x="970" y="262" class="tabon">Add-ons</text>
+  <rect x="968" y="278" width="98" height="4" fill="#ec7211" />
+  <line x1="290" y1="282" x2="1470" y2="282" stroke="#e5e7eb" />
+
+  <text x="290" y="346" class="title" font-size="30">Add-ons (4)</text>
+  <rect x="1300" y="318" width="170" height="46" rx="4" fill="#ec7211" />
+  <text x="1338" y="348" fill="#ffffff" font-family="Amazon Ember, Segoe UI, Arial" font-size="22">Get more</text>
+
+  <rect x="290" y="380" width="1180" height="468" rx="6" class="panel" />
+  <rect x="291" y="381" width="1178" height="48" fill="#fafafa" />
+  <text x="320" y="412" class="th">Name</text>
+  <text x="820" y="412" class="th">Status</text>
+  <text x="1120" y="412" class="th">Version</text>
+  <line x1="290" y1="430" x2="1470" y2="430" stroke="#e5e7eb" />
+
+  <!-- highlighted LB controller row -->
+  <rect x="296" y="446" width="1168" height="92" rx="6" class="highlight" />
+  <text x="320" y="492" class="link" fill="#16191f" font-weight="600">AWS Load Balancer Controller</text>
+  <text x="320" y="522" class="tiny">Provisions ELB/NLB for LoadBalancer Services — required for Nora agent exposure</text>
+  <circle cx="836" cy="486" r="9" class="active" />
+  <text x="856" y="494" class="small" fill="#16191f">Active</text>
+  <text x="1120" y="494" class="small">v2.8.2</text>
+
+  <line x1="290" y1="538" x2="1470" y2="538" stroke="#f0f0f0" />
+  <text x="320" y="588" class="link">Amazon VPC CNI</text>
+  <circle cx="836" cy="582" r="9" class="active" />
+  <text x="856" y="590" class="small">Active</text>
+  <text x="1120" y="590" class="small">v1.18.3</text>
+
+  <line x1="290" y1="620" x2="1470" y2="620" stroke="#f0f0f0" />
+  <text x="320" y="670" class="link">kube-proxy</text>
+  <circle cx="836" cy="664" r="9" class="active" />
+  <text x="856" y="672" class="small">Active</text>
+  <text x="1120" y="672" class="small">v1.30.0</text>
+
+  <line x1="290" y1="702" x2="1470" y2="702" stroke="#f0f0f0" />
+  <text x="320" y="752" class="link">CoreDNS</text>
+  <circle cx="836" cy="746" r="9" class="active" />
+  <text x="856" y="754" class="small">Active</text>
+  <text x="1120" y="754" class="small">v1.11.1</text>
+
+  <text x="320" y="812" class="tiny">EKS Auto Mode clusters provision load balancers without this add-on — either path satisfies Nora.</text>
+
+  <!-- footer hint -->
+  <rect x="290" y="878" width="1180" height="72" rx="6" fill="#f8fafc" stroke="#d5dbdb" />
+  <text x="316" y="914" class="small">Confirm the AWS Load Balancer Controller is Active (or that the cluster uses Auto Mode)</text>
+  <text x="316" y="942" class="small">before deploying — without it, LoadBalancer Services stay at EXTERNAL-IP: &lt;pending&gt;.</text>
+</svg>

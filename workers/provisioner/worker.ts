@@ -39,6 +39,9 @@ const {
   buildOpenClawCustomProviders,
   mapNoraProviderIdToOpenClaw,
 } = require("../../agent-runtime/lib/runtimeBootstrap");
+const {
+  buildHermesRuntimeBootstrapEnv,
+} = require("../../agent-runtime/lib/hermesRuntimeBootstrap");
 const { waitForAgentReadiness } = require("./healthChecks");
 const { buildReadinessWarningDetail, persistReadinessWarning } = require("./readinessWarning");
 const { shellSingleQuote } = require("../../agent-runtime/lib/containerCommand");
@@ -179,7 +182,7 @@ const PROVIDER_MODEL_DEFAULTS = Object.freeze({
   minimax: "MiniMax-M2.7",
   // Bare deployment name — buildDefaultModelCommand prefixes it with the
   // OpenClaw provider id (azure-openai-responses) via mapNoraProviderIdToOpenClaw.
-  "microsoft-foundry": "gpt-5.5",
+  "microsoft-foundry": "gpt-5.5-1",
 });
 
 const HERMES_NATIVE_PROVIDER_MAP = Object.freeze({
@@ -314,7 +317,46 @@ function pickProviderBaseUrl(config = {}) {
   return "";
 }
 
-function buildHermesModelConfig(defaultProvider = null) {
+function normalizeUrlForCompare(value) {
+  return String(value || "").trim().replace(/\/+$/, "");
+}
+
+function resolveHermesProviderBaseUrl(defaultProvider = null) {
+  if (!defaultProvider) return "";
+  const providerId = String(defaultProvider.provider || "").trim();
+  if (!providerId) return "";
+
+  const savedConfig = normalizeProviderConfig(defaultProvider.config);
+  const savedBaseUrl = pickProviderBaseUrl(savedConfig);
+  return savedBaseUrl || HERMES_CUSTOM_PROVIDER_BASE_URLS[providerId] || "";
+}
+
+function resolveHermesModelApiKey(defaultProvider = null, envVars = {}) {
+  const providerId = String(defaultProvider?.provider || "").trim();
+  const envVar = PROVIDER_ENV_MAP[providerId];
+  return envVar && envVars?.[envVar] ? String(envVars[envVar]) : "";
+}
+
+function attachHermesCustomApiKey(modelConfig = null, defaultProvider = null, envVars = {}) {
+  if (!modelConfig || String(modelConfig.provider || "").trim() !== "custom") return modelConfig;
+
+  const apiKey = resolveHermesModelApiKey(defaultProvider, envVars);
+  if (!apiKey) return modelConfig;
+
+  const defaultBaseUrl = resolveHermesProviderBaseUrl(defaultProvider);
+  const modelBaseUrl = String(modelConfig.baseUrl || "").trim();
+  if (
+    modelBaseUrl &&
+    defaultBaseUrl &&
+    normalizeUrlForCompare(modelBaseUrl) !== normalizeUrlForCompare(defaultBaseUrl)
+  ) {
+    return modelConfig;
+  }
+
+  return { ...modelConfig, apiKey };
+}
+
+function buildHermesModelConfig(defaultProvider = null, envVars = {}) {
   if (!defaultProvider) return null;
 
   const providerId = String(defaultProvider.provider || "").trim();
@@ -342,17 +384,26 @@ function buildHermesModelConfig(defaultProvider = null) {
     };
   }
 
-  const resolvedBaseUrl = savedBaseUrl || HERMES_CUSTOM_PROVIDER_BASE_URLS[providerId] || "";
+  const resolvedBaseUrl = resolveHermesProviderBaseUrl(defaultProvider);
 
   if (!resolvedBaseUrl) {
     throw new Error(`Provider ${providerId} needs a base URL before Hermes can use it`);
   }
 
-  return {
+  const modelConfig = {
     provider: "custom",
     defaultModel: modelId,
     baseUrl: resolvedBaseUrl,
   };
+  const apiKey = resolveHermesModelApiKey(defaultProvider, envVars);
+  return apiKey ? { ...modelConfig, apiKey } : modelConfig;
+}
+
+function buildHermesRuntimeBootstrapEnvFor(defaultProvider = null, envVars = {}) {
+  return buildHermesRuntimeBootstrapEnv({
+    envVars,
+    modelConfig: buildHermesModelConfig(defaultProvider, envVars),
+  });
 }
 
 function hasMeaningfulHermesModelConfig(modelConfig = {}) {
@@ -401,11 +452,31 @@ function buildHermesEnvWriteCommand(envVars = {}) {
   ].join("\n");
 }
 
+function buildHermesPythonCommand(script) {
+  const encoded = Buffer.from(String(script || ""), "utf8").toString("base64");
+  return [
+    "set -eu",
+    'HERMES_ROOT="/opt/hermes"',
+    'HERMES_PYTHON="$HERMES_ROOT/.venv/bin/python"',
+    'if [ ! -x "$HERMES_PYTHON" ]; then HERMES_PYTHON="$HERMES_ROOT/.venv/bin/python3"; fi',
+    'if [ ! -x "$HERMES_PYTHON" ]; then HERMES_PYTHON="$(command -v python3 2>/dev/null || true)"; fi',
+    '[ -n "$HERMES_PYTHON" ] || exit 127',
+    'if [ -d "$HERMES_ROOT" ]; then cd "$HERMES_ROOT"; fi',
+    'PYTHONPATH="$HERMES_ROOT${PYTHONPATH:+:$PYTHONPATH}" exec "$HERMES_PYTHON" - <<\'PY\'',
+    "import base64",
+    "__nora_globals = {'__name__': '__main__'}",
+    `exec(base64.b64decode(${JSON.stringify(encoded)}).decode('utf-8'), __nora_globals)`,
+    "PY",
+  ].join("\n");
+}
+
 function buildHermesModelConfigWriteCommand(modelConfig = {}) {
   const payloadJson = JSON.stringify(modelConfig || {});
-  return `
-python3 - <<'PY'
+  const script = `
 import json
+import grp
+import os
+import pwd
 from pathlib import Path
 
 from hermes_cli.config import get_config_path, load_config, save_config
@@ -430,6 +501,8 @@ model = dict(current_model) if isinstance(current_model, dict) else {}
 default_model = str(payload.get("defaultModel") or "").strip()
 provider = str(payload.get("provider") or "").strip()
 base_url = str(payload.get("baseUrl") or "").strip()
+api_key_present = "apiKey" in payload or "api_key" in payload
+api_key = str(payload.get("apiKey") or payload.get("api_key") or "").strip()
 
 if default_model:
     model["default"] = default_model
@@ -446,6 +519,14 @@ if base_url:
 else:
     model.pop("base_url", None)
 
+if api_key_present:
+    if api_key:
+        model["api_key"] = api_key
+    else:
+        model.pop("api_key", None)
+elif provider and provider != "custom":
+    model.pop("api_key", None)
+
 if model:
     config["model"] = model
 else:
@@ -453,9 +534,20 @@ else:
 
 config_path = Path(get_config_path())
 save_config(config)
+try:
+    user = pwd.getpwnam("hermes")
+    group = grp.getgrnam("hermes")
+    os.chown(config_path, user.pw_uid, group.gr_gid)
+except Exception:
+    pass
+try:
+    config_path.chmod(0o600)
+except Exception:
+    pass
 
 print(json.dumps({"ok": True}))
-PY`.trim();
+`;
+  return buildHermesPythonCommand(script);
 }
 
 function pickProviderConfigApiVersion(config = {}) {
@@ -765,7 +857,9 @@ async function reconcileRuntimeLlmAuth({
       }
     }
 
-    const modelConfig = persistedModelConfig || buildHermesModelConfig(defaultProvider);
+    const modelConfig = persistedModelConfig
+      ? attachHermesCustomApiKey(persistedModelConfig, defaultProvider, llmEnvVars)
+      : buildHermesModelConfig(defaultProvider, llmEnvVars);
     if (modelConfig) {
       await runProvisionerExecCommand(
         provisioner,
@@ -824,7 +918,17 @@ async function reconcileRuntimeLlmAuth({
   // Merge custom-provider registrations (Microsoft Foundry) into openclaw.json
   // before the restart so model strings like `microsoft-foundry/<deployment>`
   // resolve instead of throwing "Unknown model" on first request.
-  const customProviders = buildOpenClawCustomProviders(llmEnvVars);
+  const customProviderEnv =
+    defaultProvider?.provider === "microsoft-foundry"
+      ? {
+          ...llmEnvVars,
+          ...(defaultProvider.model ? { MICROSOFT_FOUNDRY_DEPLOYMENT: defaultProvider.model } : {}),
+          ...(buildDefaultOpenClawModel(defaultProvider)
+            ? { NORA_DEFAULT_OPENCLAW_MODEL: buildDefaultOpenClawModel(defaultProvider) }
+            : {}),
+        }
+      : llmEnvVars;
+  const customProviders = buildOpenClawCustomProviders(customProviderEnv);
   if (Object.keys(customProviders).length > 0) {
     const providerMergeCommand = buildOpenClawConfigMergeCommand({
       models: { providers: customProviders },
@@ -1319,6 +1423,10 @@ const worker = new Worker(
       const llmEnvVars = await fetchUserLlmEnvVars(userId);
       const defaultLlmProvider = await fetchDefaultProvider(userId);
       const defaultOpenClawModel = buildDefaultOpenClawModel(defaultLlmProvider);
+      const hermesRuntimeBootstrapEnv =
+        resolvedRuntimeFields.runtime_family === "hermes"
+          ? buildHermesRuntimeBootstrapEnvFor(defaultLlmProvider, llmEnvVars)
+          : {};
       if (Object.keys(llmEnvVars).length > 0) {
         console.log(
           `[provisioner] Injecting ${Object.keys(llmEnvVars).length} LLM provider key(s) for user ${userId}`,
@@ -1590,6 +1698,7 @@ const worker = new Worker(
             ...(defaultOpenClawModel && resolvedRuntimeFields.runtime_family === "openclaw"
               ? { NORA_DEFAULT_OPENCLAW_MODEL: defaultOpenClawModel }
               : {}),
+            ...hermesRuntimeBootstrapEnv,
             ...agentSecretEnvVars,
             ...integrationEnvVars,
             ...llmEnvVars,

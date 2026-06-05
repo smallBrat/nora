@@ -225,6 +225,15 @@ module.exports = {
       : backend.restart(id);
   },
 
+  async updateEnv(agent, envVars = {}) {
+    const id = resolveKubernetesRuntimeId(agent, "update env");
+    const backend = await backendFor(agent);
+    if (typeof backend.updateEnv !== "function") {
+      throw new Error(`Backend ${resolveAgentBackendType(agent)} does not support env updates`);
+    }
+    return backend.updateEnv(id, envVars, lifecycleOptions(agent));
+  },
+
   async destroy(agent) {
     const id = resolveDestroyContainerId(agent);
     return (await backendFor(agent)).destroy(id, {

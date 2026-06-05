@@ -15,7 +15,7 @@ EKS uses the same Kubernetes adapter as every Kubernetes provider. Nora stores p
 - `kubectl` installed on the host that runs Nora.
 
 <Frame caption="AWS Console — EKS cluster overview">
-  ![EKS cluster overview](/images/provisioner-backends/k8s/eks/cluster-overview.png)
+  ![EKS cluster overview](/images/provisioner-backends/k8s/eks/cluster-overview.svg)
 </Frame>
 
 ### 2. Create the kubeconfig
@@ -37,7 +37,7 @@ kubectl --kubeconfig ./.secrets/eks-kubeconfig get nodes
 Confirm the node group reports `Ready` in the Console's **Compute** tab.
 
 <Frame caption="AWS Console — Cluster → Compute (node group Ready)">
-  ![EKS compute tab](/images/provisioner-backends/k8s/eks/compute-tab.png)
+  ![EKS compute tab](/images/provisioner-backends/k8s/eks/compute-tab.svg)
 </Frame>
 
 ### 4. Configure Nora
@@ -55,7 +55,7 @@ For two or more EKS clusters, put each kubeconfig under `NORA_KUBECONFIGS_DIR` a
 Confirm the LB-creating add-on is present under **Add-ons** before continuing.
 
 <Frame caption="AWS Console — Cluster → Add-ons (AWS Load Balancer Controller / Auto Mode)">
-  ![EKS add-ons](/images/provisioner-backends/k8s/eks/add-ons.png)
+  ![EKS add-ons](/images/provisioner-backends/k8s/eks/add-ons.svg)
 </Frame>
 
 ### 5. Start the stack

@@ -2697,7 +2697,9 @@ async function captureDeployDocsScreens(page) {
   ensureDocsDir(DOCS_DIRS.deploy);
 
   await gotoHeading(page, "/app/deploy", "Deploy New Agent");
-  const inputs = page.locator("input");
+  // `:visible` skips the hidden import-template <input type="file"> the deploy
+  // page renders first, so nth(0)/nth(1) map to the name + slug text fields.
+  const inputs = page.locator("input:visible");
   await inputs.nth(0).fill("research-ops-prod").catch(() => {});
   await inputs.nth(1).fill("nora-research-ops-prod").catch(() => {});
   await page.waitForTimeout(300);
@@ -3068,9 +3070,11 @@ async function captureScreens() {
     });
 
     await gotoHeading(operator.page, "/app/deploy", "Deploy New Agent");
-    const deployInputs = operator.page.locator("input");
-    await deployInputs.nth(0).fill("customer-success-operator");
-    await deployInputs.nth(1).fill("nora-customer-success-operator");
+    // `:visible` skips the hidden import-template <input type="file"> the deploy
+    // page renders first, so nth(0)/nth(1) map to the name + slug text fields.
+    const deployInputs = operator.page.locator("input:visible");
+    await deployInputs.nth(0).fill("customer-success-operator").catch(() => {});
+    await deployInputs.nth(1).fill("nora-customer-success-operator").catch(() => {});
     await operator.page.waitForTimeout(250);
     await operator.page.screenshot({
       path: path.join(SCREENSHOT_DIR, "proof-operator-deploy-flow.png"),

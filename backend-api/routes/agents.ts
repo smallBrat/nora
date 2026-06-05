@@ -175,25 +175,19 @@ function resolvePublishedGatewayHost(req) {
 }
 
 function resolvePublishedGatewayProtocol(req) {
-  const nextAuthUrl = String(process.env.NEXTAUTH_URL || "").trim();
-  if (nextAuthUrl) {
-    try {
-      const parsed = new URL(nextAuthUrl);
-      return parsed.protocol === "https:" ? "https" : "http";
-    } catch {
-      // Fall through to request headers.
-    }
-  }
+  const configuredProtocol = String(
+    process.env.GATEWAY_PROTOCOL || process.env.GATEWAY_SCHEME || "",
+  )
+    .trim()
+    .replace(/:$/, "")
+    .toLowerCase();
+  if (configuredProtocol === "https") return "https";
+  if (configuredProtocol === "http") return "http";
 
-  const forwardedProtoHeader = req.headers["x-forwarded-proto"];
-  const forwardedProto = Array.isArray(forwardedProtoHeader)
-    ? forwardedProtoHeader[0]
-    : String(forwardedProtoHeader || "").split(",")[0];
-  if (forwardedProto && forwardedProto.trim()) {
-    return forwardedProto.trim() === "https" ? "https" : "http";
-  }
-
-  return req.protocol === "https" ? "https" : "http";
+  // The OpenClaw gateway's published Docker/Kubernetes ports serve plain HTTP.
+  // The control plane itself may be behind HTTPS, but inheriting that scheme
+  // produces browser TLS errors on direct gateway ports like :19618.
+  return "http";
 }
 
 function normalizeClawhubSkillEntry(entry) {

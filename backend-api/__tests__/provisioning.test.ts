@@ -959,18 +959,19 @@ describe("Hermes dashboard provisioning", () => {
     expect(config.Env).toEqual(
       expect.arrayContaining(["GATEWAY_HEALTH_URL=http://127.0.0.1:8642"]),
     );
-    expect(config.Entrypoint).toEqual(["/bin/bash", "-lc"]);
+    expect(config.Entrypoint).toBeUndefined();
     expect(config.Cmd).toEqual([
+      "bash",
+      "-lc",
       expect.stringContaining('HERMES_BIN="/opt/hermes/.venv/bin/hermes"'),
     ]);
-    expect(config.Cmd[0]).toContain("exec /opt/hermes/docker/entrypoint.sh bash -lc");
-    expect(config.Cmd[0]).toContain(
+    expect(config.Cmd[2]).toContain(
       'nohup "$HERMES_BIN" dashboard --host 0.0.0.0 --insecure --no-open',
     );
-    expect(config.Cmd[0]).toContain(">> /opt/data/hermes-dashboard.log 2>&1");
-    expect(config.Cmd[0]).not.toContain("/proc/1/fd");
-    expect(config.Cmd[0]).toContain('exec "$HERMES_BIN" gateway run');
-    expect(config.Cmd[0].match(/\/opt\/hermes\/docker\/entrypoint\.sh/g)).toHaveLength(1);
+    expect(config.Cmd[2]).toContain(">> /opt/data/hermes-dashboard.log 2>&1");
+    expect(config.Cmd[2]).not.toContain("/proc/1/fd");
+    expect(config.Cmd[2]).toContain('exec "$HERMES_BIN" gateway run');
+    expect(config.Cmd.join(" ")).not.toContain("/opt/hermes/docker/entrypoint.sh");
     expect(config.ExposedPorts).toEqual({
       "8642/tcp": {},
       "9119/tcp": {},

@@ -84,6 +84,8 @@ const PROVIDERS = [
     supportsApiVersion: true,
     apiVersionPlaceholder: "2024-10-21",
     models: [
+      "gpt-5.5-1",
+      "gpt5.5-1",
       "gpt-5.5",
       "gpt-5.5-mini",
       "o3",

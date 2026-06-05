@@ -16,8 +16,12 @@ const {
 const { getHermesDockerAgentImage } = require("../../../agent-runtime/lib/agentImages");
 const {
   buildContainerBootstrap,
-  shellSingleQuote,
 } = require("../../../agent-runtime/lib/containerCommand");
+const {
+  HERMES_MANAGED_ENV_ENV,
+  HERMES_MODEL_CONFIG_ENV,
+  buildHermesRuntimeConfigBootstrapCommand,
+} = require("../../../agent-runtime/lib/hermesRuntimeBootstrap");
 const {
   buildTelemetry,
   buildUnavailableTelemetry,
@@ -29,7 +33,6 @@ const HERMES_RUNTIME_PORT = 8642;
 const HERMES_HOME = "/opt/data";
 const HERMES_WORKSPACE = `${HERMES_HOME}/workspace`;
 const HERMES_DASHBOARD_LOG = `${HERMES_HOME}/hermes-dashboard.log`;
-const HERMES_ENTRYPOINT = "/opt/hermes/docker/entrypoint.sh";
 const HERMES_BIN = "/opt/hermes/.venv/bin/hermes";
 const BOOTSTRAP_CONFIGMAP_KEY = "bootstrap.sh";
 const BOOTSTRAP_MOUNT_PATH = "/opt/nora-bootstrap";
@@ -153,17 +156,24 @@ function defaultDeployNameForRuntime(runtimeFamily, id, name) {
 }
 
 function buildHermesStartCommand() {
-  const hermesRuntimeCommand = [
+  return [
     "set -eu",
+    buildHermesRuntimeConfigBootstrapCommand(),
     `HERMES_BIN="${HERMES_BIN}"`,
     '[ -x "$HERMES_BIN" ] || HERMES_BIN="$(command -v hermes)"',
     `nohup "$HERMES_BIN" dashboard --host 0.0.0.0 --insecure --no-open >> ${HERMES_DASHBOARD_LOG} 2>&1 &`,
     'exec "$HERMES_BIN" gateway run',
   ].join("\n");
+}
 
+function buildHermesPostStartCommand() {
   return [
     "set -eu",
-    `exec ${HERMES_ENTRYPOINT} bash -lc ${shellSingleQuote(hermesRuntimeCommand)}`,
+    `if [ -z "\${${HERMES_MANAGED_ENV_ENV}:-}" ] && [ -z "\${${HERMES_MODEL_CONFIG_ENV}:-}" ]; then exit 0; fi`,
+    // The Hermes image migrates/seeds config.yaml in s6 cont-init. Run after
+    // that has had a short window, then use Hermes's own config helpers.
+    'sleep "${NORA_HERMES_BOOTSTRAP_DELAY_SECONDS:-8}"',
+    buildHermesRuntimeConfigBootstrapCommand(),
   ].join("\n");
 }
 
@@ -1027,7 +1037,7 @@ class K8sBackend extends ProvisionerBackend {
       },
       namespace,
     );
-    const hermesLaunch = this._bootstrapLaunch(hermesBootstrap);
+    const hermesLaunchArgs = ["bash", "-lc", `. ${BOOTSTRAP_SCRIPT_PATH}`];
 
     const envVars = Object.entries({
       ...(env || {}),
@@ -1079,10 +1089,16 @@ class K8sBackend extends ProvisionerBackend {
               {
                 name: "agent",
                 image: imgName,
-                command: hermesLaunch.command,
-                args: hermesLaunch.args,
+                args: hermesLaunchArgs,
                 workingDir: HERMES_HOME,
                 env: envVars,
+                lifecycle: {
+                  postStart: {
+                    exec: {
+                      command: ["/bin/sh", "-lc", buildHermesPostStartCommand()],
+                    },
+                  },
+                },
                 volumeMounts: [this._bootstrapVolumeMount()],
                 ports: [
                   { name: "runtime", containerPort: HERMES_RUNTIME_PORT },
@@ -1716,6 +1732,59 @@ class K8sBackend extends ProvisionerBackend {
         }),
     );
     console.log(`[k8s] Deployment ${deployName} rollout restart triggered in ${namespace}`);
+  }
+
+  async updateEnv(containerId, envVars = {}, options = {}) {
+    const deployName = containerId;
+    const entries = Object.entries(envVars || {}).filter(([key]) => key);
+    if (entries.length === 0) return;
+
+    const { deployment, namespace } = await this._readDeploymentInCandidateNamespace(
+      deployName,
+      options,
+    );
+    const containers = deployment?.spec?.template?.spec?.containers || [];
+    const containerIndex = containers.findIndex((container) => container?.name === "agent");
+    const index = containerIndex >= 0 ? containerIndex : 0;
+    const env = Array.isArray(containers[index]?.env) ? containers[index].env : [];
+    const envIndexByName = new Map(env.map((entry, entryIndex) => [entry.name, entryIndex]));
+    const envPath = `/spec/template/spec/containers/${index}/env`;
+    const patch = [];
+
+    if (options?.runtimeFamily === "hermes") {
+      patch.push({
+        op: containers[index]?.lifecycle ? "replace" : "add",
+        path: `/spec/template/spec/containers/${index}/lifecycle`,
+        value: {
+          postStart: {
+            exec: {
+              command: ["/bin/sh", "-lc", buildHermesPostStartCommand()],
+            },
+          },
+        },
+      });
+    }
+
+    if (!Array.isArray(containers[index]?.env)) {
+      patch.push({ op: "add", path: envPath, value: [] });
+    }
+
+    for (const [name, value] of entries) {
+      const nextEntry = { name: String(name), value: String(value ?? "") };
+      const existingIndex = envIndexByName.get(name);
+      if (Number.isInteger(existingIndex)) {
+        patch.push({ op: "replace", path: `${envPath}/${existingIndex}`, value: nextEntry });
+      } else {
+        patch.push({ op: "add", path: `${envPath}/-`, value: nextEntry });
+      }
+    }
+
+    await this.appsApi.patchNamespacedDeployment({
+      name: deployName,
+      namespace,
+      body: patch,
+    });
+    console.log(`[k8s] Updated ${entries.length} env var(s) on deployment ${deployName}`);
   }
 
   /**
