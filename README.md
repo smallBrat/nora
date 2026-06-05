@@ -63,7 +63,7 @@ curl -fsSL https://raw.githubusercontent.com/solomon2773/nora/master/setup.sh | 
 iwr -useb https://raw.githubusercontent.com/solomon2773/nora/master/setup.ps1 | iex
 ```
 
-The installer verifies prerequisites, generates secrets, optionally creates a bootstrap admin, and starts the stack. Once it finishes, open `http://localhost:8080` and follow the [first-15-minutes walkthrough](https://noradocs.solomontsao.com/quickstart).
+The installer verifies prerequisites, generates or preserves secrets, optionally creates a bootstrap admin, picks free local ports when the defaults are busy, and starts the stack. Once it finishes, open the URL printed by setup. Local mode defaults to `http://localhost:8080`, but setup may select another port such as `8081` on a busy workstation. Then follow the [first-15-minutes walkthrough](https://noradocs.solomontsao.com/quickstart).
 
 For manual setup, environment variables, public-domain mode, TLS, and Kubernetes / Proxmox / NemoClaw configuration, see the docs:
 

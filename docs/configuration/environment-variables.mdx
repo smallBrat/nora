@@ -44,13 +44,13 @@ These two optional variables seed a first administrator account on the very firs
 
 PostgreSQL connection settings. Defaults match the Docker Compose service name and port.
 
-| Variable      | Required | Default    | Description                                                                 |
-| ------------- | -------- | ---------- | --------------------------------------------------------------------------- |
-| `DB_HOST`     | No       | `postgres` | PostgreSQL hostname. Compose users keep the default; external DBs override. |
-| `DB_PORT`     | No       | `5432`     | PostgreSQL port.                                                            |
-| `DB_USER`     | No       | `nora`     | Database role used by backend-api and worker-provisioner.                   |
-| `DB_PASSWORD` | Yes      | —          | Password for the role above. Set to a strong value before starting.         |
-| `DB_NAME`     | No       | `nora`     | Database name.                                                              |
+| Variable      | Required | Default    | Description                                                                                                                                                  |
+| ------------- | -------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `DB_HOST`     | No       | `postgres` | PostgreSQL hostname. Compose users keep the default; external DBs override.                                                                                  |
+| `DB_PORT`     | No       | `5432`     | PostgreSQL port.                                                                                                                                             |
+| `DB_USER`     | No       | `nora`     | Database role used by backend-api and worker-provisioner.                                                                                                    |
+| `DB_PASSWORD` | Yes      | —          | Password for the role above. For compose installs, keep this value aligned with the initialized Postgres volume; setup preserves it during reconfigure mode. |
+| `DB_NAME`     | No       | `nora`     | Database name.                                                                                                                                               |
 
 ## Redis and queue
 
@@ -61,7 +61,8 @@ Redis backs BullMQ for deployment, ClawHub install, backup, and alert-delivery j
 | `REDIS_HOST`                        | No       | `redis`   | Redis hostname.                                                                                                                                    |
 | `REDIS_PORT`                        | No       | `6379`    | Redis port.                                                                                                                                        |
 | `REDIS_PASSWORD`                    | No       | —         | Optional Redis password. Set when Redis is exposed outside the compose network.                                                                    |
-| `PORT`                              | No       | `4000`    | Backend-api listen port inside the container. The compose stack maps this to host `127.0.0.1:4100`.                                                |
+| `PORT`                              | No       | `4000`    | Backend-api listen port inside the container.                                                                                                      |
+| `BACKEND_API_PORT`                  | No       | `4100`    | Host-only backend API port mapped to container `PORT`. Setup auto-picks another free port when `127.0.0.1:4100` is busy.                           |
 | `DEPLOYMENT_WORKER_CONCURRENCY`     | No       | `6`       | How many deployment jobs the provisioner worker runs in parallel. Higher values reduce queued time but increase image-pull and bootstrap pressure. |
 | `DEPLOYMENT_JOB_TIMEOUT_MS`         | No       | `900000`  | Timeout per deployment job, in milliseconds. Aliased by `PROVISION_TIMEOUT_MS` for legacy deployments.                                             |
 | `CLAWHUB_INSTALL_TIMEOUT_MS`        | No       | `300000`  | Timeout per ClawHub skill install job, in milliseconds.                                                                                            |
@@ -77,12 +78,12 @@ Redis backs BullMQ for deployment, ClawHub install, backup, and alert-delivery j
 
 These variables control which nginx configuration is mounted, the listening port, and the public-facing base URL.
 
-| Variable            | Required | Default                 | Description                                                                                                           |
-| ------------------- | -------- | ----------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `NGINX_CONFIG_FILE` | No       | `nginx.conf`            | Nginx configuration to mount. Use `nginx.conf` for local-only mode and `nginx.public.conf` for public-domain mode.    |
-| `NGINX_HTTP_PORT`   | No       | `8080`                  | Host port mapped to the nginx HTTP listener. Use `8080` locally and `80` when deploying on a public domain.           |
-| `NEXTAUTH_URL`      | No       | `http://localhost:8080` | Canonical browser-facing URL of your Nora deployment. Set to your `https://` origin when exposing on a domain.        |
-| `NORA_PUBLIC_URL`   | No       | —                       | Optional explicit public origin used by emails, OAuth callbacks, and audit links when it differs from `NEXTAUTH_URL`. |
+| Variable            | Required | Default                 | Description                                                                                                                                                               |
+| ------------------- | -------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NGINX_CONFIG_FILE` | No       | `nginx.conf`            | Nginx configuration to mount. Use `nginx.conf` for local-only mode and `nginx.public.conf` for public-domain mode.                                                        |
+| `NGINX_HTTP_PORT`   | No       | `8080`                  | Host port mapped to the nginx HTTP listener. Use `8080` locally and `80` when deploying on a public domain. Setup auto-picks another free local port when `8080` is busy. |
+| `NEXTAUTH_URL`      | No       | `http://localhost:8080` | Canonical browser-facing URL of your Nora deployment. Set to your `https://` origin when exposing on a domain.                                                            |
+| `NORA_PUBLIC_URL`   | No       | —                       | Optional explicit public origin used by emails, OAuth callbacks, and audit links when it differs from `NEXTAUTH_URL`.                                                     |
 
 ## OAuth
 
@@ -331,9 +332,13 @@ Use `NORA_BACKUP_STORAGE=ssh`.
 
 ## LLM key storage
 
-| Variable      | Required | Default    | Description                                                                                                                                   |
-| ------------- | -------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `KEY_STORAGE` | No       | `database` | Where LLM provider keys are stored. `database` encrypts and persists keys in PostgreSQL. `env` reads keys from environment variables instead. |
+| Variable                        | Required | Default    | Description                                                                                                                                                     |
+| ------------------------------- | -------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `KEY_STORAGE`                   | No       | `database` | Where LLM provider keys are stored. `database` encrypts and persists keys in PostgreSQL. `env` reads keys from environment variables instead.                   |
+| `MICROSOFT_FOUNDRY_API_KEY`     | No       | —          | Foundry API key when using `KEY_STORAGE=env` or injecting provider credentials directly into a runtime.                                                         |
+| `MICROSOFT_FOUNDRY_BASE_URL`    | No       | —          | Per-resource Foundry endpoint, for example `https://<resource>.services.ai.azure.com/openai/v1/`. Required for Microsoft Foundry runtime registration.          |
+| `MICROSOFT_FOUNDRY_DEPLOYMENT`  | No       | —          | Exact Azure deployment name to use as the runtime model, for example `gpt-5.5-1`. Deployment names are operator-defined and must not be shortened to `gpt-5.5`. |
+| `MICROSOFT_FOUNDRY_API_VERSION` | No       | —          | Optional Foundry API version for classic Azure OpenAI endpoint shapes. Leave empty when using the OpenAI v1 GA path.                                            |
 
 ## TLS
 
