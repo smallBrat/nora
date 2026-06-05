@@ -1092,6 +1092,7 @@ $NEXTAUTH_URL = "http://localhost:8080"
 $CORS_ORIGINS = "http://localhost:8080"
 $NGINX_CONFIG_FILE = "nginx.conf"
 $NGINX_HTTP_PORT = "8080"
+$BACKEND_API_PORT = "4100"
 $NORA_FORCE_SECURE_COOKIES = ""
 $CAN_START_NORA = $true
 
@@ -1159,6 +1160,11 @@ switch ($accessAnswer) {
             Write-Warn "Open THAT URL (not http://localhost:8080) to sign in."
         }
     }
+}
+
+$BACKEND_API_PORT = Resolve-AvailableHostPort -PreferredPort 4100 -Purpose "backend API" -ServiceName "backend-api" -ContainerPort 4000 -BindAddress "127.0.0.1"
+if ("$BACKEND_API_PORT" -ne "4100") {
+    Write-Warn "Port 4100 was busy — Nora backend API will run at 127.0.0.1:$BACKEND_API_PORT."
 }
 
 # ── Bootstrap Admin Account (Optional) ───────────────────────
@@ -1280,7 +1286,7 @@ DB_PORT=5432
 REDIS_HOST=redis
 REDIS_PORT=6379
 PORT=4000
-BACKEND_API_PORT=4100
+BACKEND_API_PORT=$BACKEND_API_PORT
 
 # ── Access / URL ─────────────────────────────────────────────
 NGINX_CONFIG_FILE=$NGINX_CONFIG_FILE

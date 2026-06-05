@@ -602,7 +602,7 @@ resolve_available_host_port() {
     fi
     if [ ! -r /dev/tty ]; then
       error "${purpose} port ${port} is unavailable and no interactive terminal is attached."
-      error "Set NGINX_HTTP_PORT in ${ENV_FILE} or stop the conflicting service, then re-run setup."
+      error "Set the matching port variable in ${ENV_FILE} or stop the conflicting service, then re-run setup."
       exit 1
     fi
     printf "  Enter another host port [%s]: " "$suggested_port" > /dev/tty
@@ -1142,6 +1142,7 @@ NEXTAUTH_URL="http://localhost:8080"
 CORS_ORIGINS="http://localhost:8080"
 NGINX_CONFIG_FILE="nginx.conf"
 NGINX_HTTP_PORT="8080"
+BACKEND_API_PORT="4100"
 NORA_FORCE_SECURE_COOKIES=""
 CAN_START_NORA=true
 
@@ -1200,6 +1201,11 @@ case "$access_answer" in
     fi
     ;;
 esac
+
+BACKEND_API_PORT="$(resolve_available_host_port "4100" "backend API" "backend-api" "4000" "127.0.0.1")"
+if [ "$BACKEND_API_PORT" != "4100" ]; then
+  warn "Port 4100 was busy — Nora backend API will run at 127.0.0.1:${BACKEND_API_PORT}."
+fi
 
 # ── Bootstrap Admin Account (Optional) ───────────────────────
 
@@ -1332,7 +1338,7 @@ DB_PORT=5432
 REDIS_HOST=redis
 REDIS_PORT=6379
 PORT=4000
-BACKEND_API_PORT=4100
+BACKEND_API_PORT=${BACKEND_API_PORT}
 
 # ── Access / URL ─────────────────────────────────────────────
 NGINX_CONFIG_FILE=${NGINX_CONFIG_FILE}
