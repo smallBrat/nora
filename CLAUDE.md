@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Repo Is
 
-Nora is the self-hosted AI agent ops platform — an operator-facing control plane that manages, deploys, monitors, and operates agent runtimes across multiple backends (Docker, Kubernetes, Proxmox, NemoClaw, Hermes). Node 24 LTS across all services.
+Nora is the self-hosted AI agent ops platform — an operator-facing control plane that manages, deploys, monitors, and operates agent runtimes across Docker, Kubernetes, and Proxmox deploy targets. Runtime families are OpenClaw and Hermes; NemoClaw is a sandbox profile layered onto supported deploy targets. Node 24 LTS across all services.
 
 ## Development Commands
 
@@ -74,9 +74,7 @@ nginx (8080 local / 80|443 public)
                     └── worker-provisioner (health on 4001)
                           ├── Docker adapter
                           ├── Kubernetes adapter
-                          ├── Proxmox adapter
-                          ├── NemoClaw adapter
-                          └── Hermes adapter
+                          └── Proxmox adapter
 ```
 
 **Key ports:** nginx 8080 (local), backend-api container 4000 → host 4100, worker-provisioner health 4001, agent runtime contract 9090, OpenClaw gateway 18789, Hermes dashboard 9119.
@@ -115,6 +113,7 @@ Compose mounts `./workers/provisioner/backends` into `backend-api` at `/app/back
 Each folder has its own `AGENTS.md` that narrows ownership, data-flow rules, and architecture. Read the relevant subtree doc before implementing in that area. Cross-cutting changes should be split across affected subtrees.
 
 - `backend-api/` — primary integration hub: control-plane APIs, persistence, queue, auth, monitoring, Agent Hub, gateway proxy, runtime coordination
+- `cli/` — packaged command-line client for Nora's public REST APIs, workspace config, token auth, and operator automation commands
 - `workers/provisioner/` — async provisioning worker; `workers/provisioner/backends/` holds adapter implementations (shared with backend-api via volume mount)
 - `agent-runtime/` — shared runtime contracts (mounted read-only into backend-api and worker)
 - `frontend-dashboard/` — operator UI at `/app`; coordinates with backend-api for API + WebSocket contracts
@@ -126,6 +125,8 @@ Each folder has its own `AGENTS.md` that narrows ownership, data-flow rules, and
 - `.github/` — CI and deploy workflows
 
 Note: the **active** nginx configs (`nginx.conf`, `nginx.e2e.conf`, `nginx.public.conf`) live at the **repo root** — that's what compose mounts. `infra/nginx_public.conf.template` is a template used by `setup-tls.sh`.
+
+Root-owned operational files also live at the repo root: `docker-compose*.yml`, `setup.sh`, `setup.ps1`, `package.json`, and `tsconfig.base.json`. Coordinate changes to those through the root owner plus the affected service, `infra/`, `.github/`, or `e2e/` owner.
 
 ## Environment
 
