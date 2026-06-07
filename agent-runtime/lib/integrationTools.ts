@@ -2494,7 +2494,7 @@ async function executeEmailPoll({ integration, input }) {
         uidValidity,
         lastSeenUid,
       });
-      return {
+      const result = {
         mailbox,
         initialized: true,
         initialSyncMode: "start_from_now",
@@ -2531,7 +2531,7 @@ async function executeEmailPoll({ integration, input }) {
         lastSeenUid,
         initializedAt: checkpoint.initialized_at,
       });
-      return {
+      const result = {
         mailbox,
         checkpointReset: true,
         reason: "uidvalidity_changed",

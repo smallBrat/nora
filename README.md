@@ -108,7 +108,7 @@ Full architecture write-up — system map, queue/worker boundaries, RBAC, migrat
 | --------------------- | ------------------------------------------------------ |
 | Reverse proxy         | Nginx                                                  |
 | Frontends             | Next.js 16, React 19, Tailwind CSS                     |
-| Backend API           | Express.js 4, Node.js 24 LTS                           |
+| Backend API           | Express.js 5, Node.js 24 LTS                           |
 | Auth                  | JWT, HttpOnly cookies, bcryptjs, provider OAuth bridge |
 | Database              | PostgreSQL 15                                          |
 | Queue                 | BullMQ + Redis 7                                       |

@@ -22,8 +22,8 @@ function escapeDotenvValue(value) {
 function hasMeaningfulHermesModelConfig(modelConfig = {}) {
   return Boolean(
     String(modelConfig?.defaultModel || "").trim() ||
-      String(modelConfig?.provider || "").trim() ||
-      String(modelConfig?.baseUrl || "").trim(),
+    String(modelConfig?.provider || "").trim() ||
+    String(modelConfig?.baseUrl || "").trim(),
   );
 }
 
@@ -65,8 +65,8 @@ function buildHermesRuntimeConfigBootstrapCommand() {
     "  fi",
     '  if [ -s "$tmp_file" ]; then printf \'\\n\' >> "$tmp_file"; fi',
     '  printf \'%s\\n\' "$start_marker" >> "$tmp_file"',
-    `  printf '%s' "\$${HERMES_MANAGED_ENV_ENV}" | base64 -d >> "$tmp_file"`,
-    '  printf \'\\n\' >> "$tmp_file"',
+    `  printf '%s' "$${HERMES_MANAGED_ENV_ENV}" | base64 -d >> "$tmp_file"`,
+    "  printf '\\n' >> \"$tmp_file\"",
     '  printf \'%s\\n\' "$end_marker" >> "$tmp_file"',
     '  chown hermes:hermes "$tmp_file" 2>/dev/null || true',
     '  chmod 0600 "$tmp_file"',
@@ -155,7 +155,7 @@ function buildHermesRuntimeConfigBootstrapCommand() {
     "    config_path.chmod(0o600)",
     "except Exception:",
     "    pass",
-    "print(json.dumps({\"ok\": True}))",
+    'print(json.dumps({"ok": True}))',
     "PY",
     "fi",
   ].join("\n");
