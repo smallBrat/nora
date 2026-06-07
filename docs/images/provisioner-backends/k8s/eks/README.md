@@ -1,11 +1,9 @@
-# AWS Console screenshots — EKS setup
+# AWS Console screenshots - EKS setup
 
-Reference images for the EKS setup guide. The checked-in SVGs are screenshot-style references for
-the fields operators need to find in the AWS Console; replace them with manual console captures if
-you need exact account-specific screenshots.
+These are real AWS Console screenshots used by the EKS provisioner-backend docs.
 
-## Expected files
+- `cluster-overview.png` - crop from the AWS EKS User Guide source image `latest/ug/images/monitor-cluster.png`.
+- `compute-tab.png` - AWS EKS Dashboard source image `latest/ug/images/eks-dashboard.png`.
+- `add-ons.png` - AWS EKS add-on configuration source image `latest/ug/images/console-cni-config-network-policy.png`.
 
-- `cluster-overview.svg` — EKS cluster overview. Shows the cluster name + region used by `aws eks update-kubeconfig`.
-- `compute-tab.svg` — **Compute** tab confirming the managed node group is `Active` and its nodes are `Ready`.
-- `add-ons.svg` — **Add-ons** showing the AWS Load Balancer Controller installed (or note EKS Auto Mode).
+Do not replace these with generated art or hand-drawn stand-ins. Refresh with real AWS Console captures when the EKS UI changes.

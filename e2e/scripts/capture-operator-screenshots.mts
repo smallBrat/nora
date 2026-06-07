@@ -30,6 +30,7 @@ const DOCS_DIRS = {
   alerts: path.join(DOCS_IMAGES_ROOT, "guides/alert-rules"),
   monitoring: path.join(DOCS_IMAGES_ROOT, "guides/monitoring"),
   agentHub: path.join(DOCS_IMAGES_ROOT, "guides/agent-hub"),
+  agentTemplates: path.join(DOCS_IMAGES_ROOT, "guides/agent-templates"),
   backups: path.join(DOCS_IMAGES_ROOT, "guides/backups"),
   nemoclaw: path.join(DOCS_IMAGES_ROOT, "guides/nemoclaw"),
   support: path.join(DOCS_IMAGES_ROOT, "support"),
@@ -136,6 +137,64 @@ const IDS = {
 
 const AGENT_IMAGE = "nora-openclaw-agent:local";
 const HERMES_IMAGE = "nousresearch/hermes-agent:latest";
+
+const AGENT_TEMPLATE_DOCS = [
+  {
+    imageSlug: "echo-personal-branding",
+    listingSlug: "personal-branding",
+    heading: "Echo Personal Branding",
+  },
+  {
+    imageSlug: "iris-instagram",
+    listingSlug: "iris-instagram",
+    heading: "Iris Instagram Manager",
+  },
+  {
+    imageSlug: "remy-customer-support",
+    listingSlug: "customer-support-faq-claw",
+    heading: "Customer Support & FAQ Claw",
+  },
+  {
+    imageSlug: "scout-lead-outreach",
+    listingSlug: "lead-outreach-drafter-claw",
+    heading: "Lead Outreach Drafter Claw",
+  },
+  {
+    imageSlug: "penny-invoice-followup",
+    listingSlug: "invoice-followup-claw",
+    heading: "Invoice Follow-Up Claw",
+  },
+  {
+    imageSlug: "cadence-email-nurture",
+    listingSlug: "email-nurture-builder-claw",
+    heading: "Email Nurture Builder Claw",
+  },
+  {
+    imageSlug: "dex-document-extractor",
+    listingSlug: "document-data-extractor-claw",
+    heading: "Document Data Extractor Claw",
+  },
+  {
+    imageSlug: "mercer-client-intelligence",
+    listingSlug: "client-intelligence-sales-momentum-claw",
+    heading: "Client Intelligence & Sales Momentum Claw",
+  },
+  {
+    imageSlug: "signal-market-signal",
+    listingSlug: "social-media-market-signal-claw",
+    heading: "Social Media & Market Signal Claw",
+  },
+  {
+    imageSlug: "atlas-chief-of-staff",
+    listingSlug: "chief-of-staff-claw",
+    heading: "Chief-of-Staff Claw",
+  },
+  {
+    imageSlug: "sentry-communication-intelligence",
+    listingSlug: "communication-intelligence-claw",
+    heading: "Communication Intelligence Claw",
+  },
+];
 
 const HERMES_README_AGENT = {
   id: IDS.agents.hermes,
@@ -2257,8 +2316,15 @@ FROM
   generate_series(0, 5) AS hours;
 
 -- Backups + schedule for the primary agent.
-DELETE FROM backup_schedules WHERE agent_id IN (${sqlLiteral(IDS.agents.primary)});
-DELETE FROM backups WHERE agent_id IN (${sqlLiteral(IDS.agents.primary)});
+DELETE FROM backup_schedules
+ WHERE agent_id IN (${sqlLiteral(IDS.agents.primary)})
+    OR id = ${sqlLiteral(IDS.backups.schedule)}
+    OR schedule_key = 'agent:${IDS.agents.primary}:daily';
+DELETE FROM backups
+ WHERE agent_id IN (${sqlLiteral(IDS.agents.primary)})
+    OR id IN (${[IDS.backups.daily, IDS.backups.weekly, IDS.backups.onDemand]
+      .map(sqlLiteral)
+      .join(", ")});
 
 INSERT INTO backups (
   id, user_id, agent_id, kind, status, name, storage_backend, storage_key,
@@ -2810,6 +2876,137 @@ async function captureIntegrationsDocsScreens(page) {
 async function captureChannelsDocsScreens(page) {
   ensureDocsDir(DOCS_DIRS.channels);
 
+  const typeDefinitions = [
+    {
+      id: "slack",
+      type: "slack",
+      label: "Slack",
+      title: "Slack",
+      detailLabel: "Slack workspace channel",
+      description: "Post approval requests and status updates to a Slack channel.",
+      icon: null,
+      configFields: [
+        {
+          key: "botToken",
+          label: "Bot token",
+          type: "password",
+          required: true,
+          placeholder: "xoxb-...",
+        },
+        {
+          key: "defaultChannel",
+          label: "Default channel",
+          type: "text",
+          required: true,
+          placeholder: "#ops-alerts",
+        },
+      ],
+      hasComplexFields: false,
+      actions: {
+        canQrLogin: false,
+        canLogout: false,
+      },
+    },
+    {
+      id: "webhook",
+      type: "webhook",
+      label: "Webhook",
+      title: "Webhook",
+      detailLabel: "Signed webhook endpoint",
+      description: "Send outbound events to an HTTPS endpoint.",
+      icon: null,
+      configFields: [
+        {
+          key: "url",
+          label: "Webhook URL",
+          type: "url",
+          required: true,
+          placeholder: "https://hooks.example.com/nora",
+        },
+      ],
+      hasComplexFields: false,
+      actions: {
+        canQrLogin: false,
+        canLogout: false,
+      },
+    },
+  ];
+  const typeById = new Map(typeDefinitions.map((entry) => [entry.type, entry]));
+  const channelStatus = {
+    state: "configured",
+    connected: false,
+    running: false,
+    healthState: null,
+    lastError: null,
+    lastConnectedAt: null,
+    lastProbeAt: null,
+  };
+  const channelActions = {
+    canEdit: true,
+    canToggle: true,
+    canDelete: true,
+    canTest: true,
+    canViewMessages: true,
+    canQrLogin: false,
+    canLogout: false,
+  };
+  const payload = {
+    runtime: "legacy",
+    title: "Channels",
+    description: "Nora manages built-in channel adapters here.",
+    capabilities: {
+      supportsTesting: true,
+      supportsMessageHistory: true,
+      supportsArbitraryNames: true,
+      supportsLazyTypeDefinitions: false,
+    },
+    channels: [
+      {
+        id: IDS.channels.slack,
+        type: "slack",
+        name: "Slack Ops Alerts",
+        selectionLabel: "Slack",
+        detailLabel: "Posts deploy approvals and incident nudges to #ops-alerts.",
+        configured: true,
+        enabled: true,
+        status: channelStatus,
+        actions: channelActions,
+      },
+      {
+        id: IDS.channels.webhook,
+        type: "webhook",
+        name: "Production Webhook",
+        selectionLabel: "Webhook",
+        detailLabel: "Signed deployment and alert events for downstream automation.",
+        configured: true,
+        enabled: true,
+        status: channelStatus,
+        actions: channelActions,
+      },
+    ],
+    availableTypes: typeDefinitions,
+  };
+
+  await page.route(`**/api/agents/${IDS.agents.primary}/channels`, async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(payload),
+    });
+  });
+  await page.route(`**/api/agents/${IDS.agents.primary}/channels/types/*`, async (route) => {
+    const type = route.request().url().split("/").pop();
+    await route.fulfill({
+      status: typeById.has(type) ? 200 : 404,
+      contentType: "application/json",
+      body: JSON.stringify(typeById.get(type) || { error: "Unknown channel type" }),
+    });
+  });
+
   await gotoHeading(
     page,
     `/app/agents/${IDS.agents.primary}`,
@@ -2941,6 +3138,42 @@ async function captureAgentHubDocsScreens(page) {
   });
   await page.keyboard.press("Escape").catch(() => {});
   await page.waitForTimeout(300);
+}
+
+async function captureAgentTemplateGuideScreens(page, token) {
+  ensureDocsDir(DOCS_DIRS.agentTemplates);
+
+  const listings = await requestJson(`${BASE_URL}/api/agent-hub`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const listingBySlug = new Map(
+    (Array.isArray(listings) ? listings : [])
+      .filter((listing) => listing?.id && listing?.slug)
+      .map((listing) => [listing.slug, listing]),
+  );
+
+  for (const template of AGENT_TEMPLATE_DOCS) {
+    const listing = listingBySlug.get(template.listingSlug);
+    if (!listing) {
+      console.warn(`[capture] missing Agent Hub listing: ${template.listingSlug}`);
+      continue;
+    }
+
+    try {
+      await gotoHeading(page, `/app/agent-hub/${listing.id}`, template.heading);
+      await page.waitForTimeout(300);
+      await page.screenshot({
+        path: path.join(DOCS_DIRS.agentTemplates, `${template.imageSlug}.png`),
+        fullPage: true,
+      });
+    } catch (err) {
+      console.warn(
+        `[capture] agent template ${template.imageSlug} failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }
 }
 
 async function captureBackupsDocsScreens(page) {
@@ -3157,6 +3390,7 @@ async function captureScreens() {
     await captureAlertRulesDocsScreens(operator.page).catch(warn("alert-rules"));
     await captureMonitoringDocsScreens(operator.page).catch(warn("monitoring"));
     await captureAgentHubDocsScreens(operator.page).catch(warn("agent-hub"));
+    await captureAgentTemplateGuideScreens(operator.page, operatorAuth.token).catch(warn("agent-templates"));
     await captureBackupsDocsScreens(operator.page).catch(warn("backups"));
     await captureNemoclawDocsScreens(operator.page).catch(warn("nemoclaw"));
     await capturePlatformModesDocsScreens(operator.page).catch(warn("platform-modes"));
