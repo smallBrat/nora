@@ -104,7 +104,7 @@ Resolved in `agent-runtime/lib/backendCatalog.ts`:
 
 Two consequences that routinely confuse agents:
 
-- **The mount shadows the host `backend-api/backends/` directory at runtime.** Inside the backend-api container, `/app/backends/*` resolves to the worker's copy, *not* the host files under `backend-api/backends/`. A change to a host file that the mount shadows has **no runtime effect** in the container.
+- **The mount shadows the host `backend-api/backends/` directory at runtime.** Inside the backend-api container, `/app/backends/*` resolves to the worker's copy, _not_ the host files under `backend-api/backends/`. A change to a host file that the mount shadows has **no runtime effect** in the container.
 - **`backend-api/backends/hermes.ts` and `nemoclaw.ts` are re-export shims** (`module.exports = require("../../workers/provisioner/backends/<name>")`) — edit the worker source, never the shim. The one genuinely backend-owned file there is `telemetry.ts` (backend telemetry normalization), which is distinct from the worker's `telemetry.ts`.
 
 Treat `workers/provisioner/backends/` and `agent-runtime/` as **shared-blast-radius zones**: an edit there changes both backend-api and the worker. See those folders' `AGENTS.md` for the per-folder warning.
