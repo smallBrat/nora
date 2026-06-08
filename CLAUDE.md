@@ -100,7 +100,14 @@ Resolved in `agent-runtime/lib/backendCatalog.ts`:
 
 ### Backend adapter code sharing
 
-Compose mounts `./workers/provisioner/backends` into `backend-api` at `/app/backends`. This means adapter code is **physically shared** between the API and the worker. When editing adapters, verify both consumers still work.
+⚠️ **SHARED/MOUNTED — blast radius spans two services.** Compose mounts `./workers/provisioner/backends` into `backend-api` at `/app/backends`. This means adapter code is **physically shared** between the API and the worker. When editing adapters, verify both consumers still work.
+
+Two consequences that routinely confuse agents:
+
+- **The mount shadows the host `backend-api/backends/` directory at runtime.** Inside the backend-api container, `/app/backends/*` resolves to the worker's copy, *not* the host files under `backend-api/backends/`. A change to a host file that the mount shadows has **no runtime effect** in the container.
+- **`backend-api/backends/hermes.ts` and `nemoclaw.ts` are re-export shims** (`module.exports = require("../../workers/provisioner/backends/<name>")`) — edit the worker source, never the shim. The one genuinely backend-owned file there is `telemetry.ts` (backend telemetry normalization), which is distinct from the worker's `telemetry.ts`.
+
+Treat `workers/provisioner/backends/` and `agent-runtime/` as **shared-blast-radius zones**: an edit there changes both backend-api and the worker. See those folders' `AGENTS.md` for the per-folder warning.
 
 ### Key backend modules
 
@@ -127,6 +134,15 @@ Each folder has its own `AGENTS.md` that narrows ownership, data-flow rules, and
 Note: the **active** nginx configs (`nginx.conf`, `nginx.e2e.conf`, `nginx.public.conf`) live at the **repo root** — that's what compose mounts. `infra/nginx_public.conf.template` is a template used by `setup-tls.sh`.
 
 Root-owned operational files also live at the repo root: `docker-compose*.yml`, `setup.sh`, `setup.ps1`, `package.json`, and `tsconfig.base.json`. Coordinate changes to those through the root owner plus the affected service, `infra/`, `.github/`, or `e2e/` owner.
+
+### Parallel / multi-agent work
+
+When multiple agents work the repo at once:
+
+- **Divide by subtree owner**, using the routing table in the root `AGENTS.md`. Keep each agent's writes inside its owned subtree unless the root doc says otherwise.
+- **Use a git worktree per agent** for any file-mutating task, so concurrent edits can't collide in a single working tree.
+- **Treat `agent-runtime/` and `workers/provisioner/backends/` as shared-blast-radius zones** (see the ⚠️ SHARED/MOUNTED banners in those folders' `AGENTS.md`). An edit there changes two services — coordinate it rather than assuming it is local to one subtree.
+- **Grep `⚠️ SHARED/MOUNTED`** to find every cross-consumer zone before fanning out work.
 
 ## Environment
 
