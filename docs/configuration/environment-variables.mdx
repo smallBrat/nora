@@ -99,6 +99,23 @@ OAuth login is disabled by default. Set `OAUTH_LOGIN_ENABLED=true` and `NEXT_PUB
 | `GITHUB_CLIENT_SECRET`            | No       | —       | OAuth App client secret from GitHub Developer Settings.                            |
 | `NEXTAUTH_SECRET`                 | No       | —       | Secret used by NextAuth.js for session encryption. Required when OAuth is enabled. |
 
+## Public signup abuse protection
+
+Signup remains public, but Nora can bound signup spikes with dedicated app-level rate limits and an optional bot challenge.
+
+| Variable                                     | Required | Default    | Description                                                                                       |
+| -------------------------------------------- | -------- | ---------- | ------------------------------------------------------------------------------------------------- |
+| `SIGNUP_RATE_LIMIT_BURST_MAX`                | No       | `5`        | Maximum signup attempts per IP within the burst window.                                           |
+| `SIGNUP_RATE_LIMIT_BURST_WINDOW_MS`          | No       | `600000`   | Burst signup window in milliseconds.                                                              |
+| `SIGNUP_RATE_LIMIT_DAILY_MAX`                | No       | `20`       | Maximum signup attempts per IP within the daily window.                                           |
+| `SIGNUP_RATE_LIMIT_DAILY_WINDOW_MS`          | No       | `86400000` | Sustained signup window in milliseconds.                                                          |
+| `SIGNUP_BOT_PROTECTION_PROVIDER`             | No       | `none`     | Backend signup challenge provider. One of `none`, `turnstile`, or `recaptcha`.                    |
+| `NEXT_PUBLIC_SIGNUP_BOT_PROTECTION_PROVIDER` | No       | `none`     | Frontend signup challenge provider. Match the backend provider when challenge protection is used. |
+| `SIGNUP_TURNSTILE_SECRET`                    | No       | —          | Cloudflare Turnstile secret key. Required when the signup provider is `turnstile`.                |
+| `NEXT_PUBLIC_SIGNUP_TURNSTILE_SITE_KEY`      | No       | —          | Cloudflare Turnstile public site key rendered by the signup page.                                 |
+| `SIGNUP_RECAPTCHA_SECRET`                    | No       | —          | Google reCAPTCHA secret key. Required when the signup provider is `recaptcha`.                    |
+| `NEXT_PUBLIC_SIGNUP_RECAPTCHA_SITE_KEY`      | No       | —          | Google reCAPTCHA public site key rendered by the signup page.                                     |
+
 ## Release tracking and upgrades
 
 Drives the admin "release available" banner and the one-click upgrade runner. Setting `NORA_GITHUB_REPO` enables Nora to compare the running version against the latest published GitHub release.
