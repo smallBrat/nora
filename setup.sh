@@ -373,7 +373,7 @@ EOF
 
 clean_reinstall_state() {
   warn "Clean reinstall selected: local compose containers and volumes will be removed."
-  info "External Kubernetes, Proxmox, NemoClaw, and VM resources will not be touched."
+  info "External Kubernetes, planned Proxmox, NemoClaw, and VM resources will not be touched."
   docker compose down -v --remove-orphans 2>/dev/null || true
   remove_local_agent_containers
   ok "Local Nora compose state cleaned"
@@ -1011,7 +1011,6 @@ fi
 header "Deploy Backends"
 
 DOCKER_BACKEND_ENABLED="true"
-PROXMOX_BACKEND_ENABLED="false"
 HERMES_RUNTIME_ENABLED="false"
 NEMOCLAW_SANDBOX_ENABLED="false"
 PROXMOX_API_URL=""
@@ -1039,44 +1038,7 @@ else
 fi
 
 info "Kubernetes clusters are registered after setup in Admin -> Kubernetes."
-
-printf "  Enable Proxmox backend? [y/N] "
-read -r proxmox_backend_answer < /dev/tty
-if [[ "$proxmox_backend_answer" =~ ^[Yy]$ ]]; then
-  PROXMOX_BACKEND_ENABLED="true"
-  echo ""
-  printf "  Proxmox API URL (e.g., https://proxmox.local:8006/api2/json): "
-  read -r PROXMOX_API_URL < /dev/tty
-  printf "  Proxmox Token ID (e.g., user@pam!tokenname): "
-  read -r PROXMOX_TOKEN_ID < /dev/tty
-  printf "  Proxmox Token Secret: "
-  read -r PROXMOX_TOKEN_SECRET < /dev/tty
-  printf "  Proxmox Node [pve]: "
-  read -r input < /dev/tty; PROXMOX_NODE="${input:-pve}"
-  printf "  Proxmox OpenClaw template [local:vztmpl/ubuntu-22.04-standard_22.04-1_amd64.tar.zst]: "
-  read -r input < /dev/tty; PROXMOX_TEMPLATE="${input:-local:vztmpl/ubuntu-22.04-standard_22.04-1_amd64.tar.zst}"
-  printf "  Proxmox Hermes template [optional, required for Hermes + Proxmox]: "
-  read -r PROXMOX_HERMES_TEMPLATE < /dev/tty
-  printf "  Proxmox NemoClaw template [optional, required for NemoClaw + Proxmox]: "
-  read -r PROXMOX_NEMOCLAW_TEMPLATE < /dev/tty
-  printf "  Proxmox rootfs storage [local-lvm]: "
-  read -r input < /dev/tty; PROXMOX_ROOTFS_STORAGE="${input:-local-lvm}"
-  printf "  Proxmox network bridge [vmbr0]: "
-  read -r input < /dev/tty; PROXMOX_BRIDGE="${input:-vmbr0}"
-  printf "  Proxmox SSH host for pct bootstrap: "
-  read -r PROXMOX_SSH_HOST < /dev/tty
-  printf "  Proxmox SSH user [root]: "
-  read -r input < /dev/tty; PROXMOX_SSH_USER="${input:-root}"
-  printf "  Proxmox SSH private key path [optional]: "
-  read -r PROXMOX_SSH_PRIVATE_KEY_PATH < /dev/tty
-  if [ -z "$PROXMOX_SSH_PRIVATE_KEY_PATH" ]; then
-    printf "  Proxmox SSH password [optional]: "
-    read -r PROXMOX_SSH_PASSWORD < /dev/tty
-  fi
-  ok "Proxmox backend configured"
-else
-  info "Proxmox backend disabled"
-fi
+info "Proxmox is planned but release-blocked in this Nora release; setup will not enable it."
 
 printf "  Enable Hermes runtime family? [y/N] "
 read -r hermes_runtime_answer < /dev/tty
@@ -1105,7 +1067,6 @@ fi
 
 enabled_backends=()
 [ "$DOCKER_BACKEND_ENABLED" = "true" ] && enabled_backends+=("docker")
-[ "$PROXMOX_BACKEND_ENABLED" = "true" ] && enabled_backends+=("proxmox")
 
 if [ ${#enabled_backends[@]} -eq 0 ]; then
   warn "No deploy backends selected — enabling Docker so Nora can deploy agents."
@@ -1441,7 +1402,9 @@ ENABLED_RUNTIME_FAMILIES=${ENABLED_RUNTIME_FAMILIES}
 ENABLED_BACKENDS=${ENABLED_BACKENDS}
 ENABLED_SANDBOX_PROFILES=${ENABLED_SANDBOX_PROFILES}
 
-# ── Proxmox (when ENABLED_BACKENDS includes proxmox) ─────────
+# ── Proxmox (planned; release-blocked in current Nora releases) ─────────
+# These values are retained for adapter development and future validation.
+# Setting them does not make Proxmox a supported deploy target yet.
 PROXMOX_API_URL=${PROXMOX_API_URL}
 PROXMOX_TOKEN_ID=${PROXMOX_TOKEN_ID}
 PROXMOX_TOKEN_SECRET=${PROXMOX_TOKEN_SECRET}

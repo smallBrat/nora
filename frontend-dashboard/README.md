@@ -8,16 +8,16 @@ Runs on `/app/*` behind nginx. Users manage their AI agents, configure LLM provi
 
 ## Pages
 
-| Route | Description |
-|---|---|
-| `/app` | Dashboard home — agent overview and quick stats |
-| `/app/agents` | Agent fleet list with status indicators |
-| `/app/agents/[id]` | Agent detail with 7-tab interface |
-| `/app/deploy` | Deploy a new agent (Docker, Proxmox, K8s) |
-| `/app/agent-hub` | Browse, share, and install agent templates |
-| `/app/workspaces` | Manage isolated workspaces |
-| `/app/monitoring` | Real-time metrics via SSE |
-| `/app/settings` | User profile, LLM provider keys, connected accounts |
+| Route              | Description                                                                                              |
+| ------------------ | -------------------------------------------------------------------------------------------------------- |
+| `/app`             | Dashboard home — agent overview and quick stats                                                          |
+| `/app/agents`      | Agent fleet list with status indicators                                                                  |
+| `/app/agents/[id]` | Agent detail with 7-tab interface                                                                        |
+| `/app/deploy`      | Deploy a new agent (Docker or K8s/Kubernetes GA; Proxmox visible only as release-blocked roadmap target) |
+| `/app/agent-hub`   | Browse, share, and install agent templates                                                               |
+| `/app/workspaces`  | Manage isolated workspaces                                                                               |
+| `/app/monitoring`  | Real-time metrics via SSE                                                                                |
+| `/app/settings`    | User profile, LLM provider keys, connected accounts                                                      |
 
 ## Agent Detail Tabs
 
@@ -33,16 +33,16 @@ Each agent's `/app/agents/[id]` page has 7 tabs:
 
 ## Key Components
 
-| Component | Purpose |
-|---|---|
-| `AgentTerminal.tsx` | xterm.js terminal with FitAddon, WebSocket |
-| `TabBar.tsx` | 7-tab navigation bar |
-| `OpenClawTab.tsx` | 5-panel OpenClaw interface |
-| `ChannelsTab.tsx` | Channel CRUD with dynamic config forms |
-| `IntegrationsTab.tsx` | Catalog browser with 17-category filter |
-| `IntegrationCard.tsx` | Card with config modal for connecting |
-| `LLMSetupWizard.tsx` | 3-step provider setup (select → configure → done) |
-| `Layout.tsx` / `Sidebar.tsx` / `Topbar.tsx` | App shell layout |
+| Component                                   | Purpose                                           |
+| ------------------------------------------- | ------------------------------------------------- |
+| `AgentTerminal.tsx`                         | xterm.js terminal with FitAddon, WebSocket        |
+| `TabBar.tsx`                                | 7-tab navigation bar                              |
+| `OpenClawTab.tsx`                           | 5-panel OpenClaw interface                        |
+| `ChannelsTab.tsx`                           | Channel CRUD with dynamic config forms            |
+| `IntegrationsTab.tsx`                       | Catalog browser with 17-category filter           |
+| `IntegrationCard.tsx`                       | Card with config modal for connecting             |
+| `LLMSetupWizard.tsx`                        | 3-step provider setup (select → configure → done) |
+| `Layout.tsx` / `Sidebar.tsx` / `Topbar.tsx` | App shell layout                                  |
 
 ## Development
 
@@ -58,6 +58,6 @@ npm run dev   # Starts on port 3001
 
 ## Configuration
 
-| Variable | Default | Description |
-|---|---|
-| `basePath` | `/app` | Next.js base path, set in `next.config.ts` |
+| Variable   | Default | Description                                |
+| ---------- | ------- | ------------------------------------------ |
+| `basePath` | `/app`  | Next.js base path, set in `next.config.ts` |

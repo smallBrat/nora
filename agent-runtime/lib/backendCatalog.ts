@@ -5,7 +5,7 @@ const KNOWN_DEPLOY_TARGETS = Object.freeze(["docker", "k8s", "proxmox"]);
 const KNOWN_BACKENDS = KNOWN_DEPLOY_TARGETS;
 const KNOWN_SANDBOX_PROFILES = Object.freeze(["standard", "nemoclaw"]);
 const PROXMOX_RELEASE_BLOCKER_ISSUE =
-  "Proxmox execution target is not configured for this Nora control plane.";
+  "Proxmox execution target is not supported in this Nora release.";
 
 const OPENCLAW_OPERATOR_CONTRACT = Object.freeze([
   "deploy/redeploy",
@@ -106,10 +106,10 @@ const EXECUTION_TARGET_METADATA = Object.freeze({
     label: "Proxmox",
     shortLabel: "Proxmox",
     summary:
-      "Provision agents as Proxmox LXCs when your infrastructure standard is VM and LXC orchestration through the Proxmox API.",
+      "Planned Proxmox LXC runtime placement for operators whose infrastructure standard is VM and LXC orchestration through the Proxmox API.",
     detail:
-      "Use Proxmox when Nora should create LXCs through the Proxmox API instead of scheduling onto Docker or Kubernetes.",
-    badges: ["LXC", "Proxmox API", "Infrastructure-specific"],
+      "Proxmox is tracked as a roadmap execution target. Current releases keep it visible for operator awareness, but block normal onboarding and deploy selection.",
+    badges: ["Roadmap", "LXC", "Proxmox API"],
   }),
 });
 
@@ -198,10 +198,7 @@ function isKnownDeployTarget(value) {
   const normalized = String(value || "")
     .trim()
     .toLowerCase();
-  return (
-    normalized.startsWith("k8s:") ||
-    KNOWN_DEPLOY_TARGETS.includes(normalized)
-  );
+  return normalized.startsWith("k8s:") || KNOWN_DEPLOY_TARGETS.includes(normalized);
 }
 
 function isKnownBackend(value) {
@@ -291,8 +288,7 @@ function getKubernetesProviderMetadata(options = {}) {
   );
   const metadata =
     KUBERNETES_PROVIDER_METADATA[providerId] || KUBERNETES_PROVIDER_METADATA.kubernetes;
-  const customLabel =
-    typeof options === "object" ? String(options.providerLabel || "").trim() : "";
+  const customLabel = typeof options === "object" ? String(options.providerLabel || "").trim() : "";
   return customLabel
     ? {
         ...metadata,
@@ -381,23 +377,12 @@ function buildMaturityFields(maturityTier) {
   };
 }
 
-function resolveMaturityTier({ runtimeFamily, deployTarget, sandboxProfile }) {
-  if (normalizeSandboxProfileName(sandboxProfile) === "nemoclaw") return "experimental";
-  const normalizedRuntimeFamily = normalizeRuntimeFamilyName(runtimeFamily);
+function resolveMaturityTier({ deployTarget, sandboxProfile }) {
   const normalizedDeployTarget = normalizeDeployTargetName(deployTarget);
 
-  if (normalizedRuntimeFamily === "hermes" && normalizedDeployTarget === "proxmox") {
-    return "beta";
-  }
-
-  switch (normalizedDeployTarget) {
-    case "k8s":
-      return "ga";
-    case "proxmox":
-      return "beta";
-    default:
-      return "ga";
-  }
+  if (normalizedDeployTarget === "proxmox") return "blocked";
+  if (normalizeSandboxProfileName(sandboxProfile) === "nemoclaw") return "experimental";
+  return "ga";
 }
 
 function parseList(rawValue, isKnown, normalize) {
@@ -419,7 +404,12 @@ function parseList(rawValue, isKnown, normalize) {
 function parseEnabledBackendList(rawValue) {
   return parseList(
     rawValue,
-    (value) => ["docker", "proxmox"].includes(String(value || "").trim().toLowerCase()),
+    (value) =>
+      ["docker", "proxmox"].includes(
+        String(value || "")
+          .trim()
+          .toLowerCase(),
+      ),
     normalizeDeployTargetName,
   );
 }
@@ -472,10 +462,6 @@ function getEnabledDeployTargets(env = process.env, options = {}) {
   return getEnabledBackends(env).filter((target) => supportedTargets.has(target));
 }
 
-function hasAnyValue(env, keys) {
-  return keys.some((key) => typeof env[key] === "string" && env[key].trim() !== "");
-}
-
 function isProxmoxApiTokenId(value) {
   const tokenId = String(value || "").trim();
   if (!tokenId.includes("!")) return false;
@@ -495,25 +481,7 @@ function baseDeployTargetIssue(deployTarget, env = process.env, selection = {}) 
       }
       return "Kubernetes execution target requires an Admin-registered cluster such as k8s:aks-eastus2.";
     case "proxmox":
-      if (!env.PROXMOX_API_URL || !env.PROXMOX_TOKEN_ID || !env.PROXMOX_TOKEN_SECRET) {
-        return "Proxmox execution target requires PROXMOX_API_URL, PROXMOX_TOKEN_ID, and PROXMOX_TOKEN_SECRET.";
-      }
-      if (!isProxmoxApiTokenId(env.PROXMOX_TOKEN_ID)) {
-        return "Proxmox execution target requires PROXMOX_TOKEN_ID in API token format user@realm!tokenname.";
-      }
-      if (!env.PROXMOX_SSH_HOST || !env.PROXMOX_SSH_USER) {
-        return "Proxmox execution target requires PROXMOX_SSH_HOST and PROXMOX_SSH_USER for pct bootstrap.";
-      }
-      if (
-        !hasAnyValue(env, [
-          "PROXMOX_SSH_PRIVATE_KEY",
-          "PROXMOX_SSH_PRIVATE_KEY_PATH",
-          "PROXMOX_SSH_PASSWORD",
-        ])
-      ) {
-        return "Proxmox execution target requires SSH key or password authentication.";
-      }
-      return null;
+      return PROXMOX_RELEASE_BLOCKER_ISSUE;
     default:
       return null;
   }
@@ -600,7 +568,8 @@ function getRuntimeSelectionStatus(selection = {}, env = process.env) {
   const hasRegisteredKubernetesTarget =
     deployTarget === "k8s" && String(executionTargetId || "").startsWith("k8s:");
   const deployTargetEnabled =
-    hasRegisteredKubernetesTarget || getEnabledDeployTargets(env, { runtimeFamily }).includes(deployTarget);
+    hasRegisteredKubernetesTarget ||
+    getEnabledDeployTargets(env, { runtimeFamily }).includes(deployTarget);
   const enabled =
     getEnabledRuntimeFamilies(env).includes(runtimeFamily) &&
     deployTargetEnabled &&
@@ -1054,9 +1023,7 @@ function buildBackendEnablementMessage(backendOrStatus, env = process.env) {
       ? backendOrStatus
       : getBackendStatus(backendOrStatus, env);
   if (status.id === "k8s") {
-    return (
-      `${status.label} is not enabled. Register a Kubernetes cluster in Admin -> Kubernetes.`
-    );
+    return `${status.label} is not enabled. Register a Kubernetes cluster in Admin -> Kubernetes.`;
   }
   return `${status.label} is not enabled. Enable it with ` + `ENABLED_BACKENDS=${status.id}.`;
 }

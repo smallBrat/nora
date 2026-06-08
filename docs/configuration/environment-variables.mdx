@@ -186,11 +186,11 @@ These variables are only read when `PLATFORM_MODE=paas`. See [Platform modes](/c
 
 Runtime selection is three-dimensional: **runtime family × deploy target × sandbox profile**. Each enabled-list variable accepts a comma-separated list. The first id in each list is the default for new deployments. See [Provisioner backends](/configuration/provisioner-backends) for details.
 
-| Variable                   | Required | Default    | Description                                                                                                             |
-| -------------------------- | -------- | ---------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `ENABLED_RUNTIME_FAMILIES` | No       | `openclaw` | Runtime families enabled. Supported ids: `openclaw`, `hermes`.                                                          |
-| `ENABLED_BACKENDS`         | No       | `docker`   | Env-configured deploy targets enabled. Supported ids: `docker`, `proxmox`. Kubernetes clusters are registered in Admin. |
-| `ENABLED_SANDBOX_PROFILES` | No       | `standard` | Sandbox profiles enabled. Supported ids: `standard`, `nemoclaw`.                                                        |
+| Variable                   | Required | Default    | Description                                                                                                                                                        |
+| -------------------------- | -------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `ENABLED_RUNTIME_FAMILIES` | No       | `openclaw` | Runtime families enabled. Supported ids: `openclaw`, `hermes`.                                                                                                     |
+| `ENABLED_BACKENDS`         | No       | `docker`   | Env-configured deploy targets enabled. Use `docker` for supported onboarding. `proxmox` is known but release-blocked. Kubernetes clusters are registered in Admin. |
+| `ENABLED_SANDBOX_PROFILES` | No       | `standard` | Sandbox profiles enabled. Supported ids: `standard`, `nemoclaw`.                                                                                                   |
 
 ## Kubernetes registry and Compose mount helpers
 
@@ -218,7 +218,7 @@ Defaults allow OpenClaw's internal gateway port, Docker-published 19000-19999, a
 
 ## Proxmox
 
-Read when `ENABLED_BACKENDS` includes `proxmox`.
+Proxmox is planned but not supported in the current release. These values are retained for adapter development and future validation; setting them does not unblock Proxmox runtime deployment.
 
 | Variable                       | Required | Default                                                    | Description                                                                      |
 | ------------------------------ | -------- | ---------------------------------------------------------- | -------------------------------------------------------------------------------- |

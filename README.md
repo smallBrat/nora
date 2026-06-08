@@ -3,7 +3,7 @@
   <h1>Nora</h1>
   <p><strong>The self-hosted AI agent ops platform.</strong></p>
   <p>
-    Deploy, monitor, and operate OpenClaw and Hermes runtimes from one operator surface — runtime-neutral, Apache 2.0, and on infrastructure you control. Grow from a single Docker host to Kubernetes, Proxmox, or NemoClaw sandboxes without replacing your ops layer.
+    Deploy, monitor, and operate OpenClaw and Hermes runtimes from one operator surface — runtime-neutral, Apache 2.0, and on infrastructure you control. Run agents on Docker or Kubernetes today, use NemoClaw sandboxes experimentally, and track Proxmox as a planned execution target.
   </p>
 </div>
 
@@ -72,11 +72,11 @@ iwr -useb https://raw.githubusercontent.com/solomon2773/nora/master/setup.ps1 | 
 
 The installer verifies prerequisites, generates or preserves secrets, optionally creates a bootstrap admin, picks free local ports when the defaults are busy, and starts the stack. Once it finishes, open the URL printed by setup. Local mode defaults to `http://localhost:8080`, but setup may select another port such as `8081` on a busy workstation. Then follow the [first-15-minutes walkthrough](https://noradocs.solomontsao.com/quickstart).
 
-For manual setup, environment variables, public-domain mode, TLS, and Kubernetes / Proxmox / NemoClaw configuration, see the docs:
+For manual setup, environment variables, public-domain mode, TLS, Kubernetes, NemoClaw, and planned Proxmox configuration, see the docs:
 
 - [Self-hosting guide](https://noradocs.solomontsao.com/self-hosting)
 - [Environment variables reference](https://noradocs.solomontsao.com/configuration/environment-variables)
-- [Provisioner backends](https://noradocs.solomontsao.com/configuration/provisioner-backends) (Docker, k3s/Kubernetes, Proxmox, NemoClaw)
+- [Provisioner backends](https://noradocs.solomontsao.com/configuration/provisioner-backends) (Docker and k3s/Kubernetes are GA; NemoClaw is experimental; Proxmox is planned)
 - [TLS and public domains](https://noradocs.solomontsao.com/configuration/tls-domains)
 - [Fronting a launch with Cloudflare](infra/cloudflare-launch.md) — edge caching, rate limiting, and spike absorption for the single-host deploy
 
@@ -105,24 +105,24 @@ Nginx
                        ├── Redis + BullMQ  (deployments, clawhub-installs, backups, alert-deliveries)
                        ├── worker-provisioner
                        ├── worker-backup
-                       └── runtime adapters  (Docker · k3s/k8s · Proxmox · NemoClaw)
+                       └── runtime adapters/profiles  (Docker GA · k3s/k8s GA · NemoClaw experimental · Proxmox planned)
 ```
 
 Full architecture write-up — system map, queue/worker boundaries, RBAC, migration contract, deployment topologies — is in [docs/concepts/architecture](https://noradocs.solomontsao.com/concepts/architecture).
 
 ## Tech Stack
 
-| Layer                 | Technology                                             |
-| --------------------- | ------------------------------------------------------ |
-| Reverse proxy         | Nginx                                                  |
-| Frontends             | Next.js 16, React 19, Tailwind CSS                     |
-| Backend API           | Express.js 5, Node.js 24 LTS                           |
-| Auth                  | JWT, HttpOnly cookies, bcryptjs, provider OAuth bridge |
-| Database              | PostgreSQL 15                                          |
-| Queue                 | BullMQ + Redis 7                                       |
-| Runtime families      | OpenClaw, Hermes                                       |
-| Provisioning backends | Docker, k3s/Kubernetes, Proxmox, NemoClaw              |
-| Secrets at rest       | AES-256-GCM (provider keys, integrations, backups)     |
+| Layer                 | Technology                                                                         |
+| --------------------- | ---------------------------------------------------------------------------------- |
+| Reverse proxy         | Nginx                                                                              |
+| Frontends             | Next.js 16, React 19, Tailwind CSS                                                 |
+| Backend API           | Express.js 5, Node.js 24 LTS                                                       |
+| Auth                  | JWT, HttpOnly cookies, bcryptjs, provider OAuth bridge                             |
+| Database              | PostgreSQL 15                                                                      |
+| Queue                 | BullMQ + Redis 7                                                                   |
+| Runtime families      | OpenClaw, Hermes                                                                   |
+| Provisioning backends | Docker and k3s/Kubernetes (GA); NemoClaw (experimental sandbox); Proxmox (planned) |
+| Secrets at rest       | AES-256-GCM (provider keys, integrations, backups)                                 |
 
 ## Public REST API and CLI
 
@@ -139,9 +139,8 @@ A small CLI lives in [`cli/`](./cli) (`@nora/cli`) and wraps the same surface fo
 
 Current roadmap items:
 
-- **High priority - NemoClaw production readiness:** harden secure-sandbox deploys across enablement, NVIDIA key and model configuration, OpenShell policy controls, approvals, gateway health, logs, terminal access, telemetry, and end-to-end validation.
-- **Kubernetes policy controls:** extend NemoClaw/OpenShell policy enforcement, approval workflows, network policy defaults, pod-level telemetry, and smoke coverage to k3s/Kubernetes deploy targets.
-- **Proxmox backend:** continue adapter work for standard, Hermes, and NemoClaw-backed LXC deployments, with stronger API/SSH validation, template handling, lifecycle operations, log streaming, telemetry, and smoke coverage.
+- **High priority - NemoClaw experimental hardening:** mature the experimental secure-sandbox profile across enablement, NVIDIA key and model configuration, OpenShell policy controls, approvals, gateway health, logs, terminal access, telemetry, and end-to-end validation.
+- **Proxmox execution target:** complete the planned LXC deployment path for standard, Hermes, and NemoClaw-backed runtimes, with stronger API/SSH validation, template handling, lifecycle operations, log streaming, telemetry, and smoke coverage.
 - **Hermes/OpenClaw parity:** close runtime gaps across validation, deployment readiness, logs, terminal access, monitoring, integration setup, and failure reporting.
 - **First-run operator UX:** tighten the setup path for workspaces, LLM providers, provisioning backends, the first agent deploy, and recommended smoke checks.
 - **Account-scoped monitoring:** add account-level health views that roll up workspace, agent, runtime, cost, and alert signals with drill-downs where operators need detail.

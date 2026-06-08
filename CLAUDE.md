@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Repo Is
 
-Nora is the self-hosted AI agent ops platform — an operator-facing control plane that manages, deploys, monitors, and operates agent runtimes across Docker, Kubernetes, and Proxmox deploy targets. Runtime families are OpenClaw and Hermes; NemoClaw is a sandbox profile layered onto supported deploy targets. Node 24 LTS across all services.
+Nora is the self-hosted AI agent ops platform — an operator-facing control plane that manages, deploys, monitors, and operates agent runtimes across Docker and Kubernetes GA deploy targets. Runtime families are OpenClaw and Hermes; NemoClaw is an experimental sandbox profile layered onto supported deploy targets. Proxmox is a known but release-blocked planned target. Node 24 LTS across all services.
 
 ## Development Commands
 
@@ -74,7 +74,7 @@ nginx (8080 local / 80|443 public)
                     └── worker-provisioner (health on 4001)
                           ├── Docker adapter
                           ├── Kubernetes adapter
-                          └── Proxmox adapter
+                          └── Proxmox adapter (release-blocked)
 ```
 
 **Key ports:** nginx 8080 (local), backend-api container 4000 → host 4100, worker-provisioner health 4001, agent runtime contract 9090, OpenClaw gateway 18789, Hermes dashboard 9119.
@@ -86,8 +86,8 @@ nginx (8080 local / 80|443 public)
 Resolved in `agent-runtime/lib/backendCatalog.ts`:
 
 1. **Runtime family** (`ENABLED_RUNTIME_FAMILIES`): `openclaw` (default) or `hermes`
-2. **Deploy target** (`ENABLED_BACKENDS`): `docker`, `k8s`, `proxmox`
-3. **Sandbox profile**: `standard` or `nemoclaw`
+2. **Deploy target** (`ENABLED_BACKENDS`): `docker`, `k8s`, `proxmox` (`proxmox` is release-blocked)
+3. **Sandbox profile**: `standard` or `nemoclaw` (`nemoclaw` is experimental)
 
 ### Shared runtime contracts
 

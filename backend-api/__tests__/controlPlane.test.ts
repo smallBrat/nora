@@ -394,7 +394,7 @@ describe("public platform config", () => {
       expect.objectContaining({
         enabled: true,
         available: false,
-        maturityTier: "beta",
+        maturityTier: "blocked",
         availableForOnboarding: false,
       }),
     );
@@ -436,7 +436,7 @@ describe("public platform config", () => {
         expect.objectContaining({
           id: "proxmox",
           runtimeFamily: "hermes",
-          maturityTier: "beta",
+          maturityTier: "blocked",
         }),
       ]),
     );

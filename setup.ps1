@@ -387,7 +387,7 @@ function Remove-LocalAgentContainers {
 
 function Invoke-CleanReinstallState {
     Write-Warn "Clean reinstall selected: local compose containers and volumes will be removed."
-    Write-Info "External Kubernetes, Proxmox, NemoClaw, and VM resources will not be touched."
+    Write-Info "External Kubernetes, planned Proxmox, NemoClaw, and VM resources will not be touched."
     docker compose down -v --remove-orphans 2>$null
     Remove-LocalAgentContainers
     Write-Ok "Local Nora compose state cleaned"
@@ -976,7 +976,6 @@ if ($modeAnswer -eq "2") {
 Write-Header "Deploy Backends"
 
 $DOCKER_BACKEND_ENABLED = $true
-$PROXMOX_BACKEND_ENABLED = $false
 $HERMES_RUNTIME_ENABLED = $false
 $NEMOCLAW_SANDBOX_ENABLED = $false
 $PROXMOX_API_URL = ""
@@ -1003,35 +1002,7 @@ if ($dockerBackendAnswer -match '^[Nn]$') {
 }
 
 Write-Info "Kubernetes clusters are registered after setup in Admin -> Kubernetes."
-
-$proxmoxBackendAnswer = Read-Host "  Enable Proxmox backend? [y/N]"
-if ($proxmoxBackendAnswer -match '^[Yy]$') {
-    $PROXMOX_BACKEND_ENABLED = $true
-    Write-Host ""
-    $PROXMOX_API_URL      = Read-Host "  Proxmox API URL (e.g., https://proxmox.local:8006/api2/json)"
-    $PROXMOX_TOKEN_ID     = Read-Host "  Proxmox Token ID (e.g., user@pam!tokenname)"
-    $PROXMOX_TOKEN_SECRET = Read-Host "  Proxmox Token Secret"
-    $input = Read-Host "  Proxmox Node [pve]"
-    if ($input) { $PROXMOX_NODE = $input }
-    $input = Read-Host "  Proxmox OpenClaw template [local:vztmpl/ubuntu-22.04-standard_22.04-1_amd64.tar.zst]"
-    if ($input) { $PROXMOX_TEMPLATE = $input }
-    $PROXMOX_HERMES_TEMPLATE = Read-Host "  Proxmox Hermes template [optional, required for Hermes + Proxmox]"
-    $PROXMOX_NEMOCLAW_TEMPLATE = Read-Host "  Proxmox NemoClaw template [optional, required for NemoClaw + Proxmox]"
-    $input = Read-Host "  Proxmox rootfs storage [local-lvm]"
-    if ($input) { $PROXMOX_ROOTFS_STORAGE = $input }
-    $input = Read-Host "  Proxmox network bridge [vmbr0]"
-    if ($input) { $PROXMOX_BRIDGE = $input }
-    $PROXMOX_SSH_HOST = Read-Host "  Proxmox SSH host for pct bootstrap"
-    $input = Read-Host "  Proxmox SSH user [root]"
-    if ($input) { $PROXMOX_SSH_USER = $input }
-    $PROXMOX_SSH_PRIVATE_KEY_PATH = Read-Host "  Proxmox SSH private key path [optional]"
-    if (-not $PROXMOX_SSH_PRIVATE_KEY_PATH) {
-        $PROXMOX_SSH_PASSWORD = Read-Host "  Proxmox SSH password [optional]"
-    }
-    Write-Ok "Proxmox backend configured"
-} else {
-    Write-Info "Proxmox backend disabled"
-}
+Write-Info "Proxmox is planned but release-blocked in this Nora release; setup will not enable it."
 
 $hermesRuntimeAnswer = Read-Host "  Enable Hermes runtime family? [y/N]"
 if ($hermesRuntimeAnswer -match '^[Yy]$') {
@@ -1057,7 +1028,6 @@ if ($nemoclawSandboxAnswer -match '^[Yy]$') {
 
 $enabledBackends = @()
 if ($DOCKER_BACKEND_ENABLED) { $enabledBackends += "docker" }
-if ($PROXMOX_BACKEND_ENABLED) { $enabledBackends += "proxmox" }
 
 if ($enabledBackends.Count -eq 0) {
     Write-Warn "No deploy backends selected — enabling Docker so Nora can deploy agents."
@@ -1389,7 +1359,9 @@ ENABLED_RUNTIME_FAMILIES=$ENABLED_RUNTIME_FAMILIES
 ENABLED_BACKENDS=$ENABLED_BACKENDS
 ENABLED_SANDBOX_PROFILES=$ENABLED_SANDBOX_PROFILES
 
-# ── Proxmox (when ENABLED_BACKENDS includes proxmox) ─────────
+# ── Proxmox (planned; release-blocked in current Nora releases) ─────────
+# These values are retained for adapter development and future validation.
+# Setting them does not make Proxmox a supported deploy target yet.
 PROXMOX_API_URL=$PROXMOX_API_URL
 PROXMOX_TOKEN_ID=$PROXMOX_TOKEN_ID
 PROXMOX_TOKEN_SECRET=$PROXMOX_TOKEN_SECRET
