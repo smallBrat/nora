@@ -77,7 +77,7 @@ POST /agents/deploy
 
 <ParamField body="sandbox" type="string" default="standard">
   Sandbox type. `standard` (Docker) or `nemoclaw` (NVIDIA NemoClaw). The `nemoclaw` option requires
-  `NEMOCLAW_ENABLED=true` on the server.
+  `nemoclaw` to be included in `ENABLED_SANDBOX_PROFILES` on the server.
 </ParamField>
 
 <ParamField body="vcpu" type="number" default="2">

@@ -147,10 +147,10 @@ When digging into a specific failure, scope the log view to errors only — the 
 
     **NemoClaw sandbox fails to start**
 
-    NemoClaw is disabled by default. To enable it, you must set both variables in your `.env` file:
+    NemoClaw is disabled by default. To enable it, add `nemoclaw` to the enabled sandbox profiles and provide a valid NVIDIA API key in your `.env` file:
 
     ```bash theme={null}
-    NEMOCLAW_ENABLED=true
+    ENABLED_SANDBOX_PROFILES=standard,nemoclaw
     NVIDIA_API_KEY=your-nvidia-api-key
     ```
 

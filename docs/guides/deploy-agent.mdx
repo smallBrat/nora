@@ -88,11 +88,11 @@ Nora supports two sandbox types. Choose the one that fits your security and mode
 | **Policy controls**      | None                        | OpenShell allow/deny policies              |
 | **Supported models**     | Any configured LLM provider | NVIDIA Nemotron models only                |
 | **Approval workflow**    | No                          | Yes — operator reviews flagged actions     |
-| **Operator requirement** | None                        | `NEMOCLAW_ENABLED=true` must be set        |
+| **Operator requirement** | None                        | `nemoclaw` in `ENABLED_SANDBOX_PROFILES`   |
 | **Use case**             | General-purpose agents      | Security-sensitive or compliance workflows |
 
 <Tip>
-  If you select the NemoClaw sandbox and `NEMOCLAW_ENABLED` is not set to `true` in your environment, deployment will return an error. Ask your operator to enable it first.
+  If you select the NemoClaw sandbox and `nemoclaw` is not included in `ENABLED_SANDBOX_PROFILES` in your environment, deployment will return an error. Ask your operator to enable it first.
 </Tip>
 
 For a full guide to NemoClaw agents, see [Run secure agents with NemoClaw sandboxes](/guides/nemoclaw).

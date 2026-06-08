@@ -5,7 +5,7 @@
 NemoClaw is a Docker-hosted sandbox backend that wraps the OpenClaw agent runtime with NVIDIA OpenShell policy controls. Instead of running your agent in a standard Docker container, NemoClaw adds a policy layer that can allow or deny specific actions the agent tries to take, and can require operator approval before certain operations proceed. This makes it well-suited for security-sensitive workflows, compliance environments, or any situation where you need auditability and control over what an agent is permitted to do.
 
 <Warning>
-  NemoClaw must be enabled by your operator before you can use it. If `NEMOCLAW_ENABLED` is not set to `true` in the server environment, attempting to deploy a NemoClaw agent will return an error. Contact your Nora operator to enable it.
+  NemoClaw must be enabled by your operator before you can use it. If `nemoclaw` is not included in `ENABLED_SANDBOX_PROFILES` in the server environment, attempting to deploy a NemoClaw agent will return an error. Contact your Nora operator to enable it.
 </Warning>
 
 ## When to use NemoClaw
