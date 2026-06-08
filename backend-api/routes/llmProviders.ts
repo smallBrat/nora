@@ -10,18 +10,19 @@ router.get("/available", (req, res) => {
   res.json(llmProviders.getAvailableProviders());
 });
 
-router.get("/", async (req, res) => {
+router.get("/", async (req, res, next) => {
   try {
     res.json(await llmProviders.listProviders(req.user.id));
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    next(e);
   }
 });
 
 router.post("/", async (req, res) => {
   try {
     const { provider, apiKey, model, config } = req.body;
-    if (!provider || !apiKey) return res.status(400).json({ error: "provider and apiKey required" });
+    if (!provider || !apiKey)
+      return res.status(400).json({ error: "provider and apiKey required" });
     const result = await llmProviders.addProvider(req.user.id, provider, apiKey, model, config);
     syncAuthToUserAgents(req.user.id).catch(() => {});
     res.json(result);
@@ -52,14 +53,17 @@ router.delete("/:id", async (req, res) => {
 
 // Sync LLM keys to running agents (writes auth-profiles.json + sets model)
 // Optional body: { agentId: "uuid" } to sync a specific agent only
-router.post("/sync", asyncHandler(async (req, res) => {
-  const { agentId } = req.body || {};
-  const results = await syncAuthToUserAgents(req.user.id, agentId || null);
-  res.json({
-    synced: results.filter(r => r.status === 'synced').length,
-    total: results.length,
-    results,
-  });
-}));
+router.post(
+  "/sync",
+  asyncHandler(async (req, res) => {
+    const { agentId } = req.body || {};
+    const results = await syncAuthToUserAgents(req.user.id, agentId || null);
+    res.json({
+      synced: results.filter((r) => r.status === "synced").length,
+      total: results.length,
+      results,
+    });
+  }),
+);
 
 module.exports = router;

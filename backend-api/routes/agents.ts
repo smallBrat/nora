@@ -1659,7 +1659,7 @@ router.post(
   }),
 );
 
-router.post("/:id/start", async (req, res) => {
+router.post("/:id/start", async (req, res, next) => {
   try {
     const agent = await findAccessibleAgent(req.params.id, req.user.id, "editor");
     if (!agent) return res.status(404).json({ error: "Agent not found" });
@@ -1698,11 +1698,11 @@ router.post("/:id/start", async (req, res) => {
     );
     res.json(serializeAgent(updated.rows[0]));
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    next(e);
   }
 });
 
-router.post("/:id/stop", async (req, res) => {
+router.post("/:id/stop", async (req, res, next) => {
   try {
     const agent = await findAccessibleAgent(req.params.id, req.user.id, "editor");
     if (!agent) return res.status(404).json({ error: "Agent not found" });
@@ -1736,7 +1736,7 @@ router.post("/:id/stop", async (req, res) => {
     );
     res.json(serializeAgent(updated.rows[0]));
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    next(e);
   }
 });
 
@@ -1779,23 +1779,23 @@ async function destroyAgent(agentId, userId, req, res) {
   res.json({ success: true });
 }
 
-router.post("/:id/delete", async (req, res) => {
+router.post("/:id/delete", async (req, res, next) => {
   try {
     await destroyAgent(req.params.id, req.user.id, req, res);
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    next(e);
   }
 });
 
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", async (req, res, next) => {
   try {
     await destroyAgent(req.params.id, req.user.id, req, res);
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    next(e);
   }
 });
 
-router.post("/:id/restart", async (req, res) => {
+router.post("/:id/restart", async (req, res, next) => {
   try {
     const agent = await findAccessibleAgent(req.params.id, req.user.id, "editor");
     if (!agent) return res.status(404).json({ error: "Agent not found" });
@@ -1817,7 +1817,7 @@ router.post("/:id/restart", async (req, res) => {
     );
     res.json({ success: true });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    next(e);
   }
 });
 

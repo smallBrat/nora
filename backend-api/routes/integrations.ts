@@ -1185,22 +1185,22 @@ router.post("/agents/:id/integrations/tools/invoke", async (req, res) => {
 
 // ─── Integration catalog ──────────────────────────────────────────
 
-router.get("/integrations/catalog", async (req, res) => {
+router.get("/integrations/catalog", async (req, res, next) => {
   try {
     const { category } = req.query;
     res.json(await integrations.getCatalog(category));
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    next(e);
   }
 });
 
-router.get("/integrations/catalog/:catalogId", async (req, res) => {
+router.get("/integrations/catalog/:catalogId", async (req, res, next) => {
   try {
     const item = await integrations.getCatalogItem(req.params.catalogId);
     if (!item) return res.status(404).json({ error: "Not found" });
     res.json(item);
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    next(e);
   }
 });
 

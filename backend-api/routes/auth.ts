@@ -132,7 +132,7 @@ router.post("/login", authLimiter, async (req, res) => {
   }
 });
 
-router.post("/oauth-login", authLimiter, async (req, res) => {
+router.post("/oauth-login", authLimiter, async (req, res, next) => {
   if (!isOAuthLoginEnabled()) {
     return res.status(403).json({
       error: "OAuth login is disabled until server-side provider verification is implemented",
@@ -243,13 +243,13 @@ router.post("/oauth-login", authLimiter, async (req, res) => {
     ) {
       return res.status(401).json({ error: e.message });
     }
-    res.status(500).json({ error: e.message });
+    next(e);
   }
 });
 
 // ─── Protected routes (require authenticateToken) ─────────────────
 
-router.patch("/password", authenticateToken, async (req, res) => {
+router.patch("/password", authenticateToken, async (req, res, next) => {
   try {
     const { currentPassword, newPassword } = req.body;
     if (!currentPassword || !newPassword)
@@ -266,11 +266,11 @@ router.patch("/password", authenticateToken, async (req, res) => {
     await db.query("UPDATE users SET password_hash = $1 WHERE id = $2", [hash, req.user.id]);
     res.json({ success: true });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    next(e);
   }
 });
 
-router.get("/me", authenticateToken, async (req, res) => {
+router.get("/me", authenticateToken, async (req, res, next) => {
   try {
     const [result, languageSettings] = await Promise.all([
       db.query(
@@ -296,7 +296,7 @@ router.get("/me", authenticateToken, async (req, res) => {
       created_at: user.created_at,
     });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    next(e);
   }
 });
 
