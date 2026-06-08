@@ -27,7 +27,12 @@
 ---
 
 <p align="center">
-  <video src="https://github.com/solomon2773/nora/raw/master/.github/readme-assets/walkthrough.mp4" controls muted width="900"></video>
+  <a href="https://github.com/solomon2773/nora/raw/master/.github/readme-assets/walkthrough.mp4">
+    <img src=".github/readme-assets/proof-operator-dashboard.png" alt="Watch the Nora walkthrough" width="900" />
+  </a>
+</p>
+<p align="center">
+  <sub>▶ <b><a href="https://github.com/solomon2773/nora/raw/master/.github/readme-assets/walkthrough.mp4">Watch the walkthrough</a></b></sub>
 </p>
 
 <p align="center">
@@ -63,6 +68,8 @@ curl -fsSL https://raw.githubusercontent.com/solomon2773/nora/master/setup.sh | 
 iwr -useb https://raw.githubusercontent.com/solomon2773/nora/master/setup.ps1 | iex
 ```
 
+> **Windows requires [PowerShell 7+](https://learn.microsoft.com/powershell/scripting/install/installing-powershell-on-windows).** The default Windows PowerShell 5.1 is not supported — run the command above from a `pwsh` 7 session.
+
 The installer verifies prerequisites, generates or preserves secrets, optionally creates a bootstrap admin, picks free local ports when the defaults are busy, and starts the stack. Once it finishes, open the URL printed by setup. Local mode defaults to `http://localhost:8080`, but setup may select another port such as `8081` on a busy workstation. Then follow the [first-15-minutes walkthrough](https://noradocs.solomontsao.com/quickstart).
 
 For manual setup, environment variables, public-domain mode, TLS, and Kubernetes / Proxmox / NemoClaw configuration, see the docs:
@@ -71,6 +78,7 @@ For manual setup, environment variables, public-domain mode, TLS, and Kubernetes
 - [Environment variables reference](https://noradocs.solomontsao.com/configuration/environment-variables)
 - [Provisioner backends](https://noradocs.solomontsao.com/configuration/provisioner-backends) (Docker, k3s/Kubernetes, Proxmox, NemoClaw)
 - [TLS and public domains](https://noradocs.solomontsao.com/configuration/tls-domains)
+- [Fronting a launch with Cloudflare](infra/cloudflare-launch.md) — edge caching, rate limiting, and spike absorption for the single-host deploy
 
 ## Documentation
 
