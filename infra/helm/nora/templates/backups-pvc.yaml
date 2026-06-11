@@ -1,0 +1,17 @@
+{{- if .Values.backupsVolume.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nora-backups
+  labels:
+    {{- include "nora.labels" (dict "root" . "component" "backups") | nindent 4 }}
+spec:
+  accessModes:
+    {{- toYaml .Values.backupsVolume.accessModes | nindent 4 }}
+  {{- with .Values.backupsVolume.storageClass }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.backupsVolume.size }}
+{{- end }}

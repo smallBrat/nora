@@ -93,10 +93,56 @@ function validateKindConfig(filePath) {
   }
 }
 
+// Dummy values so charts that `fail` on missing required secrets still render
+// in CI. Never reuse these anywhere real.
+const HELM_CI_VALUES = [
+  "--set",
+  "secrets.jwtSecret=ci-validate-dummy-jwt-secret-0000000000",
+  "--set",
+  "secrets.encryptionKey=ci-validate-dummy-encryption-key-00000000",
+  "--set",
+  "secrets.backupEncryptionKey=ci-validate-dummy-backup-key-000000000",
+  "--set",
+  "secrets.apiKeyHashSecret=ci-validate-dummy-hash-secret-0000000000",
+  "--set",
+  "secrets.dbPassword=ci-validate-dummy-db-password",
+];
+
+function runCapture(command, args) {
+  return execFileSync(command, args, { cwd: repoRoot, encoding: "utf8" });
+}
+
 function validateHelmCharts(chartFiles) {
   for (const chartFile of chartFiles) {
     const chartDir = path.dirname(chartFile);
-    run("helm", ["lint", chartDir]);
+    run("helm", ["lint", chartDir, ...HELM_CI_VALUES]);
+
+    // kubeconform the *rendered* manifests — raw template files are not YAML.
+    const rendered = runCapture("helm", ["template", "nora-ci", chartDir, ...HELM_CI_VALUES]);
+    const renderedPath = path.join(repoRoot, ".helm-rendered-ci.yaml");
+    fs.writeFileSync(renderedPath, rendered);
+    try {
+      run("kubeconform", ["-summary", "-strict", path.relative(repoRoot, renderedPath)]);
+    } finally {
+      fs.unlinkSync(renderedPath);
+    }
+
+    // The nora chart vendors backend-api/db_schema.sql for postgres initdb;
+    // fail loudly when the copies drift.
+    const vendoredSchema = path.join(chartDir, "files", "db_schema.sql");
+    if (fs.existsSync(vendoredSchema)) {
+      const canonical = fs.readFileSync(
+        path.join(repoRoot, "backend-api", "db_schema.sql"),
+        "utf8",
+      );
+      if (fs.readFileSync(vendoredSchema, "utf8") !== canonical) {
+        throw new Error(
+          `${path.relative(repoRoot, vendoredSchema)} is out of sync with backend-api/db_schema.sql — ` +
+            "run: cp backend-api/db_schema.sql " +
+            path.relative(repoRoot, vendoredSchema),
+        );
+      }
+    }
   }
 }
 
@@ -112,12 +158,19 @@ function validateKubernetesManifests(manifestFiles) {
 validateComposeFiles();
 
 const chartFiles = walk(infraDir, (fullPath) => path.basename(fullPath) === "Chart.yaml");
+const chartDirs = chartFiles.map((chartFile) => path.dirname(chartFile));
 const yamlFiles = walk(infraDir, (fullPath) => /\.(ya?ml)$/i.test(fullPath));
 const manifestFiles = [];
 
 for (const yamlFile of yamlFiles) {
   const relativePath = path.relative(repoRoot, yamlFile);
   if (relativePath.startsWith("infra/docker-compose.")) {
+    continue;
+  }
+
+  // Helm chart contents (templates, values, Chart.yaml) are validated through
+  // helm lint + helm template above, not as raw manifests.
+  if (chartDirs.some((chartDir) => yamlFile.startsWith(chartDir + path.sep))) {
     continue;
   }
 
