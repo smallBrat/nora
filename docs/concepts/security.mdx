@@ -1,0 +1,48 @@
+# Security architecture
+
+> How Nora protects credentials, sessions, runtime access, and operator data across the control plane, the provisioning workers, and the agent runtimes it manages.
+
+Nora is built to be trustworthy in real operator environments: you run it on your own infrastructure, the secrets stay in your database encrypted with your key, and every layer between a browser and a runtime enforces access control. This page collects the security posture in one place.
+
+## Secrets and credentials
+
+- **LLM provider keys and integration credentials are encrypted at rest** with AES-256-GCM before they are stored in PostgreSQL. The encryption key is the operator-owned `ENCRYPTION_KEY` generated during setup — Nora never stores plaintext credentials.
+- **Key sync to runtimes is explicit.** Provider keys are pushed to a runtime on demand as part of provisioning or an operator-triggered sync, not broadcast.
+- **Setup generates strong secrets.** The installer creates `JWT_SECRET` and `ENCRYPTION_KEY` with OpenSSL and preserves existing secrets on re-runs.
+
+## Authentication and authorization
+
+- **JWT-based sessions** authenticate dashboard and API requests; OAuth sign-in flows hand off to backend-issued HttpOnly session cookies.
+- **Role-based access control** separates operators from platform admins — admin routes are guarded by explicit role checks, and the admin dashboard is a separate application surface.
+- **Scoped Agent Hub API keys** can be issued, rotated, and revoked per tenant, with dedicated middleware guarding the public `/api/agent-hub/*` surface.
+- **Signup abuse controls**: signup-specific burst and daily rate limits, duplicate-email short-circuiting, and optional Cloudflare Turnstile or Google reCAPTCHA with server-side challenge verification.
+
+## API and edge hardening
+
+- **helmet** security headers and **CORS** restricted to the configured `CORS_ORIGINS` allowlist.
+- **Layered rate limiting**: a global limiter plus a stricter limiter on mutating requests in the API, and nginx-level rate-limit zones for auth and API paths at the public edge.
+- **No raw error leakage**: unexpected failures route through a central error handler with correlation IDs, so 5xx responses never expose exception internals.
+- **TLS setup is scripted** (`infra/setup-tls.sh`) for public deployments, with Cloudflare real-IP guidance for proxied edges.
+
+## Runtime access control
+
+- **The gateway proxy is the only path to a runtime's API**, and it restricts which upstream addresses can be proxied to an allowlist of ranges.
+- **Live exec, log, and metrics WebSocket streams enforce access control** — runtime terminal and log streaming are authenticated, not open sockets.
+- **Proxied agent assets are token-validated** before they are served.
+
+## Runtime isolation
+
+- **Each agent runs in its own container** (Docker or Kubernetes) with operator-configured CPU, RAM, and disk limits.
+- **Sandbox profiles** layer on the deploy target: `standard` is the default; `nemoclaw` is an experimental hardened profile. Proxmox VM placement is a planned, currently release-blocked target for stronger isolation.
+- **The control plane and workers are separate services**: the API coordinates state in PostgreSQL while provisioning runs in a dedicated worker over a Redis/BullMQ queue, so runtime credentials and Docker/Kubernetes access stay in the worker boundary.
+
+## Backups and audit
+
+- **Scheduled backups are encrypted** with AES-256-GCM in a versioned archive format; restores verify the format header before decrypting.
+- **Audit logging** records operator actions in PostgreSQL for review.
+
+## Your data stays yours
+
+Nora is self-hosted: the database, secrets, runtime workloads, and logs all live on infrastructure you control. There is no required external control plane and no phone-home dependency in the product. The full source is open under Apache 2.0 — every claim on this page can be verified in the [repository](https://github.com/solomon2773/nora).
+
+Found a vulnerability? Please report it responsibly — see the [security policy](https://github.com/solomon2773/nora/security/policy) and [contact](/support/contact) page.

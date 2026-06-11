@@ -20,6 +20,8 @@
   <a href="https://noradocs.solomontsao.com/quickstart">Quick Start</a> ·
   <a href="https://noradocs.solomontsao.com/self-hosting">Self-Hosting</a> ·
   <a href="https://noradocs.solomontsao.com/concepts/architecture">Architecture</a> ·
+  <a href="https://noradocs.solomontsao.com/compare">How Nora Compares</a> ·
+  <a href="CHANGELOG.md">Changelog</a> ·
   <a href="https://nora.solomontsao.com">Public Site</a> ·
   <a href="https://nora.solomontsao.com/signup">Create Account</a>
 </p>
@@ -28,21 +30,14 @@
 
 <p align="center">
   <a href="https://github.com/solomon2773/nora/raw/master/.github/readme-assets/walkthrough.mp4">
-    <img src=".github/readme-assets/proof-operator-dashboard.png" alt="Watch the Nora walkthrough" width="900" />
+    <img src=".github/readme-assets/walkthrough.gif" alt="Watch the Nora walkthrough" width="900" />
   </a>
 </p>
 <p align="center">
   <sub>▶ <b><a href="https://github.com/solomon2773/nora/raw/master/.github/readme-assets/walkthrough.mp4">Watch the walkthrough</a></b></sub>
 </p>
 
-<p align="center">
-  <img src=".github/readme-assets/proof-operator-openclaw-ui-tab.png" alt="OpenClaw UI tab in Nora" width="380" />
-  &nbsp;&nbsp;
-  <img src=".github/readme-assets/proof-operator-hermes-webui-tab.png" alt="Hermes official dashboard in Nora" width="380" />
-</p>
-<p align="center">
-  <sub><b>OpenClaw UI tab</b> &nbsp;·&nbsp; <b>Hermes official dashboard</b></sub>
-</p>
+
 
 ## What Is Nora?
 

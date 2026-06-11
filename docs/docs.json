@@ -22,12 +22,13 @@
     "groups": [
       {
         "group": "Getting started",
-        "pages": ["introduction", "quickstart", "self-hosting"]
+        "pages": ["introduction", "compare", "quickstart", "self-hosting"]
       },
       {
         "group": "Concepts",
         "pages": [
           "concepts/architecture",
+          "concepts/security",
           "concepts/agents",
           "concepts/runtimes",
           "concepts/workspaces",
