@@ -10,6 +10,7 @@ const {
 } = require("../platformSettings");
 const scheduler = require("../scheduler");
 const containerManager = require("../containerManager");
+const agentBudgets = require("../agentBudgets");
 const monitoring = require("../monitoring");
 const metrics = require("../metrics");
 const workspaces = require("../workspaces");
@@ -1671,8 +1672,10 @@ router.post("/:id/start", async (req, res, next) => {
 
     await containerManager.start(agent);
 
+    // Manual start is an explicit operator override of a budget pause; the
+    // budget sweep re-pauses on its next cycle if the agent is still over cap.
     const updated = await db.query(
-      "UPDATE agents SET status = 'running' WHERE id = $1 RETURNING *",
+      "UPDATE agents SET status = 'running', paused_reason = NULL WHERE id = $1 RETURNING *",
       [agent.id],
     );
     try {
@@ -1939,6 +1942,49 @@ router.post("/:id/redeploy", async (req, res) => {
     res.status(e.statusCode || 500).json({ error: e.message });
   }
 });
+
+// ── Per-agent budget caps ────────────────────────────────────────────────────
+// Budgets pause the runtime when spend crosses 100% of a period's limit; the
+// list endpoint attaches current spend so the UI renders cap-vs-spend directly.
+
+router.get(
+  "/:id/budget",
+  asyncHandler(async (req, res) => {
+    const agent = await findAccessibleAgent(req.params.id, req.user.id, "viewer");
+    if (!agent) return res.status(404).json({ error: "Agent not found" });
+    res.json({
+      budgets: await agentBudgets.listBudgetsWithSpend(agent.id),
+      pausedReason: agent.paused_reason || null,
+    });
+  }),
+);
+
+router.put(
+  "/:id/budget",
+  asyncHandler(async (req, res) => {
+    const agent = await findAccessibleAgent(req.params.id, req.user.id, "editor");
+    if (!agent) return res.status(404).json({ error: "Agent not found" });
+    res.locals.auditContext = buildAgentContext(agent, {
+      ownerEmail: req.user.email || null,
+    });
+    const budget = await agentBudgets.upsertBudget(agent.id, req.body || {});
+    res.json(budget);
+  }),
+);
+
+router.delete(
+  "/:id/budget/:budgetId",
+  asyncHandler(async (req, res) => {
+    const agent = await findAccessibleAgent(req.params.id, req.user.id, "editor");
+    if (!agent) return res.status(404).json({ error: "Agent not found" });
+    res.locals.auditContext = buildAgentContext(agent, {
+      ownerEmail: req.user.email || null,
+    });
+    const deleted = await agentBudgets.deleteBudget(req.params.budgetId, agent.id);
+    if (!deleted) return res.status(404).json({ error: "Budget not found" });
+    res.json({ success: true });
+  }),
+);
 
 // ── Agent versions + rollback ────────────────────────────────────────────────
 

@@ -22,6 +22,7 @@ const {
   collectBackgroundTelemetry,
   reconcileBackgroundAgentStatuses,
 } = require("./backgroundTasks");
+const agentBudgets = require("./agentBudgets");
 const { listKubernetesExecutionTargets } = require("./kubernetesClusters");
 const { STARTER_TEMPLATES } = require("./starterTemplates");
 const { getBootstrapAdminSeedConfig } = require("./bootstrapAdmin");
@@ -1667,6 +1668,26 @@ async function migrateDB() {
        updated_at TIMESTAMPTZ DEFAULT NOW(),
        UNIQUE(workspace_id, period)
      )`,
+    // ─── Per-agent budgets with hard-cap auto-pause ─────────────────────
+    `CREATE TABLE IF NOT EXISTS agent_budgets (
+       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+       agent_id UUID NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+       period TEXT NOT NULL DEFAULT 'monthly'
+         CHECK (period IN ('daily', 'weekly', 'monthly')),
+       limit_usd NUMERIC(12, 2) NOT NULL,
+       soft_threshold_pct INTEGER NOT NULL DEFAULT 80
+         CHECK (soft_threshold_pct BETWEEN 0 AND 100),
+       last_alerted_at TIMESTAMPTZ,
+       last_alerted_pct INTEGER,
+       created_at TIMESTAMPTZ DEFAULT NOW(),
+       updated_at TIMESTAMPTZ DEFAULT NOW(),
+       UNIQUE(agent_id, period)
+     )`,
+    `CREATE INDEX IF NOT EXISTS idx_agent_budgets_agent ON agent_budgets(agent_id)`,
+    `DO $$ BEGIN
+       ALTER TABLE agents ADD COLUMN paused_reason TEXT;
+     EXCEPTION WHEN duplicate_column THEN NULL;
+     END $$`,
     // ─── Phase 3: agent configuration history ───────────────────────────
     `CREATE TABLE IF NOT EXISTS agent_versions (
        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1873,6 +1894,14 @@ if (require.main === module) {
     setInterval(async () => {
       await reconcileBackgroundAgentStatuses({ dbClient: db });
     }, RECONCILE_INTERVAL);
+
+    // ── Budget sweep: re-enforce per-agent hard caps every 60s. The status
+    // reconciler above flips stopped->running whenever a container is live,
+    // so re-enforcement is what keeps a budget pause stuck. ──
+    const BUDGET_SWEEP_INTERVAL = 60000;
+    setInterval(async () => {
+      await agentBudgets.sweepAgentBudgets({ dbClient: db });
+    }, BUDGET_SWEEP_INTERVAL);
   });
 
   attachLogStream(server);

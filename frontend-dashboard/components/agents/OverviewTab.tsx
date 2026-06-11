@@ -187,6 +187,32 @@ export default function OverviewTab({
         </div>
       )}
 
+      {agent.status === "stopped" && agent.paused_reason === "budget_exceeded" && (
+        <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-2xl px-5 py-3">
+          <AlertOctagon size={18} className="text-amber-600 shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-bold text-amber-800">Paused — budget cap reached</p>
+            <p className="text-xs text-amber-600">
+              This agent hit its LLM spend cap and was stopped automatically. Raise or remove the
+              cap in Settings, then start the agent; restarting without changing the cap re-pauses
+              it on the next check.
+            </p>
+          </div>
+          <button
+            onClick={onStart}
+            disabled={!!actionLoading}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 text-white text-xs font-bold rounded-lg hover:bg-amber-700 transition-colors disabled:opacity-50 shrink-0"
+          >
+            {actionLoading === "start" ? (
+              <Loader2 size={12} className="animate-spin" />
+            ) : (
+              <Power size={12} />
+            )}
+            Resume
+          </button>
+        </div>
+      )}
+
       {agent.status === "error" && (
         <div className="flex items-center gap-3 bg-red-50 border border-red-200 rounded-2xl px-5 py-3">
           <XCircle size={18} className="text-red-600 shrink-0" />

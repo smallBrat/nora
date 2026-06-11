@@ -23,14 +23,13 @@ GET /agents
 ### Query parameters
 
 <ParamField query="scope" type="string">
-  Optional. `accessible` (default) includes directly owned and workspace-shared agents. `owned` returns only directly owned agents.
+  Optional. `accessible` (default) includes directly owned and workspace-shared agents. `owned`
+  returns only directly owned agents.
 </ParamField>
 
 <CodeGroup>
-```bash curl theme={null}
-curl http://localhost:8080/api/agents \
-  -H "Authorization: Bearer $TOKEN"
-```
+  ```bash curl theme={null}
+  curl http://localhost:8080/api/agents \ -H "Authorization: Bearer $TOKEN" ```
 </CodeGroup>
 
 ```json theme={null}
@@ -179,10 +178,9 @@ GET /agents/:id
 </ParamField>
 
 <CodeGroup>
-```bash curl theme={null}
-curl http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890 \
-  -H "Authorization: Bearer $TOKEN"
-```
+  ```bash curl theme={null}
+  curl http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890 \ -H "Authorization:
+  Bearer $TOKEN" ```
 </CodeGroup>
 
 ```json theme={null}
@@ -220,10 +218,9 @@ POST /agents/:id/start
 Returns the updated agent record with `status: "running"`.
 
 <CodeGroup>
-```bash curl theme={null}
-curl -X POST http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/start \
-  -H "Authorization: Bearer $TOKEN"
-```
+  ```bash curl theme={null}
+  curl -X POST http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/start \ -H
+  "Authorization: Bearer $TOKEN" ```
 </CodeGroup>
 
 | Status | Condition                               |
@@ -250,10 +247,9 @@ POST /agents/:id/stop
 Returns the updated agent record with `status: "stopped"`.
 
 <CodeGroup>
-```bash curl theme={null}
-curl -X POST http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/stop \
-  -H "Authorization: Bearer $TOKEN"
-```
+  ```bash curl theme={null}
+  curl -X POST http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/stop \ -H
+  "Authorization: Bearer $TOKEN" ```
 </CodeGroup>
 
 ---
@@ -279,10 +275,9 @@ POST /agents/:id/restart
 </ResponseField>
 
 <CodeGroup>
-```bash curl theme={null}
-curl -X POST http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/restart \
-  -H "Authorization: Bearer $TOKEN"
-```
+  ```bash curl theme={null}
+  curl -X POST http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/restart \ -H
+  "Authorization: Bearer $TOKEN" ```
 </CodeGroup>
 
 ```json theme={null}
@@ -319,10 +314,9 @@ POST /agents/:id/redeploy
 </ResponseField>
 
 <CodeGroup>
-```bash curl theme={null}
-curl -X POST http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/redeploy \
-  -H "Authorization: Bearer $TOKEN"
-```
+  ```bash curl theme={null}
+  curl -X POST http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/redeploy \ -H
+  "Authorization: Bearer $TOKEN" ```
 </CodeGroup>
 
 ```json theme={null}
@@ -356,10 +350,9 @@ DELETE /agents/:id
 </ResponseField>
 
 <CodeGroup>
-```bash curl theme={null}
-curl -X DELETE http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890 \
-  -H "Authorization: Bearer $TOKEN"
-```
+  ```bash curl theme={null}
+  curl -X DELETE http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890 \ -H
+  "Authorization: Bearer $TOKEN" ```
 </CodeGroup>
 
 ```json theme={null}
@@ -424,10 +417,9 @@ GET /agents/:id/stats
 </ResponseField>
 
 <CodeGroup>
-```bash curl theme={null}
-curl http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/stats \
-  -H "Authorization: Bearer $TOKEN"
-```
+  ```bash curl theme={null}
+  curl http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/stats \ -H
+  "Authorization: Bearer $TOKEN" ```
 </CodeGroup>
 
 ```json theme={null}
@@ -571,10 +563,9 @@ GET /agents/:id/gateway-url
 </ResponseField>
 
 <CodeGroup>
-```bash curl theme={null}
-curl http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/gateway-url \
-  -H "Authorization: Bearer $TOKEN"
-```
+  ```bash curl theme={null}
+  curl http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/gateway-url \ -H
+  "Authorization: Bearer $TOKEN" ```
 </CodeGroup>
 
 ```json theme={null}
@@ -588,3 +579,52 @@ curl http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/gatew
 | ------ | --------------------------------------------------- |
 | `409`  | Agent is not running, or has no container           |
 | `502`  | Could not inspect the container to resolve the port |
+
+## Get agent budget
+
+List an agent's LLM spend budgets with current spend attached. When spend crosses 100% of any cap, Nora pauses the runtime automatically (`paused_reason` becomes `budget_exceeded`); a warning event fires at the soft threshold.
+
+```
+GET /agents/:id/budget
+```
+
+### Response
+
+<ResponseField name="budgets" type="array">
+  One entry per period (`daily`, `weekly`, `monthly`) with `limitUsd`, `softThresholdPct`,
+  `currentUsd`, `pct`, and `bucket` (`none` | `soft` | `hard`).
+</ResponseField>
+
+<ResponseField name="pausedReason" type="string | null">
+  `budget_exceeded` while the agent is paused by a cap.
+</ResponseField>
+
+## Set agent budget
+
+Create or update the budget for one period. Requires the `agents:write` scope.
+
+```
+PUT /agents/:id/budget
+```
+
+### Request body
+
+<ParamField body="period" type="string" required>
+  `daily`, `weekly`, or `monthly`.
+</ParamField>
+
+<ParamField body="limit_usd" type="number" required>
+  Hard cap in USD. Crossing 100% pauses the runtime.
+</ParamField>
+
+<ParamField body="soft_threshold_pct" type="number">
+  Warning threshold percent (default `80`). Emits `agent.budget_soft_exceeded`.
+</ParamField>
+
+## Delete agent budget
+
+```
+DELETE /agents/:id/budget/:budgetId
+```
+
+Removes the cap. A paused agent stays stopped until started; manually starting an agent clears `paused_reason`, and the budget sweep re-pauses it within a minute if a cap is still exceeded.
