@@ -9,15 +9,6 @@ const { DEMO_PROVIDER_ID, DEMO_MODEL_ID, deriveDemoToken, demoLlmBaseUrl } = req
 // Models updated per https://docs.openclaw.ai/providers (April 2026)
 const PROVIDERS = [
   {
-    // Zero-key demo: a deterministic stub served by this control plane. No
-    // user key — addProvider derives the token + in-network base URL itself.
-    id: DEMO_PROVIDER_ID,
-    name: "Demo (built-in, no key required)",
-    envVar: "NORA_DEMO_LLM_TOKEN",
-    requiresApiKey: false,
-    models: [DEMO_MODEL_ID],
-  },
-  {
     id: "anthropic",
     name: "Anthropic",
     envVar: "ANTHROPIC_API_KEY",
@@ -111,6 +102,16 @@ const PROVIDERS = [
       "AI21-Jamba-1.5-Large",
     ],
   },
+  {
+    // Zero-key demo: a deterministic stub served by this control plane. No
+    // user key — addProvider derives the token + in-network base URL itself.
+    // Deliberately LAST so key-based providers stay first in pickers.
+    id: DEMO_PROVIDER_ID,
+    name: "Demo (built-in, no key required)",
+    envVar: "NORA_DEMO_LLM_TOKEN",
+    requiresApiKey: false,
+    models: [DEMO_MODEL_ID],
+  },
 ];
 
 function getAvailableProviders() {
@@ -119,6 +120,7 @@ function getAvailableProviders() {
       id,
       name,
       models,
+      requiresApiKey,
       requiresBaseUrl,
       baseUrlPlaceholder,
       supportsApiVersion,
@@ -127,6 +129,7 @@ function getAvailableProviders() {
       id,
       name,
       models,
+      ...(requiresApiKey === false ? { requiresApiKey: false } : {}),
       ...(requiresBaseUrl ? { requiresBaseUrl: true } : {}),
       ...(baseUrlPlaceholder ? { baseUrlPlaceholder } : {}),
       ...(supportsApiVersion ? { supportsApiVersion: true } : {}),
