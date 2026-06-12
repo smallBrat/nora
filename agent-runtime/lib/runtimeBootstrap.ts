@@ -43,10 +43,9 @@ const INTEGRATION_TOOL_WRAPPER_SOURCE = [
   'exec "$TSX_BIN" /opt/openclaw-runtime/lib/integrationToolCli.ts "$@"',
   "",
 ].join("\n");
-const INTEGRATION_TOOL_WRAPPER_B64 = Buffer.from(
-  INTEGRATION_TOOL_WRAPPER_SOURCE,
-  "utf8",
-).toString("base64");
+const INTEGRATION_TOOL_WRAPPER_B64 = Buffer.from(INTEGRATION_TOOL_WRAPPER_SOURCE, "utf8").toString(
+  "base64",
+);
 
 const OPENCLAW_WORKSPACE_ROOT = "/root/.openclaw/workspace";
 const OPENCLAW_LEGACY_AGENT_TEMPLATE_ROOT = "/root/.openclaw/agents/main/agent";
@@ -60,7 +59,10 @@ function stripGeneratedIntegrationPromptBlock(content) {
     `\\n?${NORA_INTEGRATIONS_PROMPT_BEGIN}[\\s\\S]*?${NORA_INTEGRATIONS_PROMPT_END}\\n?`,
     "g",
   );
-  return raw.replace(pattern, "\n").replace(/\n{3,}/g, "\n\n").trimEnd();
+  return raw
+    .replace(pattern, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trimEnd();
 }
 
 function buildIntegrationPromptPointerMarkdown() {
@@ -220,14 +222,20 @@ function withIntegrationBootstrapEntries(entries = []) {
   if (!hasWorkspaceTools) {
     nextEntries.push({
       targetPath: path.posix.join(OPENCLAW_WORKSPACE_ROOT, "TOOLS.md"),
-      contentBuffer: Buffer.from(upsertGeneratedIntegrationPromptBlock(defaultToolsContent), "utf8"),
+      contentBuffer: Buffer.from(
+        upsertGeneratedIntegrationPromptBlock(defaultToolsContent),
+        "utf8",
+      ),
       mode: 0o644,
     });
   }
   if (!hasLegacyTools) {
     nextEntries.push({
       targetPath: path.posix.join(OPENCLAW_LEGACY_AGENT_TEMPLATE_ROOT, "TOOLS.md"),
-      contentBuffer: Buffer.from(upsertGeneratedIntegrationPromptBlock(defaultToolsContent), "utf8"),
+      contentBuffer: Buffer.from(
+        upsertGeneratedIntegrationPromptBlock(defaultToolsContent),
+        "utf8",
+      ),
       mode: 0o644,
     });
   }
@@ -296,11 +304,41 @@ const FOUNDRY_OPENCLAW_PROVIDER_ID = "azure-openai-responses";
 // compat flag is `supportsStore: false` — Azure rejects `store: true`, which
 // is OpenClaw's default for Responses API.
 const FOUNDRY_DEFAULT_MODELS = [
-  { id: "gpt-5.5", name: "GPT-5.5 (Azure)", reasoning: true, contextWindow: 400000, maxTokens: 16384 },
-  { id: "gpt-5.5-mini", name: "GPT-5.5 Mini (Azure)", reasoning: true, contextWindow: 400000, maxTokens: 16384 },
-  { id: "gpt-5.5-pro", name: "GPT-5.5 Pro (Azure)", reasoning: true, contextWindow: 200000, maxTokens: 128000 },
-  { id: "gpt-5.5", name: "GPT-5.5 (Azure)", reasoning: true, contextWindow: 200000, maxTokens: 128000 },
-  { id: "gpt-5.2-codex", name: "GPT-5.2 Codex (Azure)", reasoning: true, contextWindow: 400000, maxTokens: 16384 },
+  {
+    id: "gpt-5.5",
+    name: "GPT-5.5 (Azure)",
+    reasoning: true,
+    contextWindow: 400000,
+    maxTokens: 16384,
+  },
+  {
+    id: "gpt-5.5-mini",
+    name: "GPT-5.5 Mini (Azure)",
+    reasoning: true,
+    contextWindow: 400000,
+    maxTokens: 16384,
+  },
+  {
+    id: "gpt-5.5-pro",
+    name: "GPT-5.5 Pro (Azure)",
+    reasoning: true,
+    contextWindow: 200000,
+    maxTokens: 128000,
+  },
+  {
+    id: "gpt-5.5",
+    name: "GPT-5.5 (Azure)",
+    reasoning: true,
+    contextWindow: 200000,
+    maxTokens: 128000,
+  },
+  {
+    id: "gpt-5.2-codex",
+    name: "GPT-5.2 Codex (Azure)",
+    reasoning: true,
+    contextWindow: 400000,
+    maxTokens: 16384,
+  },
   { id: "o3", name: "o3 (Azure)", reasoning: true, contextWindow: 200000, maxTokens: 100000 },
 ];
 
@@ -338,23 +376,21 @@ function buildFoundryModelEntries(env = {}) {
   // for the very deployment we set as default.
   const deployment = resolveFoundryDeployment(env);
   const seen = new Set();
-  const models = FOUNDRY_DEFAULT_MODELS
-    .filter((entry) => {
-      if (seen.has(entry.id)) return false;
-      seen.add(entry.id);
-      return true;
-    })
-    .map((entry) => ({
-      id: entry.id,
-      name: entry.name,
-      api: "azure-openai-responses",
-      reasoning: entry.reasoning,
-      input: ["text", "image"],
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-      contextWindow: entry.contextWindow,
-      maxTokens: entry.maxTokens,
-      compat: { supportsStore: false, supportsReasoningEffort: true },
-    }));
+  const models = FOUNDRY_DEFAULT_MODELS.filter((entry) => {
+    if (seen.has(entry.id)) return false;
+    seen.add(entry.id);
+    return true;
+  }).map((entry) => ({
+    id: entry.id,
+    name: entry.name,
+    api: "azure-openai-responses",
+    reasoning: entry.reasoning,
+    input: ["text", "image"],
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: entry.contextWindow,
+    maxTokens: entry.maxTokens,
+    compat: { supportsStore: false, supportsReasoningEffort: true },
+  }));
   if (!deployment || models.some((model) => model.id === deployment)) return models;
 
   const baseModelId = deployment.replace(/-\d+$/, "");
@@ -477,6 +513,11 @@ function buildOpenClawConfigMergeCommand(configDelta) {
   return buildOpenClawConfigMergeScript(configDelta).join("\n");
 }
 
+// buildMcpServersConfig lives in its own dependency-free module so it can be
+// unit-tested without loading the rest of the bootstrap; re-exported here for
+// the worker/adapter consumers that already import from runtimeBootstrap.
+const { buildMcpServersConfig } = require("./mcpServersConfig");
+
 function buildRuntimeBootstrapCommand() {
   return [
     "mkdir -p /opt/openclaw-runtime/lib /var/log && ",
@@ -591,6 +632,7 @@ module.exports = {
   buildIntegrationToolWrapperScript,
   buildOpenClawConfigMergeScript,
   buildOpenClawConfigMergeCommand,
+  buildMcpServersConfig,
   buildOpenClawCustomProviders,
   mapNoraProviderIdToOpenClaw,
   FOUNDRY_OPENCLAW_PROVIDER_ID,

@@ -4,6 +4,7 @@ const path = require("path");
 const {
   buildOpenClawConfigMergeScript,
   buildOpenClawConfigMergeCommand,
+  buildMcpServersConfig,
   buildOpenClawCustomProviders,
   buildOpenClawInstallCommand,
   buildRuntimeBootstrapCommand,
@@ -395,6 +396,29 @@ describe("Provisioner backends", () => {
     const startupScript = files.find((file) => file.name === "opt/openclaw-runtime/start.sh");
     expect(startupScript.content).toContain("azure-openai-responses");
     expect(startupScript.content).toContain('"apiKey": "ms-key"');
+  });
+
+  it("embeds a per-agent mcpServers block into the startup merge script", () => {
+    // buildMcpServersConfig produces the openclaw.json mcpServers shape; when it
+    // is placed on the gatewayConfig, _buildBootstrapFiles ships it verbatim
+    // into the deep-merge so OpenClaw spawns the stdio server with its creds.
+    const dockerBackend = new DockerBackend();
+    const mcpServers = buildMcpServersConfig([
+      {
+        name: "gitlab",
+        npmPackage: "@modelcontextprotocol/server-gitlab",
+        env: { GITLAB_PERSONAL_ACCESS_TOKEN: "glpat-secret" },
+      },
+    ]);
+    const files = dockerBackend._buildBootstrapFiles({
+      gatewayConfig: { gateway: { bind: "lan", mode: "local" }, mcpServers },
+      pairedJson: '{"device":"paired"}',
+      buildAuthScript: 'console.log("build auth");',
+    });
+    const startupScript = files.find((file) => file.name === "opt/openclaw-runtime/start.sh");
+    expect(startupScript.content).toContain('"mcpServers"');
+    expect(startupScript.content).toContain("@modelcontextprotocol/server-gitlab");
+    expect(startupScript.content).toContain('"GITLAB_PERSONAL_ACCESS_TOKEN": "glpat-secret"');
   });
 
   it("wires the executable guard into OpenClaw startup paths", () => {

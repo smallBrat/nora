@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS agents (
   ram_mb INTEGER DEFAULT 1024,
   disk_gb INTEGER DEFAULT 10,
   paused_reason TEXT,
+  mcp_servers JSONB DEFAULT '[]',
   created_at TIMESTAMP DEFAULT NOW()
 );
 
