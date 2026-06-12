@@ -4,6 +4,10 @@
 
 The Nora REST API is a JSON-over-HTTP interface that lets you deploy agents, manage LLM providers, configure channels, and observe platform health programmatically. Every request must include a valid Bearer token in the `Authorization` header — except for the public health, config, and webhook endpoints listed below. All request and response bodies use `application/json`.
 
+<Tip>
+  Every Nora instance also serves a machine-readable **OpenAPI 3.1 spec** at `GET /api/api.json` and an **interactive API reference** at `/api/api-docs`. The spec covers the tier-1 surface (agents, budgets, monitoring, LLM providers, auth) and is drift-tested in CI against the actual routers, so it cannot silently go stale.
+</Tip>
+
 ## Base URL
 
 The Nora API is served under the `/api` path of your Nora origin. In local mode this is:
