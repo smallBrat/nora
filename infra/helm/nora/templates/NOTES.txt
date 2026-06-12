@@ -29,3 +29,13 @@ Notes:
     on Kubernetes upgrade with: helm upgrade {{ .Release.Name }} <chart> --reuse-values
   * Local backup storage uses the shared nora-backups PVC ({{ .Values.backupsVolume.accessModes | join "," }});
     on multi-node clusters prefer S3/SSH backup storage or a ReadWriteMany class.
+{{- if not .Values.secrets.existingSecret }}
+  * IMPORTANT — record your secrets. This release generated JWT/encryption/
+    backup/API-key/DB secrets into the {{ include "nora.secretName" . }} Secret.
+    `helm uninstall` deletes that Secret, but the postgres pgdata PVC and the
+    nora-backups PVC are retained. A fresh reinstall generates NEW secrets that
+    cannot decrypt the retained data or match the kept DB password. Save them
+    now, or pass your own via secrets.existingSecret:
+
+      kubectl -n {{ .Release.Namespace }} get secret {{ include "nora.secretName" . }} -o yaml > nora-secrets-backup.yaml
+{{- end }}

@@ -78,3 +78,37 @@ imagePullSecrets:
 {{- end }}
 {{- end }}
 {{- end -}}
+
+{{/*
+  initContainer that blocks a control-plane pod until the database accepts TCP.
+  Compose used `depends_on: condition: service_healthy`; Kubernetes Deployments
+  have no such gate, and the backend runs its one-shot migrateDB() at boot and
+  swallows failures — so without this a fresh install can win the race against
+  postgres and permanently skip the incremental migrations. Uses the already
+  present backend-api image (node) so no extra image is pulled; DB_HOST/DB_PORT
+  come from the nora-env ConfigMap and resolve for both bundled and external DB.
+*/}}
+{{- define "nora.waitForDbInit" -}}
+initContainers:
+  - name: wait-for-db
+    image: {{ include "nora.image" (dict "root" . "name" "nora-backend-api") }}
+    imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+    envFrom:
+      - configMapRef:
+          name: nora-env
+    command:
+      - node
+      - -e
+      - |
+        const net = require("net");
+        const host = process.env.DB_HOST, port = Number(process.env.DB_PORT);
+        (function attempt() {
+          const sock = net.connect(port, host);
+          sock.on("connect", () => { sock.end(); process.exit(0); });
+          sock.on("error", () => {
+            sock.destroy();
+            console.error(`waiting for database ${host}:${port}`);
+            setTimeout(attempt, 2000);
+          });
+        })();
+{{- end -}}

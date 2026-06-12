@@ -24,6 +24,14 @@ secrets are provided (or `secrets.existingSecret` points at a Secret carrying
 `JWT_SECRET`, `ENCRYPTION_KEY`, `NORA_BACKUP_ENCRYPTION_KEY`,
 `NORA_API_KEY_HASH_SECRET`, `DB_PASSWORD`).
 
+> **Save your secrets.** The `--set` form above generates secrets that live only
+> inside the release. `helm uninstall` deletes the generated Secret, but the
+> postgres data PVC and the `nora-backups` PVC are retained
+> (`helm.sh/resource-policy: keep`). A reinstall then generates *new* secrets
+> that cannot decrypt the retained data or match the kept DB password. For any
+> install you intend to keep, manage the five secrets yourself and pass them via
+> `secrets.existingSecret`, or back up the generated Secret immediately.
+
 Without an Ingress: `kubectl -n nora port-forward svc/nora-nginx 8080:80` and
 open http://localhost:8080. The first user to sign up becomes the platform
 admin.

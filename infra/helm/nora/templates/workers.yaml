@@ -15,6 +15,7 @@ spec:
         {{- include "nora.selectorLabels" (dict "root" . "component" "worker-provisioner") | nindent 8 }}
     spec:
       {{- include "nora.imagePullSecrets" . | nindent 6 }}
+      {{- include "nora.waitForDbInit" . | nindent 6 }}
       containers:
         - name: worker-provisioner
           image: {{ include "nora.image" (dict "root" . "name" "nora-worker-provisioner") }}
@@ -72,6 +73,7 @@ spec:
         {{- include "nora.selectorLabels" (dict "root" . "component" "worker-backup") | nindent 8 }}
     spec:
       {{- include "nora.imagePullSecrets" . | nindent 6 }}
+      {{- include "nora.waitForDbInit" . | nindent 6 }}
       containers:
         - name: worker-backup
           image: {{ include "nora.image" (dict "root" . "name" "nora-worker-backup") }}

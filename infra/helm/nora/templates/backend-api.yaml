@@ -15,6 +15,7 @@ spec:
         {{- include "nora.selectorLabels" (dict "root" . "component" "backend-api") | nindent 8 }}
     spec:
       {{- include "nora.imagePullSecrets" . | nindent 6 }}
+      {{- include "nora.waitForDbInit" . | nindent 6 }}
       containers:
         - name: backend-api
           image: {{ include "nora.image" (dict "root" . "name" "nora-backend-api") }}
