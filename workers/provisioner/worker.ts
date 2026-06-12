@@ -139,6 +139,9 @@ const CLAWHUB_INSTALL_LOCK_RENEW_MS = Math.max(
 );
 
 const PROVIDER_ENV_MAP = Object.freeze({
+  // Zero-key demo stub; the sister NORA_DEMO_LLM_BASE_URL env var comes from
+  // the provider row's config.baseUrl through the standard mechanism below.
+  demo: "NORA_DEMO_LLM_TOKEN",
   anthropic: "ANTHROPIC_API_KEY",
   openai: "OPENAI_API_KEY",
   google: "GEMINI_API_KEY",
@@ -167,6 +170,9 @@ const PROVIDER_ENV_ENDPOINT_MAP = Object.freeze({
 });
 
 const PROVIDER_MODEL_DEFAULTS = Object.freeze({
+  // Bare model id — prefixed with the OpenClaw provider id (nora-demo) via
+  // mapNoraProviderIdToOpenClaw, same as microsoft-foundry below.
+  demo: "nora-demo-1",
   anthropic: "claude-sonnet-4-5",
   openai: "gpt-5.5",
   google: "gemini-3.1-pro-preview",

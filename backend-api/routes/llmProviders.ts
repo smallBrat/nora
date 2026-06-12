@@ -21,7 +21,9 @@ router.get("/", async (req, res, next) => {
 router.post("/", async (req, res) => {
   try {
     const { provider, apiKey, model, config } = req.body;
-    if (!provider || !apiKey)
+    // The built-in demo provider is the one zero-key path (its token is
+    // derived server-side); every real provider still requires a key.
+    if (!provider || (!apiKey && provider !== "demo"))
       return res.status(400).json({ error: "provider and apiKey required" });
     const result = await llmProviders.addProvider(req.user.id, provider, apiKey, model, config);
     syncAuthToUserAgents(req.user.id).catch(() => {});
