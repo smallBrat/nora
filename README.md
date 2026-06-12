@@ -119,7 +119,7 @@ Full architecture write-up — system map, queue/worker boundaries, RBAC, migrat
 | Provisioning backends | Docker and k3s/Kubernetes (GA); NemoClaw (experimental sandbox); Proxmox (planned) |
 | Secrets at rest       | AES-256-GCM (provider keys, integrations, backups)                                 |
 
-## Public REST API and CLI
+## Public REST API, CLI, and MCP
 
 Workspace-scoped API keys (bearer-only, prefixed `nora_`, HMAC-hashed at rest, scope-based) drive a stable subset of the REST surface. Issue keys at `/app/workspaces/<id>/api-keys`.
 
@@ -129,6 +129,17 @@ curl -H "Authorization: Bearer $NORA_TOKEN" https://your-nora.example.com/api/ag
 ```
 
 A small CLI lives in [`cli/`](./cli) (`@nora/cli`) and wraps the same surface for `nora workspaces`, `nora agents`, and `nora monitoring`. See the [API reference](https://noradocs.solomontsao.com/api/overview) for the supported endpoints and scopes.
+
+**Operate Nora from Claude Code, Claude Desktop, or Cursor:** the [`mcp-server/`](./mcp-server) package (`@nora/mcp-server`) exposes the same API as [Model Context Protocol](https://modelcontextprotocol.io) tools — deploy agents, control their lifecycle, and read fleet metrics, events, and per-agent cost from any MCP client. Destructive deletion stays disabled unless explicitly opted in.
+
+```bash
+claude mcp add nora \
+  --env NORA_API_URL=https://your-nora.example.com \
+  --env NORA_API_KEY=nora_... \
+  -- npx -y @nora/mcp-server
+```
+
+See the [MCP guide](https://noradocs.solomontsao.com/guides/mcp-server) for Claude Desktop/Cursor config, the tool list, and security notes.
 
 ## Roadmap
 

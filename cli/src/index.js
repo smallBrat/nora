@@ -9,6 +9,7 @@ const commands = {
   workspaces: require("./commands/workspaces"),
   agents: require("./commands/agents"),
   monitoring: require("./commands/monitoring"),
+  mcp: require("./commands/mcp"),
 };
 
 function printRootHelp() {
