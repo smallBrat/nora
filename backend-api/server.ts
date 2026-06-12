@@ -760,6 +760,30 @@ app.use("/auth", require("./routes/auth"));
 // over the container network with the derived demo bearer token, not a JWT.
 app.use("/demo-llm", require("./routes/demoLlm"));
 
+// ─── OpenAPI spec + interactive reference (pre-auth: the spec documents the
+// public surface and contains no secrets; publicly /api/api.json + /api/api-docs).
+app.get("/api.json", (req, res) => {
+  const { buildOpenApiDocument } = require("./openapi");
+  res.json(buildOpenApiDocument());
+});
+app.get("/api-docs", (req, res) => {
+  // Scalar's standalone bundle renders the reference client-side from the spec
+  // URL; loading it from the CDN keeps the backend dependency-free.
+  res
+    .type("html")
+    .send(
+      [
+        "<!doctype html>",
+        "<html><head><title>Nora API Reference</title>",
+        '<meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>',
+        "</head><body>",
+        '<script id="api-reference" data-url="api.json"></script>',
+        '<script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>',
+        "</body></html>",
+      ].join("\n"),
+    );
+});
+
 // ─── Gateway UI static assets (before auth wall — JS/CSS/icons contain no user data) ──
 // These are served pre-auth because iframes can't set Authorization headers on sub-resource loads.
 // Only opaque static files (JS bundles, CSS, favicons) are exempted — not HTML or
