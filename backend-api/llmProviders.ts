@@ -3,10 +3,20 @@
 
 const db = require("./db");
 const { encrypt, decrypt, ensureEncryptionConfigured } = require("./crypto");
+const { DEMO_PROVIDER_ID, DEMO_MODEL_ID, deriveDemoToken, demoLlmBaseUrl } = require("./demoLlm");
 
 // Approved LLM providers and their env var names
 // Models updated per https://docs.openclaw.ai/providers (April 2026)
 const PROVIDERS = [
+  {
+    // Zero-key demo: a deterministic stub served by this control plane. No
+    // user key — addProvider derives the token + in-network base URL itself.
+    id: DEMO_PROVIDER_ID,
+    name: "Demo (built-in, no key required)",
+    envVar: "NORA_DEMO_LLM_TOKEN",
+    requiresApiKey: false,
+    models: [DEMO_MODEL_ID],
+  },
   {
     id: "anthropic",
     name: "Anthropic",
@@ -165,9 +175,18 @@ async function addProvider(userId, provider, apiKey, model, config = {}) {
   if (!PROVIDERS.find((p) => p.id === provider)) {
     throw new Error(`Unknown LLM provider: ${provider}`);
   }
-  if (!apiKey) throw new Error("API key is required");
-
-  ensureEncryptionConfigured("LLM provider credential storage");
+  if (provider === DEMO_PROVIDER_ID) {
+    // Zero-key path: the token is derived (not user secret material) and the
+    // base URL points at this control plane's stub as reachable from agent
+    // containers. Deliberately no ensureEncryptionConfigured — the demo must
+    // work on a fresh install before any secrets are set up.
+    apiKey = deriveDemoToken();
+    model = model || DEMO_MODEL_ID;
+    config = { ...config, baseUrl: demoLlmBaseUrl() };
+  } else {
+    if (!apiKey) throw new Error("API key is required");
+    ensureEncryptionConfigured("LLM provider credential storage");
+  }
   const encryptedKey = encrypt(apiKey);
 
   // If no other providers exist for this user, make it default

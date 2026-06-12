@@ -475,6 +475,9 @@ class DockerBackend extends ProvisionerBackend {
       CEREBRAS_API_KEY: "cerebras",
       NVIDIA_API_KEY: "nvidia",
       MICROSOFT_FOUNDRY_API_KEY: "microsoft-foundry",
+      // Zero-key demo stub (custom provider nora-demo). Deliberately LAST so a
+      // real provider key wins the first-configured default-model heuristic.
+      NORA_DEMO_LLM_TOKEN: "nora-demo",
     };
     // Build auth-profiles at CREATION TIME to determine the default model for setModelCmd.
     // This is only used for model selection — the actual auth-profiles.json on disk is
@@ -543,9 +546,15 @@ class DockerBackend extends ProvisionerBackend {
       // MICROSOFT_FOUNDRY_DEPLOYMENT (arbitrary per Azure resource), falling
       // back to "gpt-5.5".
       "microsoft-foundry": foundryDefaultModel(env || {}),
+      "nora-demo": "nora-demo/nora-demo-1",
     };
     const firstProvider = configuredProviders[0];
-    const defaultModel = firstProvider ? providerModelDefaults[firstProvider] : undefined;
+    // The worker computes NORA_DEFAULT_OPENCLAW_MODEL from the user's explicit
+    // default provider row; honor that before falling back to the
+    // first-configured-key heuristic (which only reflects env map order).
+    const defaultModel =
+      (env && env.NORA_DEFAULT_OPENCLAW_MODEL) ||
+      (firstProvider ? providerModelDefaults[firstProvider] : undefined);
 
     // Set default model in the config file BEFORE gateway starts (not via background CLI after).
     // Writing it into openclaw.json pre-launch avoids the config-change file watcher triggering

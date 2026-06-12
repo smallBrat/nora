@@ -756,6 +756,10 @@ app.post("/webhooks/:channelId", async (req, res) => {
 
 app.use("/auth", require("./routes/auth"));
 
+// Zero-key demo LLM stub (OpenAI-compatible). Pre-auth: agent runtimes call it
+// over the container network with the derived demo bearer token, not a JWT.
+app.use("/demo-llm", require("./routes/demoLlm"));
+
 // ─── Gateway UI static assets (before auth wall — JS/CSS/icons contain no user data) ──
 // These are served pre-auth because iframes can't set Authorization headers on sub-resource loads.
 // Only opaque static files (JS bundles, CSS, favicons) are exempted — not HTML or

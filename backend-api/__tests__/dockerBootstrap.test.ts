@@ -444,3 +444,25 @@ describe("Provisioner backends", () => {
     expect(nemoclawSource).toContain('"$OPENCLAW_BIN" gateway');
   });
 });
+
+// Every module runtimeBootstrap.ts (and the other shipped runtime files)
+// require()s relatively must itself be in RUNTIME_FILES — otherwise the
+// in-container runtime server crashes at load with MODULE_NOT_FOUND (this
+// happened with mcpServersConfig). Walk the shipped sources and assert closure.
+describe("runtime bundle closure", () => {
+  it("ships every relatively-required module into the container", () => {
+    const runtimeBootstrap = require("../../agent-runtime/lib/runtimeBootstrap");
+    const shipped = runtimeBootstrap.buildRuntimeBootstrapFiles();
+    const shippedNames = new Set(shipped.map((f) => f.relPath));
+    const missing = [];
+    for (const file of shipped) {
+      const requires = [...file.source.matchAll(/require\(["']\.\/([A-Za-z0-9_-]+)["']\)/g)];
+      for (const [, mod] of requires) {
+        if (!shippedNames.has(`${mod}.ts`) && !shippedNames.has(`${mod}.js`)) {
+          missing.push(`${file.relPath} requires ./${mod}`);
+        }
+      }
+    }
+    expect(missing).toEqual([]);
+  });
+});

@@ -25,6 +25,10 @@ const RUNTIME_FILES = [
   "containerCommand.ts",
   "contracts.ts",
   "runtimeBootstrap.ts",
+  // Required by runtimeBootstrap's require("./mcpServersConfig") — every module
+  // runtimeBootstrap imports relatively must ship into the container with it,
+  // or the in-container runtime server fails at load.
+  "mcpServersConfig.ts",
   "execEndpoint.ts",
   "integrationTools.ts",
   "integrationToolCli.ts",
@@ -451,14 +455,44 @@ function buildOpenClawCustomProviders(env = {}) {
       models: buildFoundryModelEntries(env),
     };
   }
+  // Nora's zero-key demo provider: an OpenAI-compatible stub served by the
+  // control plane itself. The worker injects the derived token plus the
+  // in-network base URL (sister env var, same mechanism as Foundry's).
+  const demoToken = env.NORA_DEMO_LLM_TOKEN;
+  const demoBaseUrl = env.NORA_DEMO_LLM_BASE_URL;
+  if (demoToken && demoBaseUrl) {
+    providers[DEMO_OPENCLAW_PROVIDER_ID] = {
+      api: "openai-completions",
+      baseUrl: String(demoBaseUrl).replace(/\/+$/, ""),
+      apiKey: demoToken,
+      models: [
+        {
+          id: DEMO_OPENCLAW_MODEL_ID,
+          name: "Nora Demo (deterministic stub)",
+          api: "openai-completions",
+          reasoning: false,
+          input: ["text"],
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+          contextWindow: 32768,
+          maxTokens: 4096,
+        },
+      ],
+    };
+  }
   return providers;
 }
 
+// OpenClaw-side ids for the zero-key demo provider. Distinct from Nora's
+// internal "demo" id so a future builtin OpenClaw provider can't collide.
+const DEMO_OPENCLAW_PROVIDER_ID = "nora-demo";
+const DEMO_OPENCLAW_MODEL_ID = "nora-demo-1";
+
 // Maps Nora's internal LLM provider id to the OpenClaw provider id that
 // must appear in model strings (e.g. `<provider>/<deployment>`). Only Foundry
-// needs translation today; everything else passes through unchanged.
+// and the demo stub need translation; everything else passes through unchanged.
 const NORA_TO_OPENCLAW_PROVIDER_ID = Object.freeze({
   "microsoft-foundry": FOUNDRY_OPENCLAW_PROVIDER_ID,
+  demo: DEMO_OPENCLAW_PROVIDER_ID,
 });
 
 function mapNoraProviderIdToOpenClaw(noraProviderId) {
@@ -636,6 +670,8 @@ module.exports = {
   buildOpenClawCustomProviders,
   mapNoraProviderIdToOpenClaw,
   FOUNDRY_OPENCLAW_PROVIDER_ID,
+  DEMO_OPENCLAW_PROVIDER_ID,
+  DEMO_OPENCLAW_MODEL_ID,
   resolveFoundryDeployment,
   foundryDefaultModel,
   buildTemplatePayloadBootstrapCommand,
