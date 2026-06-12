@@ -41,6 +41,56 @@ GET /monitoring/metrics
 
 ***
 
+## Fleet needs-attention roll-up
+
+Return only the agents that need an operator's attention right now, with the reasons why. Derived at read time from existing state — no extra configuration. Use it to drive a triage view instead of scanning every agent. Requires the `monitoring:read` scope.
+
+Detected reasons: `error` and `budget_paused` (severity error); `warning`, `stuck_deploying` (queued/deploying over 10 minutes), `budget_warning` (a running agent crossed a budget soft threshold), and `telemetry_stalled` (a running agent reported no container telemetry for over 5 minutes).
+
+```
+GET /monitoring/fleet-status
+```
+
+### Response
+
+<ResponseField name="generatedAt" type="string">ISO timestamp the roll-up was computed.</ResponseField>
+<ResponseField name="total" type="number">Total number of accessible agents evaluated.</ResponseField>
+<ResponseField name="attentionCount" type="number">Number of agents needing attention.</ResponseField>
+<ResponseField name="agents" type="array">Agents needing attention, errors first. Each has `agentId`, `name`, `status`, `severity`, and a `reasons` array of `{ code, severity, label }`.</ResponseField>
+
+<CodeGroup>
+  ```bash curl theme={null}
+  curl http://localhost:8080/api/monitoring/fleet-status \
+    -H "Authorization: Bearer $TOKEN"
+  ```
+</CodeGroup>
+
+```json theme={null}
+{
+  "generatedAt": "2026-06-12T12:00:00.000Z",
+  "total": 4,
+  "attentionCount": 2,
+  "agents": [
+    {
+      "agentId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "name": "Billing bot",
+      "status": "stopped",
+      "severity": "error",
+      "reasons": [{ "code": "budget_paused", "severity": "error", "label": "Paused — budget cap reached" }]
+    },
+    {
+      "agentId": "b2c3d4e5-f6a7-8901-bcde-f23456789012",
+      "name": "Scraper",
+      "status": "deploying",
+      "severity": "warning",
+      "reasons": [{ "code": "stuck_deploying", "severity": "warning", "label": "Stuck deploying for 18m" }]
+    }
+  ]
+}
+```
+
+***
+
 ## Activity event log
 
 Return a chronological log of activity events. When you supply `agentId` the results are filtered to that agent; otherwise all events across your agents are returned.
