@@ -4,6 +4,36 @@ All notable changes to Nora are documented here. Each entry summarizes the
 corresponding [GitHub release](https://github.com/solomon2773/nora/releases),
 which carries the full notes and verification details.
 
+## [v1.11.0](https://github.com/solomon2773/nora/releases/tag/v1.11.0) — 2026-06-12
+
+The pre-launch feature release: nine capabilities identified by the 2026-06 competitive research, shipped as PRs #177–#186.
+
+### Added
+
+- **Control-plane MCP server** (`@nora/mcp-server` + `nora mcp` CLI alias): operate Nora from Claude Code or any MCP client — 13 tools covering agent lifecycle, metrics, events, and cost, authenticated with existing scoped `nora_` API keys; `delete_agent` gated behind `NORA_MCP_ALLOW_DESTRUCTIVE=true`. (#177)
+- **Official Helm chart** (`infra/helm/nora`): full control plane on Kubernetes with optional in-chart PostgreSQL/Redis (external toggles), fail-fast secrets, Ingress support, DB-readiness init containers, and a CI-drift-guarded vendored schema. (#178)
+- **Per-agent LLM budget hard caps with auto-pause**: soft thresholds emit alert events; crossing 100% stops the runtime (`status=stopped` + `paused_reason=budget_exceeded`) with sweep re-enforcement against the status reconciler; budget editor and paused-banner in the dashboard. (#180)
+- **Fleet needs-attention roll-up**: `GET /monitoring/fleet-status` returns only the agents needing operator action with reasons (errored, budget-paused, stuck deploying, approaching budget, stalled telemetry); triage strip on the dashboard. (#181)
+- **`nora doctor` + admin Health panel**: one-shot control-plane self-check (database, queue + DLQ, Kubernetes targets, secret posture, fleet health, gateway exposure) via CLI (`--json`, non-zero exit on failure), `GET /admin/doctor`, and an admin dashboard page. The `cli` package joined the CI quality/security matrices. (#182)
+- **Per-agent MCP server management**: expose a connected integration (GitLab, Notion, Stripe, Supabase) to an agent as a stdio MCP server spawned by the OpenClaw runtime with the integration's own credentials; toggles in the agent Integrations tab. (#183)
+- **First-admin claim flow**: public `GET /auth/bootstrap-status` and a "Claim this server" signup mode while the instance has zero users. (#184)
+- **Zero-key demo agent**: one click on Getting Started deploys a chattable agent against a built-in deterministic OpenAI-compatible stub served by the control plane — no provider key required. (#185)
+- **OpenAPI 3.1 spec + interactive reference**: every instance serves `GET /api/api.json` and `/api/api-docs` (Scalar); tier-1 coverage (agents, budgets, monitoring, LLM providers, auth) is drift-tested in CI against the actual routers. (#186)
+
+### Changed
+
+- Dev-mode generated JWT secrets are persisted in the database so sessions survive restarts. (#184)
+- The docker adapter honors the user's explicit default LLM provider when setting the runtime's default model, instead of env-map order. (#185)
+- `npm audit` advisories patched in `@grpc/grpc-js` (backend-api, workers/provisioner). (#179)
+
+### Fixed
+
+- Agent runtime sidecar no longer crashes with `MODULE_NOT_FOUND` on newly deployed agents (runtime bundle now ships every relatively-required module, with a CI closure test). (#185)
+
+### Breaking
+
+- **Production now refuses to boot with weak secrets**: a missing/placeholder `JWT_SECRET` or a missing/invalid `ENCRYPTION_KEY` is fatal when `NODE_ENV=production`. Installs that ran without a valid `ENCRYPTION_KEY` must set one (64-char hex) or explicitly opt out with `NORA_ALLOW_PLAINTEXT_SECRETS=true`. (#184)
+
 ## [v1.10.1](https://github.com/solomon2773/nora/releases/tag/v1.10.1) — 2026-06-11
 
 - Clarified the supported runtime and deploy-target matrix across README, docs, dashboard, marketing copy, and setup prompts.
