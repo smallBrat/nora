@@ -25,6 +25,7 @@ const {
   buildIntegrationSyncEntry,
   decryptSensitiveConfig,
 } = require("../../backend-api/integrations");
+const mcpServers = require("../../backend-api/mcpServers");
 const {
   HERMES_INTEGRATIONS_CONFIG_FILE,
   HERMES_INTEGRATIONS_DIR,
@@ -1371,7 +1372,7 @@ const worker = new Worker(
     try {
       const agentRowResult = await db.query(
         `SELECT image, template_payload, sandbox_type, backend_type, runtime_family,
-            deploy_target, execution_target_id, sandbox_profile, gateway_token
+            deploy_target, execution_target_id, sandbox_profile, gateway_token, mcp_servers
        FROM agents
       WHERE id = $1`,
         [id],
@@ -1437,6 +1438,9 @@ const worker = new Worker(
 
       // Fetch integration credentials for this agent and inject as env vars into the container
       let integrationEnvVars = {};
+      // Decrypted creds for providers the operator enabled as MCP servers, keyed
+      // by provider — resolved into an openclaw.json mcpServers block below.
+      const mcpIntegrationsByProvider = {};
       try {
         const INTEGRATION_ENV_MAP = {
           huggingface: "HF_TOKEN",
@@ -1619,6 +1623,19 @@ const worker = new Worker(
               integrationEnvVars[cfgEnvName] = String(cfgValue);
             }
           }
+          // Stash the decrypted token+config for providers that can back an MCP
+          // server, so an enabled MCP server gets the credential its own server
+          // expects (which differs from the generic tool env var above).
+          if (mcpServers.isSupportedProvider(row.provider) && row.access_token) {
+            try {
+              mcpIntegrationsByProvider[row.provider] = {
+                token: decrypt(row.access_token),
+                config: cfg,
+              };
+            } catch {
+              // Already logged above when the tool token failed to decrypt.
+            }
+          }
         }
         if (Object.keys(integrationEnvVars).length > 0) {
           console.log(
@@ -1644,6 +1661,26 @@ const worker = new Worker(
           `[provisioner] Failed to fetch agent secret overrides for agent ${id}:`,
           e.message,
         );
+      }
+
+      // Resolve the agent's enabled MCP servers into openclaw.json entries
+      // (credential-injected). Empty unless the operator enabled one and the
+      // backing integration is connected. OpenClaw-only; ignored elsewhere.
+      let mcpServerEntries = [];
+      try {
+        mcpServerEntries = mcpServers.resolveMcpEntries({
+          enabledIds: agentRow.mcp_servers,
+          integrationsByProvider: mcpIntegrationsByProvider,
+        });
+        if (mcpServerEntries.length > 0) {
+          console.log(
+            `[provisioner] Wiring ${mcpServerEntries.length} MCP server(s) for agent ${id}: ${mcpServerEntries
+              .map((e) => e.name)
+              .join(", ")}`,
+          );
+        }
+      } catch (e) {
+        console.warn(`[provisioner] Failed to resolve MCP servers for agent ${id}:`, e.message);
       }
 
       const configuredProvisionTimeout = parseTimeoutMs(process.env.PROVISION_TIMEOUT_MS, 840000);
@@ -1678,6 +1715,7 @@ const worker = new Worker(
           container_name,
           gatewayToken: agentRow.gateway_token || undefined,
           templatePayload,
+          mcpServers: mcpServerEntries,
           runtimeFamily: resolvedRuntimeFields.runtime_family,
           deployTarget: resolvedRuntimeFields.deploy_target,
           executionTargetId: resolvedRuntimeFields.execution_target_id,

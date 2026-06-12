@@ -1688,6 +1688,10 @@ async function migrateDB() {
        ALTER TABLE agents ADD COLUMN paused_reason TEXT;
      EXCEPTION WHEN duplicate_column THEN NULL;
      END $$`,
+    `DO $$ BEGIN
+       ALTER TABLE agents ADD COLUMN mcp_servers JSONB DEFAULT '[]';
+     EXCEPTION WHEN duplicate_column THEN NULL;
+     END $$`,
     // ─── Phase 3: agent configuration history ───────────────────────────
     `CREATE TABLE IF NOT EXISTS agent_versions (
        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

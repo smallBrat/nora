@@ -5,6 +5,7 @@ const path = require("path");
 const {
   buildOpenClawInstallCommand,
   buildOpenClawConfigMergeScript,
+  buildMcpServersConfig,
   buildOpenClawCustomProviders,
   buildIntegrationToolWrapperScript,
   buildRuntimeBootstrapFiles,
@@ -331,6 +332,7 @@ class DockerBackend extends ProvisionerBackend {
       env,
       container_name,
       templatePayload,
+      mcpServers: mcpServerEntries,
       abortSignal,
     } = config;
     const containerName = container_name || safeContainerName("nora-oclaw", name, id);
@@ -608,6 +610,11 @@ class DockerBackend extends ProvisionerBackend {
     const customProviders = buildOpenClawCustomProviders(env || {});
     if (Object.keys(customProviders).length > 0) {
       gatewayConfig.models = { providers: customProviders };
+    }
+    // Per-agent MCP servers (credential-resolved by the worker). OpenClaw spawns
+    // each over stdio; merged into openclaw.json alongside the other config.
+    if (Array.isArray(mcpServerEntries) && mcpServerEntries.length > 0) {
+      gatewayConfig.mcpServers = buildMcpServersConfig(mcpServerEntries);
     }
 
     const bootstrapFiles = this._buildBootstrapFiles({
