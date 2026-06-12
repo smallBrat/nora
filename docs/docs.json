@@ -147,6 +147,7 @@
           "guides/channels",
           "guides/mcp-server",
           "guides/monitoring",
+          "guides/doctor",
           "guides/alert-rules",
           "guides/backups",
           "guides/upgrades",
