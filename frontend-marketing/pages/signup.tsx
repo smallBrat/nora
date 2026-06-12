@@ -71,9 +71,25 @@ export default function Signup() {
   const [oauthLoading, setOauthLoading] = useState("");
   const [error, setError] = useState("");
   const [botProtectionToken, setBotProtectionToken] = useState("");
+  // First-run claim mode: true while this instance has zero users, so the
+  // first signup is framed as claiming the server (it becomes platform admin).
+  const [needsFirstAdmin, setNeedsFirstAdmin] = useState(false);
   const botProtectionRef = useRef<HTMLDivElement | null>(null);
   const botProtectionWidgetId = useRef<string | number | null>(null);
   const botProtectionEnabled = SIGNUP_BOT_PROTECTION_PROVIDER !== "none";
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/auth/bootstrap-status")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!cancelled && d?.needsFirstAdmin === true) setNeedsFirstAdmin(true);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const resetBotProtection = useCallback(() => {
     setBotProtectionToken("");
@@ -256,8 +272,15 @@ export default function Signup() {
               Open-source operator signup
             </div>
             <h1 className="max-w-xl text-4xl font-black leading-tight text-white sm:text-5xl">
-              Create the operator account for this Nora instance.
+              {needsFirstAdmin
+                ? "Claim this Nora server."
+                : "Create the operator account for this Nora instance."}
             </h1>
+            {needsFirstAdmin && (
+              <p className="mt-3 max-w-xl text-sm font-bold uppercase tracking-[0.2em] text-[#f2d7a1]">
+                First-run setup — the account you create here becomes the platform admin.
+              </p>
+            )}
             <p className="mt-5 max-w-xl text-base leading-8 text-slate-300">
               Use this account to enter the Nora dashboard, add provider keys, create workspaces,
               and deploy OpenClaw or Hermes runtimes on infrastructure you control. The source stays
@@ -333,7 +356,7 @@ export default function Signup() {
               Easy account creation
             </div>
             <h2 className="text-3xl font-black leading-tight text-slate-950">
-              Create operator account
+              {needsFirstAdmin ? "Claim this server" : "Create operator account"}
             </h2>
             <p className="mt-3 text-sm leading-7 text-slate-700">
               Use this account to enter the Nora operator surface for OpenClaw and Hermes

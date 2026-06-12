@@ -918,3 +918,26 @@ describe("OAuth hardening", () => {
     expect(res.body.error).toMatch(/authentication required/i);
   });
 });
+
+describe("GET /auth/bootstrap-status", () => {
+  it("reports needsFirstAdmin=true when no users exist", async () => {
+    mockDb.query.mockResolvedValueOnce({ rows: [] });
+    const res = await request(app).get("/auth/bootstrap-status");
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ needsFirstAdmin: true });
+  });
+
+  it("reports needsFirstAdmin=false once a user is registered", async () => {
+    mockDb.query.mockResolvedValueOnce({ rows: [{ "?column?": 1 }] });
+    const res = await request(app).get("/auth/bootstrap-status");
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ needsFirstAdmin: false });
+  });
+
+  it("is publicly reachable without a token and leaks only the boolean", async () => {
+    mockDb.query.mockResolvedValueOnce({ rows: [{ "?column?": 1 }] });
+    const res = await request(app).get("/auth/bootstrap-status");
+    expect(res.status).toBe(200);
+    expect(Object.keys(res.body)).toEqual(["needsFirstAdmin"]);
+  });
+});

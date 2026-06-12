@@ -54,7 +54,12 @@ const {
 
 // ─── JWT Secret ───────────────────────────────────────────────────
 const IS_TEST_ENV = process.env.NODE_ENV === "test" || !!process.env.JEST_WORKER_ID;
+const { looksLikePlaceholderSecret } = require("./lib/secretValidation");
 const MIN_JWT_SECRET_LENGTH = 32;
+// When a dev boot generated an ephemeral JWT secret, we persist/restore it via
+// platform_settings after the DB is up so sessions survive restarts (dev only;
+// production refuses to boot without an explicit secret).
+let usedEphemeralJwtSecret = false;
 if (!process.env.JWT_SECRET) {
   if (IS_TEST_ENV) {
     process.env.JWT_SECRET = "secret";
@@ -65,9 +70,10 @@ if (!process.env.JWT_SECRET) {
     process.exit(1);
   } else {
     console.warn(
-      "SECURITY WARNING: JWT_SECRET not configured. Using ephemeral secret — all tokens will invalidate on restart. Set JWT_SECRET in .env.",
+      "SECURITY WARNING: JWT_SECRET not configured. Using a generated dev secret (persisted in the database so sessions survive restarts). Set JWT_SECRET in .env for real deployments.",
     );
     process.env.JWT_SECRET = crypto.randomBytes(32).toString("hex");
+    usedEphemeralJwtSecret = true;
   }
 } else if (!IS_TEST_ENV && process.env.JWT_SECRET.length < MIN_JWT_SECRET_LENGTH) {
   // A short JWT_SECRET is brute-forceable offline given any signed token. Fail
@@ -78,6 +84,40 @@ if (!process.env.JWT_SECRET) {
     `FATAL: JWT_SECRET is shorter than the minimum of ${MIN_JWT_SECRET_LENGTH} characters. Generate a stronger one (e.g. node -e "console.log(require('crypto').randomBytes(32).toString('hex'))") and restart.`,
   );
   process.exit(1);
+} else if (!IS_TEST_ENV && looksLikePlaceholderSecret(process.env.JWT_SECRET)) {
+  // Placeholder-looking secrets (your_*, changeme, <REPLACE_...>, "test-...")
+  // mean the operator never edited .env.example. Tokens signed with a guessable
+  // secret are forgeable, so refuse in production; warn loudly in dev.
+  if (process.env.NODE_ENV === "production") {
+    console.error(
+      "FATAL: JWT_SECRET looks like a placeholder value. Generate a real secret and restart.",
+    );
+    process.exit(1);
+  }
+  console.warn("SECURITY WARNING: JWT_SECRET looks like a placeholder value — replace it in .env.");
+}
+
+// ─── Encryption key (credentials at rest) ─────────────────────────
+// crypto.ts already warns when ENCRYPTION_KEY is missing/invalid and blocks new
+// secret writes. In production that soft failure becomes a refusal to boot:
+// running a control plane that cannot encrypt integration credentials is a
+// footgun. NORA_ALLOW_PLAINTEXT_SECRETS=true is the explicit operator override
+// (e.g. air-gapped throwaway demos).
+{
+  const { isEncryptionConfigured } = require("./crypto");
+  if (
+    !IS_TEST_ENV &&
+    process.env.NODE_ENV === "production" &&
+    !isEncryptionConfigured() &&
+    process.env.NORA_ALLOW_PLAINTEXT_SECRETS !== "true"
+  ) {
+    console.error(
+      "FATAL: ENCRYPTION_KEY is not set (or is not a 64-char hex key) in production. " +
+        "Generate one with: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\" " +
+        "and set it in .env. To intentionally run without encryption at rest, set NORA_ALLOW_PLAINTEXT_SECRETS=true.",
+    );
+    process.exit(1);
+  }
 }
 
 // ─── App Setup ────────────────────────────────────────────────────
@@ -1692,6 +1732,10 @@ async function migrateDB() {
        ALTER TABLE agents ADD COLUMN mcp_servers JSONB DEFAULT '[]';
      EXCEPTION WHEN duplicate_column THEN NULL;
      END $$`,
+    `DO $$ BEGIN
+       ALTER TABLE platform_settings ADD COLUMN dev_jwt_secret TEXT;
+     EXCEPTION WHEN duplicate_column THEN NULL;
+     END $$`,
     // ─── Phase 3: agent configuration history ───────────────────────────
     `CREATE TABLE IF NOT EXISTS agent_versions (
        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1831,6 +1875,32 @@ if (require.main === module) {
       await migrateDB();
     } catch (e) {
       console.error("DB migration error:", e.message);
+    }
+
+    // Dev-mode only: persist the generated JWT secret in platform_settings so
+    // sessions survive restarts; on later boots restore the stored one. The
+    // restore happens before real traffic in practice, and the worst case of a
+    // racing request is one invalidated token — the prior behavior for ALL
+    // tokens on every restart. Production never reaches this branch (boot
+    // fails without an explicit JWT_SECRET).
+    if (usedEphemeralJwtSecret) {
+      try {
+        const existing = await db.query("SELECT dev_jwt_secret FROM platform_settings LIMIT 1");
+        const stored = existing.rows[0]?.dev_jwt_secret;
+        if (stored && stored.length >= MIN_JWT_SECRET_LENGTH) {
+          process.env.JWT_SECRET = stored;
+          console.log("Restored persisted dev JWT secret — existing sessions remain valid.");
+        } else {
+          await db.query(
+            `INSERT INTO platform_settings(singleton, dev_jwt_secret) VALUES (TRUE, $1)
+             ON CONFLICT (singleton) DO UPDATE SET dev_jwt_secret = EXCLUDED.dev_jwt_secret`,
+            [process.env.JWT_SECRET],
+          );
+          console.log("Persisted generated dev JWT secret — sessions will survive restarts.");
+        }
+      } catch (e) {
+        console.warn("Could not persist/restore dev JWT secret:", e.message);
+      }
     }
 
     // Seed bootstrap admin account on first boot only when explicit secure credentials are provided.

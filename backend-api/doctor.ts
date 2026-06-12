@@ -16,35 +16,15 @@ const db = require("./db");
 const { deployQueue, getDLQJobs } = require("./redisQueue");
 const kubernetesClusters = require("./kubernetesClusters");
 const fleetStatus = require("./fleetStatus");
-
-// Mirror of agentHubSafety's placeholder detector. Duplicated (not imported) so
-// doctor stays a standalone read-only aggregator; PR-7 will centralize secret
-// validation and this stub will defer to it.
-const PLACEHOLDER_RE = /^(your_|example|sample|placeholder|changeme|replace-me|test-|demo-)/i;
-
-// Required process secrets and how strict each one is. ENCRYPTION_KEY is a
-// "warn" today (the app still boots without it, falling back to plaintext);
-// PR-7 makes it fatal in production.
-const SECRET_CHECKS = [
-  { env: "JWT_SECRET", label: "JWT signing secret", minLength: 16, severity: "fail" },
-  {
-    env: "NORA_API_KEY_HASH_SECRET",
-    label: "API-key hash secret",
-    minLength: 16,
-    severity: "fail",
-  },
-  { env: "ENCRYPTION_KEY", label: "API-key encryption key", minLength: 16, severity: "warn" },
-];
+// Secret posture rules are centralized in lib/secretValidation so the boot-time
+// fail-closed checks in server.ts and this report agree on what "weak" means.
+const { validateRequiredSecrets } = require("./lib/secretValidation");
 
 const STATUS_RANK = { ok: 0, warn: 1, fail: 2 };
 const CACHE_TTL_MS = 30 * 1000;
 
 function worst(statuses) {
   return statuses.reduce((acc, s) => (STATUS_RANK[s] > STATUS_RANK[acc] ? s : acc), "ok");
-}
-
-function looksLikePlaceholder(value) {
-  return PLACEHOLDER_RE.test(value) || value.includes("<") || value.includes("{{");
 }
 
 async function checkDatabase(dbClient) {
@@ -130,25 +110,11 @@ async function checkKubernetesTargets(listTargets) {
 }
 
 function checkSecrets(env) {
-  const problems = [];
-  for (const secret of SECRET_CHECKS) {
-    const value = env[secret.env];
-    if (!value) {
-      problems.push({ env: secret.env, severity: secret.severity, issue: "not set" });
-    } else if (looksLikePlaceholder(value)) {
-      problems.push({
-        env: secret.env,
-        severity: secret.severity,
-        issue: "looks like a placeholder",
-      });
-    } else if (value.length < secret.minLength) {
-      problems.push({
-        env: secret.env,
-        severity: secret.severity,
-        issue: `shorter than ${secret.minLength} characters`,
-      });
-    }
-  }
+  const problems = validateRequiredSecrets(env).map((p) => ({
+    env: p.env,
+    severity: p.severity,
+    issue: p.issues.join(", "),
+  }));
   const status = worst(["ok", ...problems.map((p) => p.severity)]);
   return {
     id: "secrets",
@@ -292,7 +258,6 @@ function _resetCacheForTests() {
 }
 
 module.exports = {
-  SECRET_CHECKS,
   runDoctor,
   getDoctorReport,
   checkSecrets,
