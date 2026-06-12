@@ -1968,6 +1968,18 @@ router.put(
       ownerEmail: req.user.email || null,
     });
     const budget = await agentBudgets.upsertBudget(agent.id, req.body || {});
+    await monitoring.logEvent(
+      "agent.budget_updated",
+      `Budget set on agent "${agent.name}": $${budget.limitUsd.toFixed(2)}/${budget.period} (warn at ${budget.softThresholdPct}%)`,
+      agentAuditMetadata(req, agent, {
+        result: {
+          budgetId: budget.id,
+          period: budget.period,
+          limitUsd: budget.limitUsd,
+          softThresholdPct: budget.softThresholdPct,
+        },
+      }),
+    );
     res.json(budget);
   }),
 );
@@ -1982,6 +1994,11 @@ router.delete(
     });
     const deleted = await agentBudgets.deleteBudget(req.params.budgetId, agent.id);
     if (!deleted) return res.status(404).json({ error: "Budget not found" });
+    await monitoring.logEvent(
+      "agent.budget_removed",
+      `Budget removed from agent "${agent.name}"`,
+      agentAuditMetadata(req, agent, { result: { budgetId: req.params.budgetId } }),
+    );
     res.json({ success: true });
   }),
 );
