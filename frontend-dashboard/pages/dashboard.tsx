@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { clsx } from "clsx";
 import { fetchWithAuth } from "../lib/api";
 import ActivationChecklist from "../components/onboarding/ActivationChecklist";
+import FleetTriageStrip from "../components/FleetTriageStrip";
 
 export default function Dashboard() {
   const [agents, setAgents] = useState([]);
@@ -60,6 +61,8 @@ export default function Dashboard() {
             color="purple"
           />
         </div>
+
+        <FleetTriageStrip />
 
         <div className="flex flex-col gap-6">
           <div className="flex items-center justify-between">
