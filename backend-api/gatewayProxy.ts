@@ -13,6 +13,7 @@ const integrations = require("./integrations");
 const { resolveAgentRuntimeFamily } = require("./agentRuntimeFields");
 
 const metrics = require("./metrics");
+const agentBudgets = require("./agentBudgets");
 const { OPENCLAW_GATEWAY_PORT } = require("../agent-runtime/lib/contracts");
 const {
   resolveGatewayAddress,
@@ -804,6 +805,7 @@ function createGatewayRouter() {
             sessionId: session_id || "main",
             requestId: idempotencyKey,
           })
+          .then(() => agentBudgets.checkAndEnforce(req.agent))
           .catch(() => {});
 
         res.write(`data: ${JSON.stringify({ type: "done", runId })}\n\n`);
@@ -820,6 +822,7 @@ function createGatewayRouter() {
             sessionId: session_id || "main",
             requestId: idempotencyKey,
           })
+          .then(() => agentBudgets.checkAndEnforce(req.agent))
           .catch(() => {});
         res.json(result);
       }
