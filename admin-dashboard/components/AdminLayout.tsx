@@ -3,6 +3,7 @@ import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
 import {
   ArrowUpRight,
+  Activity,
   FileText,
   Archive,
   Boxes,
@@ -22,6 +23,7 @@ import { useI18n } from "../lib/i18n";
 
 const NAV_ITEMS = [
   { name: "Overview", icon: LayoutDashboard, href: "/" },
+  { name: "Health", icon: Activity, href: "/health" },
   { name: "Fleet", icon: Server, href: "/fleet" },
   { name: "Queue", icon: TriangleAlert, href: "/queue" },
   { name: "Users", icon: Users, href: "/users" },

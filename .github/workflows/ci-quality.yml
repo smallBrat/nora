@@ -22,6 +22,7 @@ on:
       - "workers/provisioner/**"
       - "e2e/**"
       - "mcp-server/**"
+      - "cli/**"
   push:
     branches:
       - master
@@ -44,6 +45,7 @@ jobs:
           - backend-api
           - workers/provisioner
           - mcp-server
+          - cli
         check:
           - eslint
           - prettier
