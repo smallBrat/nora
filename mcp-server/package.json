@@ -4,12 +4,16 @@
   "description": "MCP server for the Nora agent ops control plane — operate your agent fleet from Claude Code, Claude Desktop, Cursor, or any MCP client.",
   "license": "Apache-2.0",
   "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
   "bin": {
     "nora-mcp": "./src/index.js"
   },
   "files": [
     "src/**/*.js",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "engines": {
     "node": ">=20"
