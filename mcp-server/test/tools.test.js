@@ -3,7 +3,10 @@ import assert from "node:assert/strict";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { createServer } from "../src/index.js";
-import { ApiError } from "../src/client.js";
+import { ApiError, createApi } from "../src/client.js";
+
+// A valid UUID for tools whose `id` input is now uuid-validated.
+const AID = "123e4567-e89b-12d3-a456-426614174000";
 
 // Records calls and replays canned responses keyed by "METHOD path".
 function mockApi(responses = {}) {
@@ -83,21 +86,61 @@ test("deploy_agent forwards the request body to /api/agents/deploy", async () =>
 test("lifecycle tools hit the expected endpoints", async () => {
   const api = mockApi();
   const client = await connect(createServer({ api, env: { NORA_MCP_ALLOW_DESTRUCTIVE: "true" } }));
-  await client.callTool({ name: "start_agent", arguments: { id: "a1" } });
-  await client.callTool({ name: "stop_agent", arguments: { id: "a1" } });
-  await client.callTool({ name: "restart_agent", arguments: { id: "a1" } });
-  await client.callTool({ name: "redeploy_agent", arguments: { id: "a1" } });
-  await client.callTool({ name: "delete_agent", arguments: { id: "a1" } });
+  await client.callTool({ name: "start_agent", arguments: { id: AID } });
+  await client.callTool({ name: "stop_agent", arguments: { id: AID } });
+  await client.callTool({ name: "restart_agent", arguments: { id: AID } });
+  await client.callTool({ name: "redeploy_agent", arguments: { id: AID } });
+  await client.callTool({ name: "delete_agent", arguments: { id: AID } });
   assert.deepEqual(
     api.calls.map((c) => `${c.method} ${c.path}`),
     [
-      "POST /api/agents/a1/start",
-      "POST /api/agents/a1/stop",
-      "POST /api/agents/a1/restart",
-      "POST /api/agents/a1/redeploy",
-      "DELETE /api/agents/a1",
+      `POST /api/agents/${AID}/start`,
+      `POST /api/agents/${AID}/stop`,
+      `POST /api/agents/${AID}/restart`,
+      `POST /api/agents/${AID}/redeploy`,
+      `DELETE /api/agents/${AID}`,
     ],
   );
+});
+
+test("a non-UUID agent id is rejected before any request is made", async () => {
+  const api = mockApi();
+  const client = await connect(createServer({ api, env: {} }));
+  const result = await client.callTool({
+    name: "get_agent",
+    arguments: { id: "../billing/subscription" },
+  });
+  assert.equal(result.isError, true);
+  assert.equal(api.calls.length, 0);
+});
+
+test("the HTTP client refuses a path that escapes the /api/ prefix", async () => {
+  const fetchImpl = () => assert.fail("fetch must not be called for an escaped path");
+  const api = createApi({ baseUrl: "https://nora.example.com", apiKey: "nora_test", fetchImpl });
+  // `..` segments that walk out of /api/ entirely (e.g. /api/agents/../../admin
+  // -> /admin) are refused by the client as a backstop to schema validation.
+  await assert.rejects(
+    () => api.get("/api/../admin/users"),
+    (err) => {
+      assert.ok(err instanceof ApiError);
+      assert.equal(err.code, "invalid_path");
+      return true;
+    },
+  );
+});
+
+test("the HTTP client sends bearer auth and parses JSON for a valid path", async () => {
+  const seen = {};
+  const fetchImpl = async (url, opts) => {
+    seen.url = url.toString();
+    seen.auth = opts.headers.Authorization;
+    return { ok: true, status: 200, text: async () => JSON.stringify({ id: AID }) };
+  };
+  const api = createApi({ baseUrl: "https://nora.example.com", apiKey: "nora_test", fetchImpl });
+  const body = await api.get(`/api/agents/${AID}`);
+  assert.deepEqual(body, { id: AID });
+  assert.equal(seen.url, `https://nora.example.com/api/agents/${AID}`);
+  assert.equal(seen.auth, "Bearer nora_test");
 });
 
 test("per-agent observability tools use the /api/agents/:id paths", async () => {
@@ -105,23 +148,23 @@ test("per-agent observability tools use the /api/agents/:id paths", async () => 
   const client = await connect(createServer({ api, env: {} }));
   await client.callTool({
     name: "get_agent_metrics",
-    arguments: { id: "a1", type: "token_usage" },
+    arguments: { id: AID, type: "token_usage" },
   });
-  await client.callTool({ name: "get_agent_metrics_summary", arguments: { id: "a1" } });
-  await client.callTool({ name: "get_agent_cost", arguments: { id: "a1", periodDays: 7 } });
-  assert.equal(api.calls[0].path, "/api/agents/a1/metrics");
+  await client.callTool({ name: "get_agent_metrics_summary", arguments: { id: AID } });
+  await client.callTool({ name: "get_agent_cost", arguments: { id: AID, periodDays: 7 } });
+  assert.equal(api.calls[0].path, `/api/agents/${AID}/metrics`);
   assert.deepEqual(api.calls[0].opts.query, { type: "token_usage" });
-  assert.equal(api.calls[1].path, "/api/agents/a1/metrics/summary");
-  assert.equal(api.calls[2].path, "/api/agents/a1/cost");
+  assert.equal(api.calls[1].path, `/api/agents/${AID}/metrics/summary`);
+  assert.equal(api.calls[2].path, `/api/agents/${AID}/cost`);
   assert.deepEqual(api.calls[2].opts.query, { periodDays: 7 });
 });
 
 test("API errors surface as isError tool results with status and message", async () => {
   const api = mockApi({
-    "GET /api/agents/missing": new ApiError(404, "Agent not found"),
+    [`GET /api/agents/${AID}`]: new ApiError(404, "Agent not found"),
   });
   const client = await connect(createServer({ api, env: {} }));
-  const result = await client.callTool({ name: "get_agent", arguments: { id: "missing" } });
+  const result = await client.callTool({ name: "get_agent", arguments: { id: AID } });
   assert.equal(result.isError, true);
   assert.match(result.content[0].text, /Nora API error 404: Agent not found/);
 });

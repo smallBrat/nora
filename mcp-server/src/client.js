@@ -21,6 +21,13 @@ export function createApi({ baseUrl, apiKey, fetchImpl } = {}) {
 
   async function request(method, path, { body, query } = {}) {
     const url = new URL(path, resolved.baseUrl);
+    // Defense in depth: every tool path is under `/api/`. URL normalization
+    // collapses any `..` segment that slipped through a tool's input schema, so
+    // refuse a request whose normalized path escaped the API prefix rather than
+    // silently calling an unintended endpoint.
+    if (!url.pathname.startsWith("/api/")) {
+      throw new ApiError(0, `Refusing request to non-API path: ${url.pathname}`, "invalid_path");
+    }
     if (query) {
       for (const [key, value] of Object.entries(query)) {
         if (value !== undefined && value !== null) url.searchParams.set(key, String(value));

@@ -5,7 +5,11 @@
 import { z } from "zod";
 import { jsonResult, withApi } from "./shared.js";
 
-const agentId = z.string().describe("Agent id (UUID)");
+// Validate as a UUID: agent ids are UUIDs (db_schema agents.id), and the value
+// is interpolated into the request path. A loose z.string() would let a crafted
+// id like ".." collapse `/api/agents/../stop` to `/api/stop` via URL
+// normalization and reach endpoints the tool never advertised.
+const agentId = z.string().uuid().describe("Agent id (UUID)");
 
 export function registerAgentTools(server, api, { allowDestructive = false } = {}) {
   server.registerTool(
@@ -79,7 +83,14 @@ export function registerAgentTools(server, api, { allowDestructive = false } = {
           .optional()
           .describe("Sandbox profile (nemoclaw is experimental)"),
         vcpu: z.number().int().min(1).optional().describe("vCPU cores"),
-        ram_mb: z.number().int().min(256).optional().describe("RAM in MB"),
+        ram_mb: z
+          .number()
+          .int()
+          .min(512)
+          .optional()
+          .describe(
+            "RAM in MB (self-hosted minimum 512; ignored in PaaS mode where the operator sets resources)",
+          ),
         disk_gb: z.number().int().min(1).optional().describe("Disk in GB"),
       },
       annotations: { destructiveHint: false, idempotentHint: false },
@@ -126,7 +137,7 @@ export function registerAgentTools(server, api, { allowDestructive = false } = {
     {
       title: "Redeploy agent",
       description:
-        "Tear down and re-provision the agent's runtime container with its current configuration. Use after config changes that need a fresh container.",
+        "Tear down and re-provision the agent's runtime container with its current configuration. Only valid when the agent is stopped, in warning, or in error state — stop a running agent first.",
       inputSchema: { id: agentId },
       annotations: { destructiveHint: true, idempotentHint: false },
     },

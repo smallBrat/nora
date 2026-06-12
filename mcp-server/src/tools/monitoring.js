@@ -4,7 +4,8 @@
 import { z } from "zod";
 import { jsonResult, withApi } from "./shared.js";
 
-const agentId = z.string().describe("Agent id (UUID)");
+// UUID-validated: interpolated into the request path (see agents.js note).
+const agentId = z.string().uuid().describe("Agent id (UUID)");
 
 export function registerMonitoringTools(server, api) {
   server.registerTool(

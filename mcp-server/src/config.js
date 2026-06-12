@@ -38,5 +38,16 @@ export function requireConnection(env = process.env) {
       "No Nora API key found. Set NORA_API_KEY to a workspace API key (nora_...) or run `nora login --token nora_...`.",
     );
   }
+  // The API key is sent as a bearer token on every request. Warn (to stderr —
+  // stdout is the MCP protocol channel) if it would travel in cleartext over a
+  // non-local http:// origin. Loopback is exempt for local development.
+  if (
+    /^http:\/\//i.test(baseUrl) &&
+    !/^http:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/i.test(baseUrl)
+  ) {
+    process.stderr.write(
+      `[nora-mcp] WARNING: ${baseUrl} uses http://; your API key will be sent unencrypted. Use https://.\n`,
+    );
+  }
   return { baseUrl, apiKey };
 }
