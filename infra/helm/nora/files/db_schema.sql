@@ -178,6 +178,10 @@ CREATE TABLE IF NOT EXISTS platform_settings (
   -- normalizeBackupPlanLimits on read. Keep the schema default empty so the
   -- two stay in sync from a single source of truth.
   backup_plan_limits JSONB NOT NULL DEFAULT '{}'::jsonb,
+  -- Dev-mode only: the generated JWT secret persisted so sessions survive
+  -- restarts when JWT_SECRET is not configured. Never used in production
+  -- (boot fails there without an explicit JWT_SECRET).
+  dev_jwt_secret TEXT,
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW()
 );

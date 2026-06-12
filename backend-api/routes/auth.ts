@@ -215,6 +215,19 @@ function isDuplicateUserError(error) {
 
 // ─── Public routes ────────────────────────────────────────────────
 
+// First-run claim check: true until the first user registers (who becomes the
+// platform admin). The login/signup pages use it to render "Claim this server"
+// instead of a generic signup. Deliberately exposes only a boolean — user
+// count or emails would aid enumeration.
+router.get("/bootstrap-status", async (req, res) => {
+  try {
+    const { rows } = await db.query("SELECT 1 FROM users LIMIT 1");
+    res.json({ needsFirstAdmin: rows.length === 0 });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 router.post("/signup", signupBurstLimiter, signupDailyLimiter, async (req, res) => {
   const { email, password } = req.body;
   const normalizedEmail = normalizeEmail(email);

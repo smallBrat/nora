@@ -20,6 +20,8 @@ const okQueue = { getJobCounts: async () => ({ waiting: 0, active: 0, completed:
 const noDlq = async () => [];
 const noClusters = async () => [];
 
+const HEX64 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
 const healthyDeps = (over = {}) => ({
   dbClient: okDb(over.db || {}),
   queue: over.queue || okQueue,
@@ -28,7 +30,7 @@ const healthyDeps = (over = {}) => ({
   env: over.env || {
     JWT_SECRET: "a-properly-long-jwt-secret-value",
     NORA_API_KEY_HASH_SECRET: "a-properly-long-hash-secret-value",
-    ENCRYPTION_KEY: "a-properly-long-encryption-key-v",
+    ENCRYPTION_KEY: HEX64,
   },
   now: NOW,
 });
@@ -40,26 +42,37 @@ describe("checkSecrets", () => {
     const r = doctor.checkSecrets({
       JWT_SECRET: "a-properly-long-jwt-secret-value",
       NORA_API_KEY_HASH_SECRET: "a-properly-long-hash-secret-value",
-      ENCRYPTION_KEY: "a-properly-long-encryption-key-v",
+      ENCRYPTION_KEY: HEX64,
     });
     expect(r.status).toBe("ok");
     expect(r.problems).toEqual([]);
   });
 
-  it("fails on a missing required secret and warns on a missing encryption key", () => {
+  it("fails on missing JWT/encryption secrets; missing hash secret is a warn (legacy fallback)", () => {
     const r = doctor.checkSecrets({ ENCRYPTION_KEY: "" });
-    // JWT + hash secret missing => fail dominates
     expect(r.status).toBe("fail");
     const byEnv = Object.fromEntries(r.problems.map((p) => [p.env, p]));
     expect(byEnv.JWT_SECRET.severity).toBe("fail");
-    expect(byEnv.ENCRYPTION_KEY.severity).toBe("warn");
+    expect(byEnv.ENCRYPTION_KEY.severity).toBe("fail");
+    // lib/apiTokens has a legacy fallback chain, so absence is only a warning.
+    expect(byEnv.NORA_API_KEY_HASH_SECRET.severity).toBe("warn");
+  });
+
+  it("rejects a non-hex encryption key", () => {
+    const r = doctor.checkSecrets({
+      JWT_SECRET: "a-properly-long-jwt-secret-value",
+      NORA_API_KEY_HASH_SECRET: "a-properly-long-hash-secret-value",
+      ENCRYPTION_KEY: "not-a-hex-key-but-long-enough-to-pass-length",
+    });
+    expect(r.status).toBe("fail");
+    expect(r.detail).toMatch(/64-character hex/);
   });
 
   it("flags placeholder values", () => {
     const r = doctor.checkSecrets({
       JWT_SECRET: "changeme-please",
       NORA_API_KEY_HASH_SECRET: "your_secret_here",
-      ENCRYPTION_KEY: "a-properly-long-encryption-key-v",
+      ENCRYPTION_KEY: HEX64,
     });
     expect(r.status).toBe("fail");
     expect(r.problems.map((p) => p.issue)).toEqual(

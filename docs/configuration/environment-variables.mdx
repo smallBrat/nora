@@ -21,10 +21,11 @@ These variables must be set before the stack will start. Without them, JWTs cann
 
 | Variable                             | Required | Default | Description                                                                                                                                                                                       |
 | ------------------------------------ | -------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `JWT_SECRET`                         | Yes      | —       | Secret used to sign all JWTs. Minimum 32 characters.                                                                                                                                              |
-| `ENCRYPTION_KEY`                     | Yes      | —       | 32-byte hex key (64 hex characters) for AES-256-GCM encryption of stored provider keys, integration credentials, and other sensitive values.                                                      |
+| `JWT_SECRET`                         | Yes      | —       | Secret used to sign all JWTs. Minimum 32 characters. In production the backend refuses to boot when this is missing, too short, or looks like a placeholder (e.g. an unedited `.env.example` value). In development a generated secret is persisted in the database so sessions survive restarts. |
+| `ENCRYPTION_KEY`                     | Yes      | —       | 32-byte hex key (64 hex characters) for AES-256-GCM encryption of stored provider keys, integration credentials, and other sensitive values. In production the backend refuses to boot when this is missing or invalid unless `NORA_ALLOW_PLAINTEXT_SECRETS=true` is set explicitly.              |
 | `NORA_BACKUP_ENCRYPTION_KEY`         | Yes      | —       | 32-byte hex key for sealing managed backup archives. Required to create or restore backups. Do not rotate casually — archives encrypted with the previous key cannot be decrypted with a new one. |
 | `NORA_AGENT_HUB_API_KEY_HASH_SECRET` | Yes      | —       | HMAC secret for hashing Agent Hub source-catalog API keys at rest. `setup.sh` auto-generates this on first run; rotating it invalidates every issued Agent Hub key.                               |
+| `NORA_ALLOW_PLAINTEXT_SECRETS`       | No       | `false` | Explicit override to boot a production instance without a valid `ENCRYPTION_KEY` (credentials are then stored unencrypted). Only for throwaway/demo environments.                                 |
 
 ## Bootstrap admin account
 
