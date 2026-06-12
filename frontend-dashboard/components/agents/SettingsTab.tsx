@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Settings, Trash2, Loader2, Save, Copy, Share2, Download } from "lucide-react";
 import ConfirmDialog from "../ConfirmDialog";
+import BudgetSection from "./BudgetSection";
 import { useToast } from "../Toast";
 import {
   formatExecutionTargetLabel,
@@ -229,6 +230,8 @@ export default function SettingsTab({
           Resource limits are set by your subscription plan.
         </p>
       </section>
+
+      <BudgetSection agentId={agent.id} />
 
       {canDelete ? (
         <section className="bg-red-50 border border-red-200 rounded-2xl p-6 space-y-4">
