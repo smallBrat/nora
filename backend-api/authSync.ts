@@ -8,6 +8,7 @@ const db = require("./db");
 const containerManager = require("./containerManager");
 const llmProviders = require("./llmProviders");
 const { runtimeUrlForAgent } = require("../agent-runtime/lib/agentEndpoints");
+const { runtimeAuthHeaders } = require("./runtimeAuth");
 const { waitForAgentReadiness } = require("./healthChecks");
 const { resolveAgentRuntimeFamily } = require("./agentRuntimeFields");
 const { shellSingleQuote } = require("../agent-runtime/lib/containerCommand");
@@ -362,7 +363,7 @@ async function runRuntimeCommand(agent, command, { timeout = 30000 } = {}) {
 
   const response = await fetch(runtimeUrl, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...(await runtimeAuthHeaders(agent)) },
     body: JSON.stringify({
       command,
       timeout,
