@@ -96,13 +96,13 @@ Deleting a channel removes the record and all associated message history.
 External services can send events to your agent through a public webhook endpoint. The URL format is:
 
 ```
-POST /webhooks/:channelId
+POST /api/webhooks/:channelId
 ```
 
 Where `:channelId` is the ID of the channel you want to receive events on. Nora accepts the payload, logs it as an inbound message, and forwards it to the agent runtime if the agent is currently running.
 
 ```http theme={null}
-POST /webhooks/ch_abc123
+POST /api/webhooks/3f9a2c10-7b1e-4d6a-9c44-2e8f1b0a7d55
 Content-Type: application/json
 
 {

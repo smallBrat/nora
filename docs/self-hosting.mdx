@@ -68,7 +68,7 @@ The installer script is the fastest path to a running Nora instance. It handles 
     http://localhost:8080
     ```
 
-    If setup selected a different port, use the printed URL instead. If you skipped the bootstrap admin account, go to `/signup` on that origin to create your operator account.
+    If setup selected a different port, use the printed URL instead. If you skipped the bootstrap admin account, go to `/signup` on that origin. On a fresh instance the signup page runs in "claim this server" mode and the first account you create becomes the platform admin (see [Security architecture](/concepts/security)).
 
   </Step>
 </Steps>
@@ -133,7 +133,7 @@ Use manual setup when you want full control over every configuration value befor
   </Step>
 
   <Step title="Open the dashboard">
-    Once the stack is up, open your browser to `http://localhost:8080`. Create your operator account at `/signup` if you did not pre-seed a bootstrap admin.
+    Once the stack is up, open your browser to `http://localhost:8080`. Open `/signup` to create your operator account if you did not pre-seed a bootstrap admin. On a fresh database this runs as first-run claim, and the first account created becomes the platform admin.
   </Step>
 </Steps>
 

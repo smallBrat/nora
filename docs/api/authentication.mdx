@@ -2,7 +2,7 @@
 
 > Sign up, log in, and manage your Nora account via the Auth API. Includes JWT token usage, profile updates, and password management.
 
-Every protected Nora API endpoint verifies your identity with a JSON Web Token (JWT). You obtain the token by signing up and then logging in. The token is valid for **7 days** and must be included in the `Authorization` header of every subsequent request. This page covers all authentication endpoints and shows you exactly what each one returns.
+Every protected Nora API endpoint requires an authenticated identity — either a **session JWT** (covered on this page) or a **workspace API key** with scopes (see the [API overview](/api/overview#authentication) for the key-and-scope model). You obtain a JWT by signing up and then logging in; it is valid for **7 days**, sent as a Bearer token in the `Authorization` header of every subsequent request, and also accepted as an HttpOnly session cookie. This page covers all authentication endpoints and shows you exactly what each one returns.
 
 <Note>
   Login and OAuth auth endpoints are rate-limited to **20 requests per 15-minute window** per IP.
@@ -10,9 +10,42 @@ Every protected Nora API endpoint verifies your identity with a JSON Web Token (
   verification when configured.
 </Note>
 
+## Bootstrap status
+
+Check whether the server still needs its first admin. This drives the "claim
+this server" first-run flow: until the first user registers (that first account
+becomes the platform admin), `needsFirstAdmin` is `true`; afterward it is
+`false`. The endpoint deliberately exposes only the boolean — a user count or
+emails would aid account enumeration. See the
+[security overview](/concepts/security) for the broader claim flow.
+
+```
+GET /auth/bootstrap-status
+```
+
+Public — no authentication required.
+
+### Response
+
+<ResponseField name="needsFirstAdmin" type="boolean">
+  `true` until the first user registers, `false` afterward.
+</ResponseField>
+
+```bash
+curl http://localhost:8080/api/auth/bootstrap-status
+```
+
+```json theme={null}
+{ "needsFirstAdmin": true }
+```
+
+---
+
 ## Sign up
 
-Create a new user account.
+Create a new user account. The **first** registered user becomes the platform
+admin (the first-admin claim flow — see [bootstrap status](#bootstrap-status)
+and the [security overview](/concepts/security)).
 
 ```
 POST /auth/signup
@@ -286,3 +319,91 @@ PATCH /auth/password
 | `400`  | Missing fields, or account has no password (OAuth account) |
 | `401`  | Current password is incorrect                              |
 | `404`  | User record not found                                      |
+
+---
+
+## OAuth login
+
+Exchange a server-verified OAuth identity for a Nora session. On success this
+returns a `token` plus the `user` record and sets the HttpOnly session cookie.
+
+```
+POST /auth/oauth-login
+```
+
+<Note>
+  This endpoint is **disabled by default**. Unless `OAUTH_LOGIN_ENABLED=true`, it
+  returns `403` with `OAuth login is disabled until server-side provider
+  verification is implemented`. Like login, it is rate-limited to **20 requests
+  per 15-minute window** per IP.
+</Note>
+
+### Request body
+
+<ParamField body="provider" type="string" required>
+  OAuth provider identifier (for example `github` or `google`).
+</ParamField>
+
+<ParamField body="oauthAccessToken" type="string">
+  Provider access token. Either this or `oauthIdToken` is required.
+</ParamField>
+
+<ParamField body="oauthIdToken" type="string">
+  Provider ID token. Either this or `oauthAccessToken` is required.
+</ParamField>
+
+### Response
+
+<ResponseField name="token" type="string">
+  A signed JWT for the linked or newly created account.
+</ResponseField>
+
+<ResponseField name="user" type="object">
+  The authenticated user record.
+</ResponseField>
+
+---
+
+## Upgrade session
+
+Mirror an existing Bearer-token session into the browser's HttpOnly session
+cookie. The supplied token is re-verified, so a forged Bearer is rejected.
+
+```
+POST /auth/session-upgrade
+```
+
+**Requires authentication.** Send the token in the `Authorization: Bearer <token>` header.
+
+### Response
+
+<ResponseField name="success" type="boolean">
+  `true` when the cookie was set.
+</ResponseField>
+
+```json theme={null}
+{ "success": true }
+```
+
+---
+
+## Log out
+
+Clear the session cookie.
+
+```
+POST /auth/logout
+```
+
+This endpoint intentionally requires **no authentication**, so a page holding a
+stale or invalid cookie can still clean itself up.
+
+### Response
+
+<ResponseField name="success" type="boolean">
+  `true` when the cookie was cleared.
+</ResponseField>
+
+```json theme={null}
+{ "success": true }
+```

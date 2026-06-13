@@ -88,7 +88,7 @@ WebSocket upgrades are handled at the nginx layer; the Express app attaches WS h
 | Service        | What it stores or carries                                                                                                                                                                                                            |
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | PostgreSQL     | Users, workspaces, workspace_members (RBAC), invitations, API keys (HMAC-hashed), agents, agent_versions, deployments, migration drafts, snapshots, Agent Hub listings/versions/reports, alert rules, backups, integrations, events. |
-| Redis + BullMQ | Four queues: `deployments`, `clawhub-installs`, `backups`, `alert-deliveries`. Each has its own retry, backoff, and DLQ retention configured in `backend-api/redisQueue.ts`.                                                         |
+| Redis + BullMQ | Four queues: `deployments`, `clawhub-jobs`, `backups`, `alert-deliveries`. Each has its own retry, backoff, and DLQ retention configured in `backend-api/redisQueue.ts`.                                                             |
 
 The API persists desired state first, then hands long-running work to a queue-backed worker. That keeps provisioning failures, retries, and delayed readiness out of the synchronous browser request path.
 
@@ -209,7 +209,7 @@ Compose mounts `./workers/provisioner/backends` into `backend-api` at `/app/back
 | Queue              | Job type          | Concurrency                             | Retry                                               | Worker                          | What it does                                                                            |
 | ------------------ | ----------------- | --------------------------------------- | --------------------------------------------------- | ------------------------------- | --------------------------------------------------------------------------------------- |
 | `deployments`      | `deploy-agent`    | `DEPLOYMENT_WORKER_CONCURRENCY` (6)     | 5 attempts, exponential 3 s base                    | `workers/provisioner/worker.ts` | Provisions or redeploys an agent runtime through the chosen backend adapter.            |
-| `clawhub-installs` | `install-skill`   | 1                                       | 1 attempt (operator drives retries)                 | `workers/provisioner/worker.ts` | Runs `clawhub install` inside an OpenClaw agent and persists the installed-skill state. |
+| `clawhub-jobs`     | `install-skill`   | 1                                       | 1 attempt (operator drives retries)                 | `workers/provisioner/worker.ts` | Runs `clawhub install` inside an OpenClaw agent and persists the installed-skill state. |
 | `backups`          | `run-backup`      | `BACKUP_WORKER_CONCURRENCY` (2)         | 2 attempts, exponential 5 s base                    | `workers/backup/worker.ts`      | Captures, encrypts, and uploads an agent backup archive, then prunes expired backups.   |
 | `alert-deliveries` | `deliver-webhook` | `ALERT_DELIVERY_WORKER_CONCURRENCY` (5) | `ALERT_DELIVERY_ATTEMPTS` (5), exponential 1 s base | `workers/provisioner/worker.ts` | Posts a webhook delivery for an alert rule. Each job is one (rule, channel) pair.       |
 

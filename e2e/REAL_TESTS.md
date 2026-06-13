@@ -16,6 +16,9 @@ security fixes shipped in integrations.ts / channels/adapters.ts.
   Bot API schema.
 - `specs/support/realConfig.ts` — `.env.real` loader and skip gates.
 - `specs/support/agents.ts` — API helpers.
+- `specs/support/app.ts` — session/auth + API request helpers
+  (`createUserSession`, `DEFAULT_PASSWORD`, `uniqueEmail`, `uniqueName`, plus
+  `apiJson`/`getCurrentUser`) imported by the real specs.
 - `.env.real.example` — fill in and copy to `.env.real`.
 
 ## Prerequisites
@@ -76,6 +79,7 @@ up.
 | OpenClaw + K8s      | `REAL_ENABLE_OPENCLAW_K8S=1`              | Control plane started with `docker-compose.kubernetes.yml`; add `docker-compose.kind.yml` only for local Kind networking |
 | OpenClaw + NemoClaw | `REAL_ENABLE_OPENCLAW_NEMOCLAW=1`         | `NVIDIA_API_KEY` set in `.env` for the stack                                                                                           |
 | Hermes + Docker     | `REAL_ENABLE_HERMES_DOCKER=1`             | First run pulls a large Hermes image — warm the cache or raise `REAL_PROVISION_TIMEOUT_MS`                                             |
+| Hermes + K8s        | `REAL_ENABLE_HERMES_K8S=1`                | Control plane started with `docker-compose.kubernetes.yml` (add `docker-compose.kind.yml` only for local Kind networking); first run pulls a large Hermes image — warm the cache or raise `REAL_PROVISION_TIMEOUT_MS` |
 
 Each cell runs in order: `[L1] deploy → [L2] reach running → [L3] gateway
 reachable → [L4] chat roundtrip → [L5] logs/events → [L7] metrics populate →
