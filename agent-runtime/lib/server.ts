@@ -65,9 +65,13 @@ const RUNTIME_PUBLIC_PATHS = new Set(["/health"]);
 function isRuntimeRequestAuthorized(req) {
   if (!RUNTIME_AUTH_TOKEN) return true; // unenforceable; warned at startup
   const header = req.headers["authorization"] || "";
-  const match = /^Bearer\s+(.+)$/i.exec(header);
-  if (!match) return false;
-  const presented = Buffer.from(match[1]);
+  // Parse "Bearer <token>" with plain string ops — a `\s+(.+)` regex here is a
+  // ReDoS footgun (the two quantifiers both match spaces, so a header of
+  // "Bearer " + many spaces backtracks catastrophically).
+  if (header.slice(0, 7).toLowerCase() !== "bearer ") return false;
+  const presentedToken = header.slice(7).trim();
+  if (!presentedToken) return false;
+  const presented = Buffer.from(presentedToken);
   const expected = Buffer.from(RUNTIME_AUTH_TOKEN);
   return presented.length === expected.length && crypto.timingSafeEqual(presented, expected);
 }
