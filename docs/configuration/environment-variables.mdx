@@ -74,6 +74,7 @@ Redis backs BullMQ for deployment, ClawHub install, backup, and alert-delivery j
 | `ALERT_DELIVERY_WORKER_CONCURRENCY` | No       | `5`       | Concurrency of the alert-deliveries worker.                                                                                                        |
 | `WORKER_HEALTH_PORT`                | No       | `4001`    | Provisioner worker health-check port.                                                                                                              |
 | `BACKUP_WORKER_HEALTH_PORT`         | No       | `4002`    | Backup worker health-check port.                                                                                                                   |
+| `CLAWHUB_PRUNE_ORPHANED_SKILLS`     | No       | `false`   | When `true`, the provisioner reconciler uninstalls ClawHub skills present in a runtime container but not tracked in the agents table. Off by default — orphans are surfaced in the UI and removed explicitly. |
 
 ## Access and URL
 
@@ -85,6 +86,7 @@ These variables control which nginx configuration is mounted, the listening port
 | `NGINX_HTTP_PORT`   | No       | `8080`                  | Host port mapped to the nginx HTTP listener. Use `8080` locally and `80` when deploying on a public domain. Setup auto-picks another free local port when `8080` is busy. |
 | `NEXTAUTH_URL`      | No       | `http://localhost:8080` | Canonical browser-facing URL of your Nora deployment. Set to your `https://` origin when exposing on a domain.                                                            |
 | `NORA_PUBLIC_URL`   | No       | —                       | Optional explicit public origin used by emails, OAuth callbacks, and audit links when it differs from `NEXTAUTH_URL`.                                                     |
+| `NORA_FORCE_SECURE_COOKIES` | No | —              | When set to `1`, forces the `Secure` flag on session cookies regardless of inbound scheme. Set for always-on-TLS public deployments behind a proxy/CDN that may strip `X-Forwarded-Proto`; leave empty for local HTTP.                              |
 
 ## OAuth
 
@@ -367,6 +369,15 @@ Optional; only relevant when nginx terminates TLS directly inside the stack.
 | `TLS_CERT_PATH` | No       | —       | Path to the TLS certificate file on the host. Used when nginx is configured to terminate TLS. |
 | `TLS_KEY_PATH`  | No       | —       | Path to the TLS private key file on the host.                                                 |
 
+## Marketing analytics
+
+Optional privacy-light analytics for the public marketing site, powered by [Plausible](https://plausible.io). Off by default — self-hosted deployments ship zero tracking unless `NEXT_PUBLIC_ANALYTICS_DOMAIN` is set at build time.
+
+| Variable                       | Required | Default                              | Description                                                                                |
+| ------------------------------ | -------- | ------------------------------------ | ------------------------------------------------------------------------------------------ |
+| `NEXT_PUBLIC_ANALYTICS_DOMAIN` | No       | —                                    | Plausible domain for the public marketing site. Empty (default) ships zero tracking.       |
+| `NEXT_PUBLIC_ANALYTICS_SRC`    | No       | `https://plausible.io/js/script.js`  | Plausible script URL; point at a self-hosted Plausible instance if you run one.             |
+
 ## Cost reporting
 
 These optional rates drive the Cost dashboards. Nora estimates spend from token usage recorded by OpenClaw, Hermes, and future runtime chat paths.
@@ -393,3 +404,4 @@ These variables are read by older platform-settings code paths for backward comp
 | `AWS_S3_BUCKET`         | No       | —       | Legacy S3 bucket alias for backups. |
 | `AWS_ACCESS_KEY_ID`     | No       | —       | Legacy AWS access key ID.           |
 | `AWS_SECRET_ACCESS_KEY` | No       | —       | Legacy AWS secret access key.       |
+| `AWS_SESSION_TOKEN`     | No       | —       | Legacy optional AWS STS session token. |

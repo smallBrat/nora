@@ -31,6 +31,11 @@ Nora supports the following LLM providers. You can save a key for any of them fr
 | Cerebras          | `cerebras`          |
 | NVIDIA            | `nvidia`            |
 | Microsoft Foundry | `microsoft-foundry` |
+| Demo (built-in, no key required) | `demo` |
+
+<Note>
+  The **`demo`** provider is a zero-key, deterministic built-in stub served by your own control plane (model `nora-demo-1`, `requiresApiKey: false`). Unlike every other provider it needs no API key — Nora derives its token server-side — and it is listed last in the picker so key-based providers appear first. It exists so a fresh install can deploy a working agent and see a chat round-trip before adding a real provider key. Enable it via **Try the demo agent** on the Getting Started page (see the [quickstart](/quickstart)) rather than the Settings key-entry flow.
+</Note>
 
 <Note>
   **Microsoft Foundry** is a model gateway, not a single-vendor provider. One Foundry deployment gives you access to a multi-vendor catalog — OpenAI (`gpt-5.5`, `o3`), Microsoft (`Phi-4`), Meta (`Meta-Llama-3.1-405B-Instruct`), Mistral (`Mistral-Large-2411`, `Codestral-2501`), DeepSeek (`DeepSeek-V3`, `DeepSeek-R1`), Cohere, AI21, and more. The model id you save in Nora is your **Foundry deployment name** — operator-defined when you create the deployment, not a fixed vendor model id. For example, if the Azure deployment is named `gpt-5.5-1`, save `gpt-5.5-1`; Nora carries that exact deployment name into OpenClaw and Hermes runtime config.

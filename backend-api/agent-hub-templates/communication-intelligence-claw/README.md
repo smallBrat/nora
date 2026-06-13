@@ -22,7 +22,7 @@ This is how Sentry reaches you — separate from the chats it monitors.
 ### 3. Point Sentry at what to watch
 Two ways, mix as needed:
 
-- **Live monitoring** — connect a source in the **Integrations** tab (**Slack**, **Microsoft Teams**, or **email**) so Sentry reads it directly.
+- **Live monitoring** — connect a source in the **Integrations** tab (**Slack** or **email**) so Sentry reads it directly.
 - **Imported logs** — paste or import chat exports (WhatsApp/WeChat/group logs); no integration required.
 
 ### 4. Say hi

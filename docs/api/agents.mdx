@@ -5,8 +5,8 @@
 The Agents API is the core of Nora. You use it to deploy new agent containers, control their lifecycle (start, stop, restart, redeploy, delete), poll live resource stats, and retrieve the gateway UI URL for direct browser access. Read endpoints include agents you own directly and agents shared with you through workspaces. Destructive deletion remains limited to the direct agent owner.
 
 <Note>
-  An agent moves through the following statuses: `queued` → `running`. From `running` it can
-  transition to `warning`, `error`, or `stopped`. Use `POST /agents/:id/redeploy` to recover an
+  An agent moves through the following statuses: `queued` → `deploying` → `running`. From `running`
+  it can transition to `warning`, `error`, or `stopped`. Use `POST /agents/:id/redeploy` to recover an
   agent that is in `warning`, `error`, or `stopped` state.
 </Note>
 

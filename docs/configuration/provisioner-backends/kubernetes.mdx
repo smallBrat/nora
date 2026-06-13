@@ -16,6 +16,14 @@ The agent Overview tab shows the live Kubernetes pod replica snapshot in the Det
 
 ## Configuration
 
+<Note>
+  Two Kubernetes install models are supported. (1) Nora runs in Docker Compose and provisions agents
+  into one or more registered clusters via mounted kubeconfigs (this page). (2) Run the Nora control
+  plane itself inside Kubernetes with the official Helm chart at `infra/helm/nora` — see the
+  Kubernetes (Helm) section of [Self-hosting](/self-hosting). Under Helm the chart sets
+  `ENABLED_BACKENDS=k8s` and mounts agent kubeconfigs via `kubeconfigs.existingSecret`.
+</Note>
+
 Register Kubernetes clusters in **Admin -> Kubernetes**. Nora does not create a Kubernetes execution target from `.env`; each enabled Admin row with a passing connection test becomes a concrete execution target such as `k8s:aks-eastus2`.
 
 For production, prefer a scoped identity or service account with the permissions below instead of a broad cluster-admin kubeconfig.

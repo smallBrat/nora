@@ -50,7 +50,7 @@ The admin **Health** panel renders the same report with a re-run button and auto
 | Database | A `SELECT 1` succeeds | PostgreSQL |
 | Provisioning queue | The queue responds and the dead-letter queue is empty | Redis / BullMQ |
 | Kubernetes targets | Every registered target has passed a connection test | Admin → Kubernetes |
-| Secret posture | `JWT_SECRET` and `NORA_API_KEY_HASH_SECRET` are set, non-placeholder, and long enough (`ENCRYPTION_KEY` is a warning) | Process environment |
+| Secret posture | `JWT_SECRET` and `ENCRYPTION_KEY` are set, non-placeholder, and long enough (`ENCRYPTION_KEY` must be a 64-char hex string); a missing/weak `NORA_API_KEY_HASH_SECRET` is a warning, not a failure | Process environment |
 | Fleet health | No agent needs attention (see the [needs-attention roll-up](/api/monitoring)) | Agents table |
 | Gateway exposure | Surfaces how many agent gateways are published to a host port so you can confirm they are firewalled | Agents table |
 

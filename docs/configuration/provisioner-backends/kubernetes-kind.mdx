@@ -48,9 +48,16 @@ npm run smoke:k8s-kind
 
 Set `KEEP_ENV=true` to leave the cluster and Compose stack running after the script finishes.
 
-### 3. Inspect the deployed agent in the Nora UI
+### 3. Inspect the deployed agent
 
-With `KEEP_ENV=true`, open the dashboard at the API base URL the smoke script prints (defaults to `http://127.0.0.1:4110`) and pick a deployed agent from the fleet view to see its Kubernetes-flavored detail page.
+With `KEEP_ENV=true`, the smoke run leaves only `postgres`, `redis`, `backend-api`, and `worker-provisioner` running — no nginx and no frontend dashboard. The URL the script prints (default `http://127.0.0.1:4110`) is the backend REST API base (the host port maps to the backend-api container's API port 4000), **not** a UI. Inspect the agent via the API or `kubectl`:
+
+```bash theme={null}
+curl -fsS http://127.0.0.1:4110/health
+kubectl -n openclaw-agents get deploy,svc,pods
+```
+
+To view the agent in the operator dashboard fleet view, bring up the full stack with the command shown in [Manual stack (without the smoke script)](#manual-stack-without-the-smoke-script) below, then open the dashboard at `http://127.0.0.1:8080/app`.
 
 <Frame caption="Nora deploy wizard — Backend dropdown with Kubernetes available">
   ![Deploy wizard backend

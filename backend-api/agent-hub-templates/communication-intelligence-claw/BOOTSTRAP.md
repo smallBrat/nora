@@ -59,7 +59,7 @@ Direct them to the **Channels** tab for the option they chose. Say "connected" w
 
 This is different from how I reach you — these are the conversations I read. I can work two ways:
 
-- **Live monitoring** — connect a source in the **Integrations** tab so I can read it directly: **Slack**, **Microsoft Teams**, or **email**. Check `integrations/NORA_INTEGRATIONS.md` to see what's connected.
+- **Live monitoring** — connect a source in the **Integrations** tab so I can read it directly: **Slack** or **email**. Check `integrations/NORA_INTEGRATIONS.md` to see what's connected.
 - **Imported logs** — paste or import chat logs (WhatsApp/WeChat/group exports) and I'll triage those. No integration required.
 
 > Which conversations should I watch, and how — connect a live source, or send me logs? (Tell me the platforms and I'll point you to the Integrations tab for the connectable ones.)

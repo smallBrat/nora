@@ -128,7 +128,7 @@ Each folder has its own `AGENTS.md` that narrows ownership, data-flow rules, and
 - `admin-dashboard/` — platform admin UI at `/admin`
 - `frontend-marketing/` — public site + auth entrypoints at `/`
 - `e2e/` — Playwright smoke coverage and local stack bootstrapping
-- `infra/` — public-domain nginx template (`nginx_public.conf.template`), TLS setup (`setup-tls.sh`), Kind config, backup image, public/prod compose overlays
+- `infra/` — public-domain nginx template (`nginx_public.conf.template`), TLS setup (`setup-tls.sh`), Kind config, backup image, public/prod compose overlays, and the official Helm chart for installing Nora on Kubernetes (`helm/nora`, with `helm/scripts/kind-smoke.sh`)
 - `docs/` — Mintlify source for the public docs site at `noradocs.solomontsao.com`
 - `.github/` — CI and deploy workflows
 
@@ -147,7 +147,7 @@ When multiple agents work the repo at once:
 
 ## Environment
 
-Copy `.env.example` to `.env`. Required: `JWT_SECRET`, `ENCRYPTION_KEY`, `NEXTAUTH_URL`.
+Copy `.env.example` to `.env`. Required (boot fails closed in production): `JWT_SECRET`, `ENCRYPTION_KEY`. Also required for managed backups: `NORA_BACKUP_ENCRYPTION_KEY`. `NORA_AGENT_HUB_API_KEY_HASH_SECRET` is in the Required block but auto-generates on setup/update when missing. `NEXTAUTH_URL` has a working localhost default and is kept only for deploy-env compatibility (not validated).
 
 Commonly toggled: `PLATFORM_MODE` (`selfhosted` or `paas`), `ENABLED_RUNTIME_FAMILIES`, `ENABLED_BACKENDS`, `NGINX_CONFIG_FILE`, `NGINX_HTTP_PORT`, `BACKEND_API_PORT`, `NORA_KUBECONFIGS_DIR`, `NVIDIA_API_KEY` (required when `nemoclaw` is enabled), `CORS_ORIGINS`.
 

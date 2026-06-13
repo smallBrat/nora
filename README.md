@@ -97,7 +97,7 @@ Nginx
 ├── /admin/*    → admin-dashboard     (Next.js)
 └── /api/*      → backend-api         (Express.js)
                        ├── PostgreSQL
-                       ├── Redis + BullMQ  (deployments, clawhub-installs, backups, alert-deliveries)
+                       ├── Redis + BullMQ  (deployments, clawhub-jobs, backups, alert-deliveries)
                        ├── worker-provisioner
                        ├── worker-backup
                        └── runtime adapters/profiles  (Docker GA · k3s/k8s GA · NemoClaw experimental · Proxmox planned)
@@ -128,7 +128,7 @@ export NORA_TOKEN="nora_..."
 curl -H "Authorization: Bearer $NORA_TOKEN" https://your-nora.example.com/api/agents
 ```
 
-A small CLI lives in [`cli/`](./cli) (`@nora/cli`) and wraps the same surface for `nora workspaces`, `nora agents`, and `nora monitoring`. See the [API reference](https://noradocs.solomontsao.com/api/overview) for the supported endpoints and scopes.
+A small CLI lives in [`cli/`](./cli) (`@nora/cli`): run `nora login` once to save your host and API token, then `nora workspaces`, `nora agents`, and `nora monitoring` wrap the same REST surface. `nora doctor` runs an admin-only control-plane health check, and `nora mcp` launches the MCP stdio server. See the [API reference](https://noradocs.solomontsao.com/api/overview) for the supported endpoints and scopes.
 
 **Operate Nora from Claude Code, Claude Desktop, or Cursor:** the [`mcp-server/`](./mcp-server) package (`@nora/mcp-server`) exposes the same API as [Model Context Protocol](https://modelcontextprotocol.io) tools — deploy agents, control their lifecycle, and read fleet metrics, events, and per-agent cost from any MCP client. Destructive deletion stays disabled unless explicitly opted in.
 
