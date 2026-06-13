@@ -4,6 +4,7 @@ const crypto = require("crypto");
 const db = require("../db");
 const integrations = require("../integrations");
 const mcpServers = require("../mcpServers");
+const { runtimeAuthHeaders } = require("../runtimeAuth");
 const { encrypt, decrypt } = require("../crypto");
 const { rpcCall } = require("../gatewayProxy");
 const { runContainerCommand, syncAuthToUserAgents } = require("../authSync");
@@ -324,7 +325,7 @@ async function syncIntegrationsToAgent(agentId, { strict = false, strictHermes =
     const syncData = await integrations.getIntegrationsForSync(agentId);
     const response = await fetch(runtimeUrl, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...(await runtimeAuthHeaders(agent)) },
       body: JSON.stringify({ integrations: syncData }),
     });
     if (!response.ok) {
@@ -422,7 +423,7 @@ async function invokeAgentIntegrationTool(agentId, payload = {}) {
 
   const response = await fetch(runtimeUrl, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...(await runtimeAuthHeaders(agent)) },
     body: JSON.stringify(payload),
   });
   const data = await response.json().catch(() => ({}));

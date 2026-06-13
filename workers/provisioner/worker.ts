@@ -3,7 +3,10 @@ const { Worker } = require("bullmq");
 const IORedis = require("ioredis");
 const { Pool } = require("pg");
 const { getDefaultAgentImage } = require("../../agent-runtime/lib/agentImages");
-const { runtimeUrlForAgent } = require("../../agent-runtime/lib/agentEndpoints");
+const {
+  runtimeUrlForAgent,
+  buildRuntimeAuthHeaders,
+} = require("../../agent-runtime/lib/agentEndpoints");
 const {
   getDefaultBackend,
   getEnabledBackends,
@@ -652,7 +655,10 @@ async function runRuntimeCommand(agent, command, { timeout = 30000 } = {}) {
 
   const response = await fetch(runtimeUrl, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...buildRuntimeAuthHeaders(agent && agent.gateway_token),
+    },
     body: JSON.stringify({
       command,
       timeout,
@@ -835,6 +841,7 @@ async function reconcileRuntimeLlmAuth({
   gatewayHostPort,
   gatewayHost,
   gatewayPort,
+  gatewayToken,
 } = {}) {
   const llmEnvVars = await fetchUserLlmEnvVars(userId);
   const defaultProvider = await fetchDefaultProvider(userId);
@@ -851,6 +858,7 @@ async function reconcileRuntimeLlmAuth({
     gateway_host_port: gatewayHostPort,
     gateway_host: gatewayHost,
     gateway_port: gatewayPort,
+    gateway_token: gatewayToken,
   };
 
   if (runtimeFamily === "hermes") {
@@ -1991,6 +1999,7 @@ const worker = new Worker(
               gatewayHostPort,
               gatewayHost,
               gatewayPort,
+              gatewayToken,
             });
             if (authSyncResult.status === "synced") {
               console.log(`[provisioner] Post-deploy LLM auth sync completed for agent ${id}`);
@@ -2041,7 +2050,10 @@ const worker = new Worker(
             );
             await fetch(runtimeUrl, {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: {
+                "Content-Type": "application/json",
+                ...buildRuntimeAuthHeaders(gatewayToken),
+              },
               body: JSON.stringify({ integrations: syncData }),
             });
             console.log(`[provisioner] Synced ${syncData.length} integration(s) to agent ${id}`);
