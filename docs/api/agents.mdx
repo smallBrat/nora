@@ -29,7 +29,9 @@ GET /agents
 
 <CodeGroup>
   ```bash curl theme={null}
-  curl http://localhost:8080/api/agents \ -H "Authorization: Bearer $TOKEN" ```
+  curl http://localhost:8080/api/agents \
+    -H "Authorization: Bearer $TOKEN"
+  ```
 </CodeGroup>
 
 ```json theme={null}
@@ -179,8 +181,9 @@ GET /agents/:id
 
 <CodeGroup>
   ```bash curl theme={null}
-  curl http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890 \ -H "Authorization:
-  Bearer $TOKEN" ```
+  curl http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890 \
+    -H "Authorization: Bearer $TOKEN"
+  ```
 </CodeGroup>
 
 ```json theme={null}
@@ -219,8 +222,9 @@ Returns the updated agent record with `status: "running"`.
 
 <CodeGroup>
   ```bash curl theme={null}
-  curl -X POST http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/start \ -H
-  "Authorization: Bearer $TOKEN" ```
+  curl -X POST http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/start \
+    -H "Authorization: Bearer $TOKEN"
+  ```
 </CodeGroup>
 
 | Status | Condition                               |
@@ -248,8 +252,9 @@ Returns the updated agent record with `status: "stopped"`.
 
 <CodeGroup>
   ```bash curl theme={null}
-  curl -X POST http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/stop \ -H
-  "Authorization: Bearer $TOKEN" ```
+  curl -X POST http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/stop \
+    -H "Authorization: Bearer $TOKEN"
+  ```
 </CodeGroup>
 
 ---
@@ -276,8 +281,9 @@ POST /agents/:id/restart
 
 <CodeGroup>
   ```bash curl theme={null}
-  curl -X POST http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/restart \ -H
-  "Authorization: Bearer $TOKEN" ```
+  curl -X POST http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/restart \
+    -H "Authorization: Bearer $TOKEN"
+  ```
 </CodeGroup>
 
 ```json theme={null}
@@ -315,8 +321,9 @@ POST /agents/:id/redeploy
 
 <CodeGroup>
   ```bash curl theme={null}
-  curl -X POST http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/redeploy \ -H
-  "Authorization: Bearer $TOKEN" ```
+  curl -X POST http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/redeploy \
+    -H "Authorization: Bearer $TOKEN"
+  ```
 </CodeGroup>
 
 ```json theme={null}
@@ -351,8 +358,9 @@ DELETE /agents/:id
 
 <CodeGroup>
   ```bash curl theme={null}
-  curl -X DELETE http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890 \ -H
-  "Authorization: Bearer $TOKEN" ```
+  curl -X DELETE http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890 \
+    -H "Authorization: Bearer $TOKEN"
+  ```
 </CodeGroup>
 
 ```json theme={null}
@@ -418,8 +426,9 @@ GET /agents/:id/stats
 
 <CodeGroup>
   ```bash curl theme={null}
-  curl http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/stats \ -H
-  "Authorization: Bearer $TOKEN" ```
+  curl http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/stats \
+    -H "Authorization: Bearer $TOKEN"
+  ```
 </CodeGroup>
 
 ```json theme={null}
@@ -564,8 +573,9 @@ GET /agents/:id/gateway-url
 
 <CodeGroup>
   ```bash curl theme={null}
-  curl http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/gateway-url \ -H
-  "Authorization: Bearer $TOKEN" ```
+  curl http://localhost:8080/api/agents/a1b2c3d4-e5f6-7890-abcd-ef1234567890/gateway-url \
+    -H "Authorization: Bearer $TOKEN"
+  ```
 </CodeGroup>
 
 ```json theme={null}
