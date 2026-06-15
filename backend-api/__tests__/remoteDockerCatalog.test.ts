@@ -101,15 +101,16 @@ describe("remote-docker deploy target recognition", () => {
       expect(status.available).toBe(false);
     });
 
-    it("does not let Hermes target a remote Docker host in Phase A", () => {
+    it("lets Hermes target a registered remote Docker host (BYOC Phase B2)", () => {
       const status = getRuntimeSelectionStatus({
         runtime_family: "hermes",
         deploy_target: "remote-docker",
         execution_target_id: "remote:my-laptop",
         sandbox_profile: "standard",
       });
-      expect(status.available).toBe(false);
-      expect(status.issue).toMatch(/Hermes does not support/i);
+      expect(status.available).toBe(true);
+      expect(status.issue).toBeNull();
+      expect(status.deployTarget).toBe("remote-docker");
     });
   });
 

@@ -25,6 +25,7 @@ const mockK8sStats = jest.fn();
 const mockK8sLogs = jest.fn();
 const mockK8sExec = jest.fn();
 const mockRemoteStart = jest.fn();
+const mockRemoteHermesStart = jest.fn();
 const mockGetRemoteHostProfile = jest.fn();
 
 jest.mock("../remoteHosts", () => ({
@@ -111,6 +112,20 @@ describe("containerManager NemoClaw routing", () => {
     const localRemoteBackendPath = path.resolve(__dirname, "../backends/remote-docker");
     jest.doMock(localRemoteBackendPath, remoteBackendFactory, { virtual: true });
     jest.doMock(`${localRemoteBackendPath}.ts`, remoteBackendFactory, { virtual: true });
+    const remoteHermesFactory = () =>
+      jest.fn().mockImplementation(() => ({
+        start: mockRemoteHermesStart,
+      }));
+    const remoteHermesPath = path.resolve(
+      __dirname,
+      "../../workers/provisioner/backends/remote-hermes",
+    );
+    jest.doMock(remoteHermesPath, remoteHermesFactory);
+    jest.doMock(`${remoteHermesPath}.ts`, remoteHermesFactory);
+    const localRemoteHermesPath = path.resolve(__dirname, "../backends/remote-hermes");
+    jest.doMock(localRemoteHermesPath, remoteHermesFactory, { virtual: true });
+    jest.doMock(`${localRemoteHermesPath}.ts`, remoteHermesFactory, { virtual: true });
+    mockRemoteHermesStart.mockReset().mockResolvedValue(undefined);
     mockRemoteStart.mockReset().mockResolvedValue(undefined);
     mockGetRemoteHostProfile.mockReset();
     mockStart.mockReset().mockResolvedValue(undefined);
@@ -270,6 +285,31 @@ describe("containerManager NemoClaw routing", () => {
     expect(mockGetRemoteHostProfile).toHaveBeenCalledWith("remote:my-laptop");
     expect(mockRemoteStart).toHaveBeenCalledWith("oclaw-agent-remote");
     // critical: must NOT fall back to the local docker backend
+    expect(mockStart).not.toHaveBeenCalled();
+  });
+
+  it("routes a remote Hermes agent to the remote-hermes backend (not remote-docker)", async () => {
+    mockGetRemoteHostProfile.mockResolvedValue({
+      id: "my-laptop",
+      executionTargetId: "remote:my-laptop",
+      sshHost: "100.64.0.5",
+      sshUser: "operator",
+      configured: true,
+    });
+    const containerManager = require("../containerManager");
+    const agent = {
+      runtime_family: "hermes",
+      deploy_target: "remote-docker",
+      execution_target_id: "remote:my-laptop",
+      backend_type: "remote-docker",
+      container_id: "hermes-agent-remote",
+    };
+
+    await containerManager.start(agent);
+
+    expect(mockRemoteHermesStart).toHaveBeenCalledWith("hermes-agent-remote");
+    // must NOT use the OpenClaw remote-docker backend or the local docker backend
+    expect(mockRemoteStart).not.toHaveBeenCalled();
     expect(mockStart).not.toHaveBeenCalled();
   });
 

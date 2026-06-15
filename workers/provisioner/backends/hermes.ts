@@ -128,6 +128,13 @@ class HermesBackend extends DockerBackend {
     await this._pullImage(imgName);
   }
 
+  // Host port mapping for the Hermes container. Local Hermes publishes nothing
+  // (reached via the container IP on the shared compose network); the remote
+  // variant overrides this to publish the dashboard port on the remote host.
+  _hermesPortBindings() {
+    return undefined;
+  }
+
   async create(config) {
     const { id, name, image, vcpu, ram_mb, env, container_name, abortSignal } = config;
     const containerName = container_name || safeContainerName("nora-hermes", name, id);
@@ -193,6 +200,10 @@ class HermesBackend extends DockerBackend {
           Memory: (ram_mb || 2048) * 1024 * 1024,
           RestartPolicy: { Name: "unless-stopped" },
           Dns: ["8.8.8.8", "8.8.4.4", "1.1.1.1"],
+          // Local Hermes is reached via the container IP on the shared compose
+          // network (no host publish). The remote variant overrides this to
+          // publish the dashboard port on the remote host.
+          PortBindings: this._hermesPortBindings(config),
         },
         NetworkingConfig: composeNetwork
           ? {
