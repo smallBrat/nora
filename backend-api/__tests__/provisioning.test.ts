@@ -992,3 +992,50 @@ describe("Hermes dashboard provisioning", () => {
     );
   });
 });
+
+describe("docker gateway port allocation (BYOC Phase B)", () => {
+  function mockDockerBackend() {
+    const DockerBackend = require("../../workers/provisioner/backends/docker");
+    const backend = new DockerBackend();
+    backend._findComposeNetwork = jest.fn().mockResolvedValue(null);
+    const createdContainer = {
+      id: "oclaw-port-1",
+      start: jest.fn().mockResolvedValue({}),
+      putArchive: jest.fn().mockResolvedValue({}),
+      remove: jest.fn().mockResolvedValue({}),
+      inspect: jest.fn().mockResolvedValue({
+        NetworkSettings: {
+          IPAddress: "10.0.0.7",
+          Networks: {},
+          Ports: { "18789/tcp": [{ HostPort: "19500" }] },
+        },
+      }),
+    };
+    backend.docker = {
+      getImage: jest.fn().mockReturnValue({ inspect: jest.fn().mockResolvedValue({}) }),
+      getContainer: jest
+        .fn()
+        .mockReturnValue({ inspect: jest.fn().mockRejectedValue(new Error("not found")) }),
+      createVolume: jest.fn().mockResolvedValue({}),
+      createContainer: jest.fn().mockResolvedValue(createdContainer),
+      getNetwork: jest.fn().mockReturnValue({ connect: jest.fn().mockResolvedValue({}) }),
+      getVolume: jest.fn().mockReturnValue({ remove: jest.fn().mockResolvedValue({}) }),
+    };
+    return backend;
+  }
+
+  it("publishes the worker-allocated host port", async () => {
+    const backend = mockDockerBackend();
+    await backend.create({ id: "999", name: "Port QA", gatewayHostPort: 19500, env: {} });
+    const config = backend.docker.createContainer.mock.calls[0][0];
+    expect(config.HostConfig.PortBindings["18789/tcp"]).toEqual([{ HostPort: "19500" }]);
+  });
+
+  it("falls back to the deterministic hash when no port is allocated", async () => {
+    const backend = mockDockerBackend();
+    // id "999" -> 19000 + (999 % 1000) = 19999
+    await backend.create({ id: "999", name: "Port QA", env: {} });
+    const config = backend.docker.createContainer.mock.calls[0][0];
+    expect(config.HostConfig.PortBindings["18789/tcp"]).toEqual([{ HostPort: "19999" }]);
+  });
+});
