@@ -280,6 +280,10 @@ function buildRemoteHostTarget(template: any = {}, host: any = {}) {
       availableForOnboarding: isStandard,
       isDefault: isStandard,
       issue: isStandard ? null : profile.issue || null,
+      // remote-docker is experimental in this phase regardless of which template
+      // was cloned (don't inherit a fallback docker template's "ga").
+      maturityTier: "experimental",
+      maturityLabel: "Experimental",
     };
   });
   return {
@@ -298,6 +302,10 @@ function buildRemoteHostTarget(template: any = {}, host: any = {}) {
     issue: null,
     defaultSandboxProfile: "standard",
     sandboxProfiles,
+    // remote-docker is experimental in this phase — set explicitly so a docker
+    // fallback template can't make a remote host report "ga".
+    maturityTier: "experimental",
+    maturityLabel: "Experimental",
     // k8s-only display fields must not leak onto a remote host card
     clusterName: undefined,
     namespace: undefined,
