@@ -108,6 +108,18 @@ CREATE TABLE IF NOT EXISTS remote_hosts (
 CREATE INDEX IF NOT EXISTS idx_remote_hosts_owner
   ON remote_hosts(owner_user_id, enabled, is_default, label);
 
+CREATE TABLE IF NOT EXISTS gateway_port_allocations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  host_key TEXT NOT NULL,
+  agent_id UUID NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+  port INTEGER NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(host_key, port)
+);
+
+CREATE INDEX IF NOT EXISTS idx_gateway_port_allocations_agent
+  ON gateway_port_allocations(agent_id);
+
 CREATE TABLE IF NOT EXISTS deployments (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   agent_id UUID REFERENCES agents(id) ON DELETE CASCADE,
