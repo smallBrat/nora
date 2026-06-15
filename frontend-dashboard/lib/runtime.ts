@@ -258,6 +258,90 @@ export function pickSandboxProfileSelection(
   return nextProfile?.id || "";
 }
 
+function remoteHostTargetLabel(host: any = {}) {
+  const user = host.sshUser ? `${host.sshUser}@` : "";
+  const port = host.sshPort && host.sshPort !== 22 ? `:${host.sshPort}` : "";
+  return `${user}${host.sshHost || host.gatewayHost || "remote"}${port}`;
+}
+
+// Clone a generic execution-target template into a concrete per-host entry that
+// the deploy picker can render and select. remote-docker only supports the
+// standard sandbox profile in this phase.
+function buildRemoteHostTarget(template: any = {}, host: any = {}) {
+  const sandboxProfiles = (template.sandboxProfiles || []).map((profile: any) => {
+    const isStandard = profile.id === "standard";
+    return {
+      ...profile,
+      executionTargetId: host.executionTargetId,
+      deployTargetLabel: host.label,
+      enabled: isStandard,
+      configured: isStandard,
+      available: isStandard,
+      availableForOnboarding: isStandard,
+      isDefault: isStandard,
+      issue: isStandard ? null : profile.issue || null,
+    };
+  });
+  return {
+    ...template,
+    id: host.executionTargetId,
+    executionTargetId: host.executionTargetId,
+    deployTarget: "remote-docker",
+    label: host.label || host.executionTargetId,
+    shortLabel: host.label || host.executionTargetId,
+    summary: `Your remote Docker host · ${remoteHostTargetLabel(host)}`,
+    enabled: true,
+    configured: true,
+    available: true,
+    availableForOnboarding: true,
+    isDefault: false,
+    issue: null,
+    defaultSandboxProfile: "standard",
+    sandboxProfiles,
+    // k8s-only display fields must not leak onto a remote host card
+    clusterName: undefined,
+    namespace: undefined,
+    exposureMode: undefined,
+  };
+}
+
+// Merge the operator's own connected remote hosts into the (public, global)
+// backend catalog so they appear as selectable deploy targets — the per-user
+// equivalent of how registered Kubernetes clusters surface. Only connected
+// (available) hosts are injected, replacing the generic experimental
+// "remote-docker" placeholder. Pure + immutable; returns the original config
+// untouched when there are no usable hosts.
+export function mergeRemoteHostsIntoConfig(
+  backendConfig: BackendConfig = {},
+  remoteHosts: any[] = [],
+) {
+  const hosts = Array.isArray(remoteHosts)
+    ? remoteHosts.filter((host) => host && host.available)
+    : [];
+  if (!hosts.length) return backendConfig;
+  const runtimeFamilies = Array.isArray(backendConfig?.runtimeFamilies)
+    ? backendConfig.runtimeFamilies
+    : [];
+  if (!runtimeFamilies.length) return backendConfig;
+
+  const nextRuntimeFamilies = runtimeFamilies.map((family: any) => {
+    if (family.id !== "openclaw") return family;
+    const targets = Array.isArray(family.executionTargets) ? family.executionTargets : [];
+    const template =
+      targets.find((target: any) => target.id === "remote-docker") ||
+      targets.find((target: any) => target.deployTarget === "remote-docker") ||
+      targets.find((target: any) => target.id === "docker");
+    if (!template) return family;
+    const hostTargets = hosts.map((host) => buildRemoteHostTarget(template, host));
+    const withoutPlaceholder = targets.filter(
+      (target: any) => target.deployTarget !== "remote-docker",
+    );
+    return { ...family, executionTargets: [...withoutPlaceholder, ...hostTargets] };
+  });
+
+  return { ...backendConfig, runtimeFamilies: nextRuntimeFamilies };
+}
+
 export function resolveAgentRuntimeFamily(agent: AgentRuntimeMeta = {}) {
   const explicitRuntimeFamily = normalizeRuntimeFamily(agent.runtime_family);
   if (explicitRuntimeFamily) return explicitRuntimeFamily;
