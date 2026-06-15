@@ -11,6 +11,8 @@ const net = require("node:net");
 const db = require("./db");
 const integrations = require("./integrations");
 const { resolveAgentRuntimeFamily } = require("./agentRuntimeFields");
+const remoteHosts = require("./remoteHosts");
+const { normalizeDeployTargetName } = require("../agent-runtime/lib/backendCatalog");
 
 const metrics = require("./metrics");
 const agentBudgets = require("./agentBudgets");
@@ -114,20 +116,49 @@ function isBlockedGatewayIP(address) {
   );
 }
 
-function isAllowedGatewayIP(address, hostname) {
+const EMPTY_ALLOWED_HOSTS = new Set();
+
+// A registered remote host's advertised address is operator-trusted, so allow
+// it even though it is not RFC1918/loopback. Scoped to the agent's OWN host
+// (looked up by execution target) AND to the agent's owner, so a cross-tenant
+// execution_target_id reference can't leak or reach another operator's host.
+// Blocked addresses (0.0.0.0, link-local, …) still apply.
+async function allowedRemoteHostsForAgent(agent) {
+  if (normalizeDeployTargetName(agent?.deploy_target) !== "remote-docker") {
+    return EMPTY_ALLOWED_HOSTS;
+  }
+  try {
+    const host = await remoteHosts.getRemoteHostByExecutionTarget(agent.execution_target_id);
+    if (!host) return EMPTY_ALLOWED_HOSTS;
+    // Only trust a host the agent's owner actually registered.
+    if (agent.user_id && host.ownerUserId && host.ownerUserId !== agent.user_id) {
+      return EMPTY_ALLOWED_HOSTS;
+    }
+    const allowed = new Set();
+    if (host.gatewayHost) allowed.add(String(host.gatewayHost).toLowerCase());
+    if (host.sshHost) allowed.add(String(host.sshHost).toLowerCase());
+    return allowed;
+  } catch {
+    return EMPTY_ALLOWED_HOSTS;
+  }
+}
+
+function isAllowedGatewayIP(address, hostname, extraAllowedHosts) {
   if (isBlockedGatewayIP(address)) return false;
+  const normalizedHostname = String(hostname || "").toLowerCase();
   const allowedHosts = parseCsvSet(process.env.NORA_GATEWAY_PROXY_ALLOWED_HOSTS);
-  if (allowedHosts.has(String(hostname || "").toLowerCase())) return true;
+  if (allowedHosts.has(normalizedHostname)) return true;
+  if (extraAllowedHosts && extraAllowedHosts.has(normalizedHostname)) return true;
   const ipVersion = net.isIP(address);
   if (ipVersion === 4) return isAllowedGatewayIPv4(address);
   if (ipVersion === 6) return isAllowedGatewayIPv6(address);
   return false;
 }
 
-async function resolveGatewayHostForProxy(host, label = "agent gateway") {
+async function resolveGatewayHostForProxy(host, label = "agent gateway", extraAllowedHosts) {
   const normalizedHost = String(host || "").trim();
   if (net.isIP(normalizedHost)) {
-    if (!isAllowedGatewayIP(normalizedHost, normalizedHost)) {
+    if (!isAllowedGatewayIP(normalizedHost, normalizedHost, extraAllowedHosts)) {
       throw new Error(`${label} host is not an allowed gateway address`);
     }
     return normalizedHost;
@@ -140,7 +171,9 @@ async function resolveGatewayHostForProxy(host, label = "agent gateway") {
     throw new Error(`${label} host could not be resolved (${error.code || error.message})`);
   }
 
-  const firstAllowed = addresses.find((entry) => isAllowedGatewayIP(entry.address, normalizedHost));
+  const firstAllowed = addresses.find((entry) =>
+    isAllowedGatewayIP(entry.address, normalizedHost, extraAllowedHosts),
+  );
   if (!firstAllowed) {
     throw new Error(`${label} host does not resolve to an allowed gateway network`);
   }
@@ -181,7 +214,12 @@ async function resolveSafeGatewayHttpTarget(agent, gatewayPath = "", search = ""
   if (!isAllowedGatewayPort(addr.port)) {
     throw new Error("agent gateway port is not allowed for proxying");
   }
-  const resolvedHost = await resolveGatewayHostForProxy(addr.host);
+  const extraAllowedHosts = await allowedRemoteHostsForAgent(agent);
+  const resolvedHost = await resolveGatewayHostForProxy(
+    addr.host,
+    "agent gateway",
+    extraAllowedHosts,
+  );
   const targetUrl = new URL(`http://${hostForUrl(resolvedHost)}:${addr.port}/`);
   const cleanPath = normalizeProxyPath(gatewayPath);
   targetUrl.pathname = cleanPath ? `/${cleanPath}` : "/";
