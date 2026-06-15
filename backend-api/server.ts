@@ -29,12 +29,17 @@ const { getBootstrapAdminSeedConfig } = require("./bootstrapAdmin");
 const { ensureFirstRegisteredUserIsAdmin } = require("./ensureAdminUser");
 const { authenticateToken } = require("./middleware/auth");
 const { correlationId, errorHandler } = require("./middleware/errorHandler");
-const { createGatewayRouter, attachGatewayWS } = require("./gatewayProxy");
+const {
+  createGatewayRouter,
+  attachGatewayWS,
+  resolveSafeHermesDashboardTarget,
+} = require("./gatewayProxy");
 const { isGatewayAvailableStatus } = require("./agentStatus");
 const { repairHermesAgentConfig } = require("./hermesUi");
+const { HERMES_EMBED_AGENT_COLUMNS, GATEWAY_EMBED_AGENT_COLUMNS } = require("./embedAgentColumns");
 const {
+  joinHttpUrl,
   gatewayUrlForAgent,
-  dashboardUrlForAgent,
   hasGatewayEndpoint,
   hasHermesDashboardEndpoint,
 } = require("../agent-runtime/lib/agentEndpoints");
@@ -419,7 +424,7 @@ function setProxyResponseHeaders(res, resp, { cachePolicy = "asset" } = {}) {
 
 async function lookupEmbedAgent(agentId, userId) {
   const result = await db.query(
-    `SELECT host, gateway_token, gateway_host_port, gateway_host, gateway_port, status
+    `SELECT ${GATEWAY_EMBED_AGENT_COLUMNS.join(", ")}
        FROM agents
       WHERE id = $1 AND user_id = $2`,
     [agentId, userId],
@@ -435,8 +440,12 @@ async function lookupEmbedAgent(agentId, userId) {
 }
 
 async function lookupHermesEmbedAgent(agentId, userId) {
+  // Selects the SSRF-relevant fields (deploy_target / execution_target_id /
+  // user_id / gateway_host) the embed proxy's allowlist authorizes against — see
+  // embedAgentColumns.ts. Omitting them would mis-route a remote-docker/k8s agent
+  // or short-circuit the owner-scoping check.
   const result = await db.query(
-    `SELECT host, runtime_host, runtime_port, status, runtime_family, backend_type
+    `SELECT ${HERMES_EMBED_AGENT_COLUMNS.join(", ")}
        FROM agents
       WHERE id = $1 AND user_id = $2`,
     [agentId, userId],
@@ -907,7 +916,10 @@ async function proxyEmbeddedHermes(req, res) {
     if (!access) return;
 
     const hermesPath = getEmbeddedHermesPath(req);
-    const targetUrl = `${dashboardUrlForAgent(access.agent, hermesPath)}${buildForwardedSearch(req)}`;
+    // Validate + resolve the dashboard host against the gateway allowlist before
+    // connecting (closes the SSRF gap where runtime_host was reached unchecked).
+    const safeTarget = await resolveSafeHermesDashboardTarget(access.agent);
+    const targetUrl = `${joinHttpUrl(safeTarget.host, safeTarget.port, hermesPath)}${buildForwardedSearch(req)}`;
     const cookies = parseCookieHeader(req.headers.cookie || "");
     const dashboardTokenCookieName = getEmbedSessionCookieName(
       access.agentId,

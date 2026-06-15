@@ -16,9 +16,10 @@ const { normalizeDeployTargetName } = require("../agent-runtime/lib/backendCatal
 
 const metrics = require("./metrics");
 const agentBudgets = require("./agentBudgets");
-const { OPENCLAW_GATEWAY_PORT } = require("../agent-runtime/lib/contracts");
+const { OPENCLAW_GATEWAY_PORT, HERMES_DASHBOARD_PORT } = require("../agent-runtime/lib/contracts");
 const {
   resolveGatewayAddress,
+  resolveHermesDashboardAddress,
   hasGatewayEndpoint,
 } = require("../agent-runtime/lib/agentEndpoints");
 const GATEWAY_PORT = OPENCLAW_GATEWAY_PORT;
@@ -254,6 +255,32 @@ async function resolveSafeGatewayHttpTarget(agent, gatewayPath = "", search = ""
     url: targetUrl.toString(),
     hostHeader: hostHeaderForGateway(addr.host, addr.port),
   };
+}
+
+// Validate + resolve a Hermes agent's dashboard address before the embed proxy
+// connects to it — the Hermes equivalent of resolveSafeGatewayHttpTarget, which
+// closes the SSRF gap where the embed proxy reached runtime_host unchecked.
+// Returns the resolved (allowlisted) host + port; throws if disallowed.
+async function resolveSafeHermesDashboardTarget(agent) {
+  const address = resolveHermesDashboardAddress(agent);
+  if (!address) {
+    throw new Error("hermes dashboard is not available for this agent");
+  }
+  const addr = assertSafeAgentAddress(address, "hermes dashboard");
+  // Allow either the default dashboard port (HERMES_DASHBOARD_PORT = 9119, the
+  // local container) OR a published host port (Docker published port / k8s
+  // NodePort) in the gateway port range — those are the two ways the dashboard
+  // is exposed. 9119 is outside the gateway port range, hence the explicit OR.
+  if (addr.port !== HERMES_DASHBOARD_PORT && !isAllowedGatewayPort(addr.port)) {
+    throw new Error("hermes dashboard port is not allowed for proxying");
+  }
+  const extraAllowedHosts = await allowedGatewayHostsForAgent(agent);
+  const resolvedHost = await resolveGatewayHostForProxy(
+    addr.host,
+    "hermes dashboard",
+    extraAllowedHosts,
+  );
+  return { host: resolvedHost, port: addr.port };
 }
 
 // ─── Device Identity (Ed25519 keypair for Gateway auth) ──────────
@@ -1525,4 +1552,5 @@ module.exports = {
   resolveAgent,
   evictConnection,
   resolveSafeGatewayHttpTarget,
+  resolveSafeHermesDashboardTarget,
 };
