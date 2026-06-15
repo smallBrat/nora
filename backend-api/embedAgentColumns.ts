@@ -36,10 +36,11 @@ const HERMES_EMBED_AGENT_COLUMNS = [
   "gateway_port",
 ];
 
-// OpenClaw gateway embed proxy (server.ts proxyEmbeddedGateway). The SSRF
-// allowlist is not yet wired into this path; the deploy_target/execution_target_id/
-// user_id fields will be added here when it is (so the same owner-scoped policy
-// applies), mirroring HERMES_EMBED_AGENT_COLUMNS.
+// OpenClaw gateway embed proxies (server.ts proxyEmbeddedGateway +
+// proxyGatewayAsset). These route through resolveSafeGatewayHttpTarget, so they
+// need the same SSRF-authorizing fields as the Hermes path (deploy_target /
+// execution_target_id / user_id for owner-scoped remote-docker, runtime_host for
+// the k8s exposure set), plus gateway_token for the embed bootstrap script.
 const GATEWAY_EMBED_AGENT_COLUMNS = [
   "host",
   "gateway_token",
@@ -47,6 +48,11 @@ const GATEWAY_EMBED_AGENT_COLUMNS = [
   "gateway_host",
   "gateway_port",
   "status",
+  "runtime_host",
+  "runtime_family",
+  "deploy_target",
+  "execution_target_id",
+  "user_id",
 ];
 
 module.exports = { HERMES_EMBED_AGENT_COLUMNS, GATEWAY_EMBED_AGENT_COLUMNS };

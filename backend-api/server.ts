@@ -32,6 +32,7 @@ const { correlationId, errorHandler } = require("./middleware/errorHandler");
 const {
   createGatewayRouter,
   attachGatewayWS,
+  resolveSafeGatewayHttpTarget,
   resolveSafeHermesDashboardTarget,
 } = require("./gatewayProxy");
 const { isGatewayAvailableStatus } = require("./agentStatus");
@@ -39,7 +40,6 @@ const { repairHermesAgentConfig } = require("./hermesUi");
 const { HERMES_EMBED_AGENT_COLUMNS, GATEWAY_EMBED_AGENT_COLUMNS } = require("./embedAgentColumns");
 const {
   joinHttpUrl,
-  gatewayUrlForAgent,
   hasGatewayEndpoint,
   hasHermesDashboardEndpoint,
 } = require("../agent-runtime/lib/agentEndpoints");
@@ -850,10 +850,19 @@ async function proxyEmbeddedGateway(req, res) {
     if (!access) return;
 
     const gatewayPath = getEmbeddedGatewayPath(req);
-    const targetUrl = `${gatewayUrlForAgent(access.agent, gatewayPath)}${buildForwardedSearch(req)}`;
+    // Validate + resolve the gateway host against the SSRF allowlist before
+    // connecting (mirrors the HTTP gateway proxy; closes the embed-proxy SSRF
+    // gap where gatewayUrlForAgent reached the agent host unchecked).
+    const safeTarget = await resolveSafeGatewayHttpTarget(
+      access.agent,
+      gatewayPath,
+      buildForwardedSearch(req),
+    );
+    const targetUrl = safeTarget.url;
     const headers = {
       Accept: req.headers.accept || "*/*",
       "Accept-Encoding": "identity",
+      Host: safeTarget.hostHeader,
     };
 
     const method = req.method.toUpperCase();
@@ -1050,10 +1059,20 @@ async function proxyGatewayAsset(req, res) {
     if (!access) return;
 
     const gatewayPath = req.path || "/";
-    const targetUrl = `${gatewayUrlForAgent(access.agent, gatewayPath)}${buildForwardedSearch(req)}`;
-    const resp = await fetch(targetUrl, {
+    // Same SSRF allowlist as the embed proxy — gateway asset/favicon fetches must
+    // not reach an unvalidated agent host either.
+    const safeTarget = await resolveSafeGatewayHttpTarget(
+      access.agent,
+      gatewayPath,
+      buildForwardedSearch(req),
+    );
+    const resp = await fetch(safeTarget.url, {
       method: req.method,
-      headers: { Accept: req.headers.accept || "*/*", "Accept-Encoding": "identity" },
+      headers: {
+        Accept: req.headers.accept || "*/*",
+        "Accept-Encoding": "identity",
+        Host: safeTarget.hostHeader,
+      },
       signal: AbortSignal.timeout(10000),
     });
     res.status(resp.status);
