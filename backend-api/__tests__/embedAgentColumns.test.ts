@@ -43,6 +43,15 @@ describe("embed-proxy agent SELECT columns", () => {
     }
   });
 
+  it("gateway embed lookup also loads the SSRF-authorizing fields (both embed proxies are guarded)", () => {
+    // proxyEmbeddedGateway + proxyGatewayAsset route through
+    // resolveSafeGatewayHttpTarget, so the gateway embed lookup needs the same
+    // owner-scoping / routing fields the Hermes path does.
+    for (const col of ["deploy_target", "execution_target_id", "user_id", "runtime_host"]) {
+      expect(GATEWAY_EMBED_AGENT_COLUMNS).toContain(col);
+    }
+  });
+
   it("exposes plain string column names (safe to interpolate into the SELECT)", () => {
     for (const col of [...HERMES_EMBED_AGENT_COLUMNS, ...GATEWAY_EMBED_AGENT_COLUMNS]) {
       expect(typeof col).toBe("string");
