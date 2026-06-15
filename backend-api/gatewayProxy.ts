@@ -247,6 +247,13 @@ async function resolveSafeGatewayHttpTarget(agent, gatewayPath = "", search = ""
     "agent gateway",
     extraAllowedHosts,
   );
+  // The connection is pinned to the validated, resolved IP (no re-resolution at
+  // fetch time, so no DNS-rebinding window). The Host header intentionally keeps
+  // the operator-configured hostname, not the resolved IP: a gateway reached
+  // through a vhost/ingress that routes by Host needs the hostname to land on the
+  // right backend. addr.host is already syntactically validated by
+  // assertSafeAgentAddress, and it cannot redirect the connection (the URL holds
+  // the IP), so this is not an SSRF vector.
   const targetUrl = new URL(`http://${hostForUrl(resolvedHost)}:${addr.port}/`);
   const cleanPath = normalizeProxyPath(gatewayPath);
   targetUrl.pathname = cleanPath ? `/${cleanPath}` : "/";
