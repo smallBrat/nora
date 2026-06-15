@@ -160,7 +160,13 @@ async function allowedGatewayHostsForAgent(agent) {
     if (agent?.runtime_host) allowed.add(String(agent.runtime_host).toLowerCase());
     return allowed.size ? allowed : EMPTY_ALLOWED_HOSTS;
   }
-  return EMPTY_ALLOWED_HOSTS;
+  // docker / other: trust the operator-configured published host — the address
+  // the control plane uses to reach the docker host's published port (GATEWAY_HOST
+  // or host.docker.internal). It is GLOBAL config, not a per-agent value, so this
+  // is not a per-agent SSRF vector; a docker agent's own gateway_host is NOT
+  // trusted here, so a public docker gateway_host still hits the RFC1918 floor.
+  const publishedHost = String(process.env.GATEWAY_HOST || "host.docker.internal").toLowerCase();
+  return new Set([publishedHost]);
 }
 
 function isAllowedGatewayIP(address, hostname, extraAllowedHosts) {
