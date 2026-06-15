@@ -2075,6 +2075,15 @@ router.post(
       console.warn(`[agents.rollback] wiring materialize failed: ${err.message}`);
     }
     if (agent.container_id) {
+      // Validate the agent's execution target is still deployable before
+      // queuing the redeploy — a remote host / k8s cluster may have been
+      // removed or disconnected since the original deploy. Owner-scoped to the
+      // agent's owner (an editor may trigger the rollback). Fail before we
+      // clear container_id so a rejected rollback leaves the agent intact.
+      await assertRuntimeTargetAvailable(
+        buildAgentRuntimeFields(agent),
+        agent.user_id || req.user.id,
+      );
       await db.query(
         `UPDATE agents
             SET status = 'queued',
