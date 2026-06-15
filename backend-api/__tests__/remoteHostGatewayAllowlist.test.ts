@@ -23,6 +23,7 @@ const PUBLIC_IP = "203.0.113.5";
 function remoteAgent(overrides = {}) {
   return {
     id: "agent-1",
+    user_id: "user-1",
     deploy_target: "remote-docker",
     execution_target_id: "remote:my-vps",
     gateway_host: PUBLIC_IP,
@@ -39,12 +40,26 @@ describe("remote-host gateway allowlist (HTTP proxy)", () => {
   it("allows a remote-docker agent's own registered (non-RFC1918) host", async () => {
     mockGetRemoteHostByExecutionTarget.mockResolvedValue({
       id: "my-vps",
+      ownerUserId: "user-1",
       gatewayHost: PUBLIC_IP,
       sshHost: PUBLIC_IP,
     });
     const target = await resolveSafeGatewayHttpTarget(remoteAgent(), "status");
     expect(target.url).toBe(`http://${PUBLIC_IP}:19042/status`);
     expect(mockGetRemoteHostByExecutionTarget).toHaveBeenCalledWith("remote:my-vps");
+  });
+
+  it("does NOT trust a remote host registered by a different operator", async () => {
+    // Cross-tenant execution_target_id reference: the host belongs to user-2.
+    mockGetRemoteHostByExecutionTarget.mockResolvedValue({
+      id: "my-vps",
+      ownerUserId: "user-2",
+      gatewayHost: PUBLIC_IP,
+      sshHost: PUBLIC_IP,
+    });
+    await expect(resolveSafeGatewayHttpTarget(remoteAgent(), "status")).rejects.toThrow(
+      /not an allowed gateway address/i,
+    );
   });
 
   it("rejects a public host when no matching remote host is registered", async () => {
