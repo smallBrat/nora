@@ -29,6 +29,7 @@ const NAV_ITEMS = [
   { name: "Users", icon: Users, href: "/users" },
   { name: "Members", icon: ShieldCheck, href: "/members" },
   { name: "Kubernetes", icon: Boxes, href: "/kubernetes" },
+  { name: "Remote Hosts", icon: Server, href: "/remote-hosts" },
   { name: "Agent Hub", icon: ShoppingBag, href: "/agent-hub" },
   { name: "Backups", icon: Archive, href: "/backups" },
   { name: "Audit", icon: FileText, href: "/audit" },
