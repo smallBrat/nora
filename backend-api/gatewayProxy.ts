@@ -143,6 +143,26 @@ async function allowedRemoteHostsForAgent(agent) {
   }
 }
 
+// The host allowance for an agent's gateway, used identically by the HTTP,
+// RPC-pool, and WS-relay paths so all three enforce the same SSRF policy:
+//  - remote-docker: the agent's OWN registered host address (owner-scoped).
+//  - k8s: the operator-provisioned cluster exposure address (LoadBalancer /
+//    NodePort / ClusterIP host the k8s adapter recorded). Trusting it matches
+//    the prior RPC/WS behavior (they did no host check), so k8s chat — incl.
+//    public LoadBalancer IPs — does not regress.
+//  - docker / other: none — falls through to the RFC1918/loopback floor.
+async function allowedGatewayHostsForAgent(agent) {
+  const target = normalizeDeployTargetName(agent?.deploy_target);
+  if (target === "remote-docker") return allowedRemoteHostsForAgent(agent);
+  if (target === "k8s") {
+    const allowed = new Set();
+    if (agent?.gateway_host) allowed.add(String(agent.gateway_host).toLowerCase());
+    if (agent?.runtime_host) allowed.add(String(agent.runtime_host).toLowerCase());
+    return allowed.size ? allowed : EMPTY_ALLOWED_HOSTS;
+  }
+  return EMPTY_ALLOWED_HOSTS;
+}
+
 function isAllowedGatewayIP(address, hostname, extraAllowedHosts) {
   if (isBlockedGatewayIP(address)) return false;
   const normalizedHostname = String(hostname || "").toLowerCase();
@@ -214,7 +234,7 @@ async function resolveSafeGatewayHttpTarget(agent, gatewayPath = "", search = ""
   if (!isAllowedGatewayPort(addr.port)) {
     throw new Error("agent gateway port is not allowed for proxying");
   }
-  const extraAllowedHosts = await allowedRemoteHostsForAgent(agent);
+  const extraAllowedHosts = await allowedGatewayHostsForAgent(agent);
   const resolvedHost = await resolveGatewayHostForProxy(
     addr.host,
     "agent gateway",
@@ -562,7 +582,16 @@ async function getConnection(agent) {
     pool.delete(key);
   }
 
-  conn = new GatewayConnection(addr.host, agent.gateway_token, addr.port);
+  // Validate + resolve the gateway host before opening a NEW connection (the
+  // alive-cache hit above already passed this when it was created). Closes the
+  // gap where the RPC pool checked only the port, not the host.
+  const extraAllowedHosts = await allowedGatewayHostsForAgent(agent);
+  const connectHost = await resolveGatewayHostForProxy(
+    addr.host,
+    "agent gateway",
+    extraAllowedHosts,
+  );
+  conn = new GatewayConnection(connectHost, agent.gateway_token, addr.port);
   pool.set(key, conn);
   try {
     await conn.connect();
@@ -1269,7 +1298,15 @@ function attachGatewayWS(server) {
       if (!isAllowedGatewayPort(addr.port)) {
         throw new Error("Agent gateway port is not allowed");
       }
-      const gwWs = new WebSocket(`ws://${addr.host}:${addr.port}`);
+      // Validate + resolve the gateway host (the WS relay previously checked
+      // only the port). Throws here are caught below → client gets an error.
+      const relayExtraAllowedHosts = await allowedGatewayHostsForAgent(agent);
+      const relayHost = await resolveGatewayHostForProxy(
+        addr.host,
+        "agent gateway",
+        relayExtraAllowedHosts,
+      );
+      const gwWs = new WebSocket(`ws://${relayHost}:${addr.port}`);
       const role = "operator";
       const scopes = [
         "operator.admin",

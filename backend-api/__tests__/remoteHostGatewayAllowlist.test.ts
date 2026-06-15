@@ -91,6 +91,22 @@ describe("remote-host gateway allowlist (HTTP proxy)", () => {
     );
   });
 
+  it("trusts a k8s agent's operator-provisioned (public LoadBalancer) address", async () => {
+    // k8s exposure addresses (LB/NodePort) are operator-provisioned, so RPC/WS/HTTP
+    // must reach them even when public — without a registry lookup.
+    const k8sAgent = {
+      id: "agent-k8s",
+      user_id: "user-1",
+      deploy_target: "k8s",
+      execution_target_id: "k8s:prod",
+      gateway_host: "203.0.113.20",
+      gateway_port: 18789,
+    };
+    const target = await resolveSafeGatewayHttpTarget(k8sAgent, "status");
+    expect(target.url).toBe("http://203.0.113.20:18789/status");
+    expect(mockGetRemoteHostByExecutionTarget).not.toHaveBeenCalled();
+  });
+
   it("still allows an ordinary RFC1918 docker host (no regression)", async () => {
     const dockerAgent = remoteAgent({
       deploy_target: "docker",
