@@ -23,6 +23,7 @@ const {
   resolveAgentSandboxProfile,
 } = require("./agentRuntimeFields");
 const { getKubernetesClusterProfile } = require("./kubernetesClusters");
+const { getRemoteHostProfile } = require("./remoteHosts");
 
 // Lazy-load backends so missing optional deps (e.g. @kubernetes/client-node)
 // don't crash the API server when only Docker is used.
@@ -131,7 +132,7 @@ function resolveBackendPath(name) {
 
 async function getBackendInstance(type, agent = {}) {
   const cacheKey =
-    type === "k8s" || type === "k3s" || type === "kubernetes"
+    type === "k8s" || type === "k3s" || type === "kubernetes" || type === "remote-docker"
       ? resolveAgentExecutionTargetId(agent)
       : type;
   if (backendCache[cacheKey]) return backendCache[cacheKey];
@@ -169,12 +170,21 @@ async function getBackendInstance(type, agent = {}) {
       backendCache[cacheKey] = new K8sBackend(profile);
       break;
     }
-    case "remote-docker":
-      // Registered in the catalog, but the remote adapter is not yet wired
-      // (BYOC Phase A). Fail closed rather than silently using the local host.
-      throw new Error(
-        "Remote Docker execution targets are not yet available for lifecycle operations in this release.",
-      );
+    case "remote-docker": {
+      const RemoteDockerBackend = require(resolveBackendPath("remote-docker"));
+      const executionTargetId = resolveAgentExecutionTargetId(agent);
+      const profile = await getRemoteHostProfile(executionTargetId);
+      if (!profile) {
+        throw new Error(
+          "Remote Docker lifecycle operations require a registered remote host execution target.",
+        );
+      }
+      if (!profile.configured) {
+        throw new Error(profile.issue || "Remote host is not configured for lifecycle operations.");
+      }
+      backendCache[cacheKey] = new RemoteDockerBackend(profile);
+      break;
+    }
     default:
       throw new Error(`Unknown backend type: ${type}`);
   }
