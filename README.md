@@ -128,15 +128,15 @@ export NORA_TOKEN="nora_..."
 curl -H "Authorization: Bearer $NORA_TOKEN" https://your-nora.example.com/api/agents
 ```
 
-A small CLI lives in [`cli/`](./cli) (`@nora/cli`): run `nora login` once to save your host and API token, then `nora workspaces`, `nora agents`, and `nora monitoring` wrap the same REST surface. `nora doctor` runs an admin-only control-plane health check, and `nora mcp` launches the MCP stdio server. See the [API reference](https://noradocs.solomontsao.com/api/overview) for the supported endpoints and scopes.
+A small CLI lives in [`cli/`](./cli) (`@noraai/cli`): run `nora login` once to save your host and API token, then `nora workspaces`, `nora agents`, and `nora monitoring` wrap the same REST surface. `nora doctor` runs an admin-only control-plane health check, and `nora mcp` launches the MCP stdio server. See the [API reference](https://noradocs.solomontsao.com/api/overview) for the supported endpoints and scopes.
 
-**Operate Nora from Claude Code, Claude Desktop, or Cursor:** the [`mcp-server/`](./mcp-server) package (`@nora/mcp-server`) exposes the same API as [Model Context Protocol](https://modelcontextprotocol.io) tools — deploy agents, control their lifecycle, and read fleet metrics, events, and per-agent cost from any MCP client. Destructive deletion stays disabled unless explicitly opted in.
+**Operate Nora from Claude Code, Claude Desktop, or Cursor:** the [`mcp-server/`](./mcp-server) package (`@noraai/mcp-server`) exposes the same API as [Model Context Protocol](https://modelcontextprotocol.io) tools — deploy agents, control their lifecycle, and read fleet metrics, events, and per-agent cost from any MCP client. Destructive deletion stays disabled unless explicitly opted in.
 
 ```bash
 claude mcp add nora \
   --env NORA_API_URL=https://your-nora.example.com \
   --env NORA_API_KEY=nora_... \
-  -- npx -y @nora/mcp-server
+  -- npx -y @noraai/mcp-server
 ```
 
 See the [MCP guide](https://noradocs.solomontsao.com/guides/mcp-server) for Claude Desktop/Cursor config, the tool list, and security notes.

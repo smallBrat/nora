@@ -2,7 +2,7 @@
 
 > Run the Nora MCP server so Claude Code, Claude Desktop, Cursor, or any MCP client can deploy, inspect, and operate your agent fleet — "Claude, why is my agent stopped?" becomes a tool call against your own control plane.
 
-The `@nora/mcp-server` package exposes Nora's public REST API as [Model Context Protocol](https://modelcontextprotocol.io) tools over stdio. It authenticates with the same workspace API keys the REST API and CLI use, so workspace scoping and scope-based permissions apply unchanged.
+The `@noraai/mcp-server` package exposes Nora's public REST API as [Model Context Protocol](https://modelcontextprotocol.io) tools over stdio. It authenticates with the same workspace API keys the REST API and CLI use, so workspace scoping and scope-based permissions apply unchanged.
 
 ## Prerequisites
 
@@ -20,7 +20,7 @@ The `@nora/mcp-server` package exposes Nora's public REST API as [Model Context 
 claude mcp add nora \
   --env NORA_API_URL=https://nora.example.com \
   --env NORA_API_KEY=nora_xxxxxxxx \
-  -- npx -y @nora/mcp-server
+  -- npx -y @noraai/mcp-server
 ```
 
 ```json Claude Desktop / Cursor
@@ -28,7 +28,7 @@ claude mcp add nora \
   "mcpServers": {
     "nora": {
       "command": "npx",
-      "args": ["-y", "@nora/mcp-server"],
+      "args": ["-y", "@noraai/mcp-server"],
       "env": {
         "NORA_API_URL": "https://nora.example.com",
         "NORA_API_KEY": "nora_xxxxxxxx"
@@ -39,14 +39,14 @@ claude mcp add nora \
 ```
 
 ```bash Via the Nora CLI
-# Requires @nora/cli (see the CLI guide); reuses the host + token from `nora login`
+# Requires @noraai/cli (see the CLI guide); reuses the host + token from `nora login`
 nora login --host https://nora.example.com --token nora_xxxxxxxx
 nora mcp
 ```
 
 </CodeGroup>
 
-<Note>The `nora` command comes from [`@nora/cli`](/guides/cli) (`npm install -g @nora/cli`).</Note>
+<Note>The `nora` command comes from [`@noraai/cli`](/guides/cli) (`npm install -g @noraai/cli`).</Note>
 
 ## Configuration
 

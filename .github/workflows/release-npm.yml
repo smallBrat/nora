@@ -1,12 +1,12 @@
 name: Release npm Packages
 
-# Publishes @nora/mcp-server and @nora/cli to the public npm registry when a
+# Publishes @noraai/mcp-server and @noraai/cli to the public npm registry when a
 # GitHub release is published (or on demand). Idempotent: a package version
 # that already exists on the registry is skipped, so re-running a release or
 # tagging without bumping a package version is safe.
 #
 # Requires the NPM_TOKEN repository secret (an npm automation token with
-# publish rights on the @nora scope). `id-token: write` enables npm provenance
+# publish rights on the @noraai scope). `id-token: write` enables npm provenance
 # attestations linking each published tarball to this workflow run.
 
 on:
