@@ -1323,6 +1323,16 @@ async function migrateDB() {
      )`,
     `CREATE INDEX IF NOT EXISTS idx_remote_hosts_owner
        ON remote_hosts(owner_user_id, enabled, is_default, label)`,
+    `CREATE TABLE IF NOT EXISTS gateway_port_allocations (
+       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+       host_key TEXT NOT NULL,
+       agent_id UUID NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+       port INTEGER NOT NULL,
+       created_at TIMESTAMPTZ DEFAULT NOW(),
+       UNIQUE(host_key, port)
+     )`,
+    `CREATE INDEX IF NOT EXISTS idx_gateway_port_allocations_agent
+       ON gateway_port_allocations(agent_id)`,
     `DO $$ BEGIN ALTER TABLE agents ADD COLUMN vcpu INTEGER DEFAULT 1; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
     `DO $$ BEGIN ALTER TABLE agents ADD COLUMN ram_mb INTEGER DEFAULT 1024; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
     `DO $$ BEGIN ALTER TABLE agents ADD COLUMN disk_gb INTEGER DEFAULT 10; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
