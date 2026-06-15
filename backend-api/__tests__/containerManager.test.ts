@@ -227,6 +227,21 @@ describe("containerManager NemoClaw routing", () => {
     expect(exec).toEqual({ exec: "k8s-exec", stream: "k8s-stream" });
   });
 
+  it("fails closed for remote-docker lifecycle ops and never touches the local docker host", async () => {
+    const containerManager = require("../containerManager");
+    const agent = {
+      runtime_family: "openclaw",
+      deploy_target: "remote-docker",
+      execution_target_id: "remote:my-laptop",
+      backend_type: "remote-docker",
+      container_id: "oclaw-agent-remote",
+    };
+
+    await expect(containerManager.start(agent)).rejects.toThrow(/not yet available/i);
+    // critical: must NOT silently fall back to the local docker backend
+    expect(mockStart).not.toHaveBeenCalled();
+  });
+
   it("uses container_name as a Kubernetes destroy fallback when container_id was cleared", async () => {
     const containerManager = require("../containerManager");
     const agent = {

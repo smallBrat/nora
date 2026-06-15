@@ -169,6 +169,12 @@ async function getBackendInstance(type, agent = {}) {
       backendCache[cacheKey] = new K8sBackend(profile);
       break;
     }
+    case "remote-docker":
+      // Registered in the catalog, but the remote adapter is not yet wired
+      // (BYOC Phase A). Fail closed rather than silently using the local host.
+      throw new Error(
+        "Remote Docker execution targets are not yet available for lifecycle operations in this release.",
+      );
     default:
       throw new Error(`Unknown backend type: ${type}`);
   }

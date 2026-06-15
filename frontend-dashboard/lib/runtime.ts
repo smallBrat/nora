@@ -39,7 +39,8 @@ export function normalizeDeployTarget(value) {
     .toLowerCase();
   if (normalized.startsWith("k8s:") || normalized.startsWith("kubernetes:")) return "k8s";
   if (normalized === "kubernetes" || normalized === "k3s") return "k8s";
-  if (["docker", "k8s", "proxmox"].includes(normalized)) return normalized;
+  if (normalized.startsWith("remote:")) return "remote-docker";
+  if (["docker", "k8s", "remote-docker", "proxmox"].includes(normalized)) return normalized;
   return null;
 }
 
@@ -59,6 +60,14 @@ export function normalizeExecutionTargetId(value) {
       .replace(/-+/g, "-")
       .replace(/^-|-$/g, "");
     return clusterId ? `k8s:${clusterId}` : "k8s";
+  }
+  if (normalized.startsWith("remote:")) {
+    const hostId = normalized
+      .slice("remote:".length)
+      .replace(/[^a-z0-9-]+/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "");
+    return hostId ? `remote:${hostId}` : "remote-docker";
   }
   return normalizeDeployTarget(normalized);
 }
@@ -310,6 +319,8 @@ export function formatExecutionTargetLabel(
   switch (normalizeDeployTarget(value)) {
     case "k8s":
       return "Kubernetes";
+    case "remote-docker":
+      return "Remote Docker host";
     case "proxmox":
       return "Proxmox";
     default:
