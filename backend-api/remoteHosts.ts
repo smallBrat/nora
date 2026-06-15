@@ -310,6 +310,14 @@ async function getRemoteHost(hostId) {
   return row ? maskHost(row) : null;
 }
 
+// Masked lookup by execution target ("remote:<id>"), no secret decryption —
+// used by the gateway proxy to learn a remote host's advertised address.
+async function getRemoteHostByExecutionTarget(executionTargetId) {
+  const normalized = normalizeRemoteExecutionTargetId(executionTargetId);
+  if (!normalized) return null;
+  return getRemoteHost(normalized.slice("remote:".length));
+}
+
 async function clearOtherDefaults(hostId, ownerUserId) {
   await db.query(
     `UPDATE remote_hosts
@@ -587,6 +595,7 @@ module.exports = {
   createRemoteHost,
   deleteRemoteHost,
   getRemoteHost,
+  getRemoteHostByExecutionTarget,
   getRemoteHostProfile,
   isRemoteDockerTarget,
   listRemoteHosts,
