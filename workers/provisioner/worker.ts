@@ -1267,6 +1267,9 @@ function backendInstanceKey(runtimeFields = {}) {
   if (backend === "k8s" && runtimeFields.execution_target_id) {
     return String(runtimeFields.execution_target_id).trim().toLowerCase() || "k8s";
   }
+  if (backend === "remote-docker" && runtimeFields.execution_target_id) {
+    return String(runtimeFields.execution_target_id).trim().toLowerCase() || "remote-docker";
+  }
   return backend;
 }
 
@@ -1300,6 +1303,13 @@ async function loadBackend(runtimeFields = {}) {
       if (key === "k8s") {
         throw new Error(
           "Kubernetes provisioning requires an Admin-registered cluster target such as k8s:aks-eastus2.",
+        );
+      }
+      // Fail closed for remote Docker hosts: the adapter is not yet available,
+      // so we must NOT silently provision on the LOCAL docker host. (BYOC Phase A.)
+      if (key === "remote-docker" || key.startsWith("remote:")) {
+        throw new Error(
+          "Remote Docker execution targets are registered but not yet provisionable in this release.",
         );
       }
       console.warn(`Unknown backend "${key}", falling back to docker`);

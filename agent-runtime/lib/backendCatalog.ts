@@ -1,7 +1,7 @@
 // @ts-nocheck
 const DEFAULT_RUNTIME_FAMILY = "openclaw";
 const KNOWN_RUNTIME_FAMILIES = Object.freeze(["openclaw", "hermes"]);
-const KNOWN_DEPLOY_TARGETS = Object.freeze(["docker", "k8s", "proxmox"]);
+const KNOWN_DEPLOY_TARGETS = Object.freeze(["docker", "k8s", "remote-docker", "proxmox"]);
 const KNOWN_BACKENDS = KNOWN_DEPLOY_TARGETS;
 const KNOWN_SANDBOX_PROFILES = Object.freeze(["standard", "nemoclaw"]);
 const PROXMOX_RELEASE_BLOCKER_ISSUE =
@@ -101,6 +101,16 @@ const EXECUTION_TARGET_METADATA = Object.freeze({
       "Use the Kubernetes adapter for K3s, AKS, GKE, EKS, or any conformant cluster reachable through the configured kubeconfig.",
     badges: ["Cluster workload", "Service-backed", "Kube API"],
   }),
+  "remote-docker": Object.freeze({
+    id: "remote-docker",
+    label: "Remote Docker host",
+    shortLabel: "Remote host",
+    summary:
+      "Run agents on your own remote machine — Mac, Windows, VPS, or cloud instance — reached over SSH instead of the local Docker host.",
+    detail:
+      "Nora connects to the remote machine's Docker daemon over SSH and runs the selected runtime there. Register a host in the operator console to make it selectable.",
+    badges: ["Bring your own compute", "SSH", "Remote daemon"],
+  }),
   proxmox: Object.freeze({
     id: "proxmox",
     label: "Proxmox",
@@ -153,6 +163,7 @@ function normalizeDeployTargetName(value) {
     .trim()
     .toLowerCase();
   if (normalized.startsWith("k8s:")) return "k8s";
+  if (normalized.startsWith("remote:")) return "remote-docker";
   return KNOWN_DEPLOY_TARGETS.includes(normalized) ? normalized : "docker";
 }
 
@@ -172,6 +183,14 @@ function normalizeExecutionTargetId(value) {
       .replace(/-+/g, "-")
       .replace(/^-|-$/g, "");
     return clusterId ? `k8s:${clusterId}` : "k8s";
+  }
+  if (normalized.startsWith("remote:")) {
+    const hostId = normalized
+      .slice(7)
+      .replace(/[^a-z0-9-]+/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "");
+    return hostId ? `remote:${hostId}` : "remote-docker";
   }
   return KNOWN_DEPLOY_TARGETS.includes(normalized) ? normalized : null;
 }
@@ -198,7 +217,11 @@ function isKnownDeployTarget(value) {
   const normalized = String(value || "")
     .trim()
     .toLowerCase();
-  return normalized.startsWith("k8s:") || KNOWN_DEPLOY_TARGETS.includes(normalized);
+  return (
+    normalized.startsWith("k8s:") ||
+    normalized.startsWith("remote:") ||
+    KNOWN_DEPLOY_TARGETS.includes(normalized)
+  );
 }
 
 function isKnownBackend(value) {
@@ -381,6 +404,7 @@ function resolveMaturityTier({ deployTarget, sandboxProfile }) {
   const normalizedDeployTarget = normalizeDeployTargetName(deployTarget);
 
   if (normalizedDeployTarget === "proxmox") return "blocked";
+  if (normalizedDeployTarget === "remote-docker") return "experimental";
   if (normalizeSandboxProfileName(sandboxProfile) === "nemoclaw") return "experimental";
   return "ga";
 }
@@ -480,6 +504,15 @@ function baseDeployTargetIssue(deployTarget, env = process.env, selection = {}) 
         return null;
       }
       return "Kubernetes execution target requires an Admin-registered cluster such as k8s:aks-eastus2.";
+    case "remote-docker":
+      if (
+        normalizeExecutionTargetId(
+          selection.executionTargetId || selection.execution_target_id,
+        )?.startsWith("remote:")
+      ) {
+        return null;
+      }
+      return "Remote Docker execution target requires a registered host such as remote:my-laptop.";
     case "proxmox":
       return PROXMOX_RELEASE_BLOCKER_ISSUE;
     default:
@@ -567,8 +600,11 @@ function getRuntimeSelectionStatus(selection = {}, env = process.env) {
     ) || deployTarget;
   const hasRegisteredKubernetesTarget =
     deployTarget === "k8s" && String(executionTargetId || "").startsWith("k8s:");
+  const hasRegisteredRemoteTarget =
+    deployTarget === "remote-docker" && String(executionTargetId || "").startsWith("remote:");
   const deployTargetEnabled =
     hasRegisteredKubernetesTarget ||
+    hasRegisteredRemoteTarget ||
     getEnabledDeployTargets(env, { runtimeFamily }).includes(deployTarget);
   const enabled =
     getEnabledRuntimeFamilies(env).includes(runtimeFamily) &&
