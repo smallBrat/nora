@@ -1,6 +1,6 @@
 // `nora mcp` — run the Nora MCP server (stdio) so MCP clients like Claude
 // Code, Claude Desktop, or Cursor can operate this control plane. The server
-// itself lives in the separate @nora/mcp-server package; this command resolves
+// itself lives in the separate @noraai/mcp-server package; this command resolves
 // it (local checkout first, then npx) and hands over stdio. Host + token come
 // from the same config `nora login` writes, exported as env for the child.
 
@@ -25,7 +25,7 @@ async function run(args, flags) {
   const local = localServerEntrypoint();
   const [command, commandArgs] = local
     ? [process.execPath, [local]]
-    : ["npx", ["--yes", "@nora/mcp-server"]];
+    : ["npx", ["--yes", "@noraai/mcp-server"]];
 
   // stdio is the MCP transport — inherit all three streams untouched.
   const child = spawn(command, commandArgs, { env, stdio: "inherit" });

@@ -1,4 +1,4 @@
-# @nora/mcp-server
+# @noraai/mcp-server
 
 MCP server for [Nora](https://github.com/solomon2773/nora), the self-hosted AI agent ops platform. Connect Claude Code, Claude Desktop, Cursor, or any [Model Context Protocol](https://modelcontextprotocol.io) client to your Nora control plane and operate your agent fleet in natural language: deploy runtimes, start/stop/restart them, tail fleet status, and pull metrics, events, and per-agent cost.
 
@@ -6,7 +6,7 @@ MCP server for [Nora](https://github.com/solomon2773/nora), the self-hosted AI a
 claude mcp add nora \
   --env NORA_API_URL=https://nora.example.com \
   --env NORA_API_KEY=nora_xxxxxxxx \
-  -- npx -y @nora/mcp-server
+  -- npx -y @noraai/mcp-server
 ```
 
 Or in any MCP client's JSON config:
@@ -16,7 +16,7 @@ Or in any MCP client's JSON config:
   "mcpServers": {
     "nora": {
       "command": "npx",
-      "args": ["-y", "@nora/mcp-server"],
+      "args": ["-y", "@noraai/mcp-server"],
       "env": {
         "NORA_API_URL": "https://nora.example.com",
         "NORA_API_KEY": "nora_xxxxxxxx"
@@ -33,7 +33,7 @@ Uses Nora workspace API keys (create one under Workspace → API Keys). Scopes a
 - `agents:read` + `monitoring:read` → read tools
 - `agents:write` → deploy/lifecycle tools
 
-Fallbacks: `NORA_HOST`/`NORA_TOKEN` env vars, then the Nora CLI's `~/.nora/config.json` — so after `nora login`, `nora mcp` (or plain `npx @nora/mcp-server`) just works.
+Fallbacks: `NORA_HOST`/`NORA_TOKEN` env vars, then the Nora CLI's `~/.nora/config.json` — so after `nora login`, `nora mcp` (or plain `npx @noraai/mcp-server`) just works.
 
 ## Tools
 

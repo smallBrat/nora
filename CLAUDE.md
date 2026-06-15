@@ -121,7 +121,7 @@ Each folder has its own `AGENTS.md` that narrows ownership, data-flow rules, and
 
 - `backend-api/` — primary integration hub: control-plane APIs, persistence, queue, auth, monitoring, Agent Hub, gateway proxy, runtime coordination
 - `cli/` — packaged command-line client for Nora's public REST APIs, workspace config, token auth, and operator automation commands
-- `mcp-server/` — `@nora/mcp-server`, standalone MCP (Model Context Protocol) stdio server exposing the public REST API as tools for Claude Code/Desktop/Cursor; pure API client authenticated by workspace API keys, no backend coupling
+- `mcp-server/` — `@noraai/mcp-server`, standalone MCP (Model Context Protocol) stdio server exposing the public REST API as tools for Claude Code/Desktop/Cursor; pure API client authenticated by workspace API keys, no backend coupling
 - `workers/provisioner/` — async provisioning worker; `workers/provisioner/backends/` holds adapter implementations (shared with backend-api via volume mount)
 - `agent-runtime/` — shared runtime contracts (mounted read-only into backend-api and worker)
 - `frontend-dashboard/` — operator UI at `/app`; coordinates with backend-api for API + WebSocket contracts

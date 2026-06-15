@@ -1,13 +1,13 @@
-# `@nora/cli`
+# `@noraai/cli`
 
 Command-line interface for [Nora](https://github.com/solomon2773/nora). Talks to the public REST API exposed by every Nora installation.
 
 ## Install
 
 ```bash
-npm install -g @nora/cli
+npm install -g @noraai/cli
 # or run without installing
-npx @nora/cli --help
+npx @noraai/cli --help
 ```
 
 Requires Node.js 24 or newer.
@@ -67,7 +67,7 @@ The token must carry the matching scope for the operation:
 
 `nora doctor` needs an API key whose issuing user is a platform admin — it calls `GET /api/admin/doctor` behind `requireAdmin`, and on HTTP 403 it prints an admin-key error and exits 1.
 
-`nora mcp` forwards the host/token from `nora login` (`~/.nora/config.json`) to the `@nora/mcp-server` child as `NORA_API_URL` / `NORA_API_KEY`; `--allow-destructive` sets `NORA_MCP_ALLOW_DESTRUCTIVE=true`, so the MCP server's own scope/tool requirements apply.
+`nora mcp` forwards the host/token from `nora login` (`~/.nora/config.json`) to the `@noraai/mcp-server` child as `NORA_API_URL` / `NORA_API_KEY`; `--allow-destructive` sets `NORA_MCP_ALLOW_DESTRUCTIVE=true`, so the MCP server's own scope/tool requirements apply.
 
 Issuing API keys, mutating workspace membership, and other privileged flows require session authentication and are not available through the CLI.
 
