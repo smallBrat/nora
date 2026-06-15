@@ -2103,6 +2103,108 @@ describe("GET /agents/:id/stats/history", () => {
   });
 });
 
+describe("POST /agents/adopt (external runtime)", () => {
+  it("adopts a reachable OpenClaw runtime without provisioning", async () => {
+    mockDb.query.mockResolvedValueOnce({
+      rows: [
+        {
+          id: "a-ext",
+          name: "Prod OpenClaw",
+          status: "running",
+          user_id: "user-1",
+          runtime_family: "openclaw",
+          deploy_target: "external",
+          execution_target_id: "external",
+          gateway_host: "203.0.113.5",
+          gateway_port: 18789,
+        },
+      ],
+    });
+
+    const res = await auth(
+      request(app).post("/agents/adopt").send({
+        name: "Prod OpenClaw",
+        runtime_family: "openclaw",
+        url: "https://203.0.113.5:18789",
+        gateway_token: "secret-token",
+      }),
+    );
+
+    expect(res.status).toBe(201);
+    expect(res.body).toMatchObject({ id: "a-ext", deploy_target: "external", status: "running" });
+    // No provisioning job for an adopted runtime.
+    expect(mockAddDeploymentJob).not.toHaveBeenCalled();
+    // The INSERT carries deploy_target='external' + the validated endpoint.
+    const insert = mockDb.query.mock.calls.find((c) => /INSERT INTO agents/i.test(c[0]));
+    expect(insert[0]).toMatch(/'external', 'external'/);
+    expect(insert[1]).toEqual(
+      expect.arrayContaining(["user-1", "openclaw", "203.0.113.5", 18789, "secret-token"]),
+    );
+  });
+
+  it("rejects adoption without a gateway token", async () => {
+    const res = await auth(
+      request(app)
+        .post("/agents/adopt")
+        .send({ runtime_family: "openclaw", url: "https://203.0.113.5:18789" }),
+    );
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/gateway_token/i);
+    expect(mockDb.query).not.toHaveBeenCalled();
+  });
+
+  it("rejects an endpoint on a non-allowed port (SSRF gate)", async () => {
+    const res = await auth(
+      request(app)
+        .post("/agents/adopt")
+        .send({ runtime_family: "openclaw", url: "http://203.0.113.5:8080", gateway_token: "t" }),
+    );
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/port is not allowed/i);
+    expect(mockDb.query).not.toHaveBeenCalled();
+  });
+
+  it("rejects an endpoint that resolves to a blocked address (SSRF floor)", async () => {
+    const res = await auth(
+      request(app).post("/agents/adopt").send({
+        runtime_family: "openclaw",
+        url: "http://169.254.169.254:18789",
+        gateway_token: "t",
+      }),
+    );
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/not an allowed gateway address/i);
+    expect(mockDb.query).not.toHaveBeenCalled();
+  });
+
+  it("rejects an unsupported runtime family", async () => {
+    const res = await auth(
+      request(app)
+        .post("/agents/adopt")
+        .send({ runtime_family: "nope", url: "https://203.0.113.5:18789", gateway_token: "t" }),
+    );
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/runtime_family/i);
+  });
+
+  it("enforces the agent quota (adopted runtimes still occupy a slot)", async () => {
+    require("../billing").enforceLimits.mockResolvedValueOnce({
+      allowed: false,
+      error: "Agent limit reached",
+      subscription: { plan: "free" },
+    });
+    const res = await auth(
+      request(app).post("/agents/adopt").send({
+        runtime_family: "openclaw",
+        url: "https://203.0.113.5:18789",
+        gateway_token: "t",
+      }),
+    );
+    expect(res.status).toBe(402);
+    expect(mockDb.query).not.toHaveBeenCalled();
+  });
+});
+
 describe("POST /agents/deploy", () => {
   it("rejects unauthenticated request", async () => {
     const res = await request(app).post("/agents/deploy").send({});

@@ -3,6 +3,12 @@ const DEFAULT_RUNTIME_FAMILY = "openclaw";
 const KNOWN_RUNTIME_FAMILIES = Object.freeze(["openclaw", "hermes"]);
 const KNOWN_DEPLOY_TARGETS = Object.freeze(["docker", "k8s", "remote-docker", "proxmox"]);
 const KNOWN_BACKENDS = KNOWN_DEPLOY_TARGETS;
+// "external" is a recognized deploy_target VALUE for an adopted, already-running
+// runtime (BYOC Phase C). It is deliberately NOT in KNOWN_DEPLOY_TARGETS: you do
+// not "deploy to" external (no provisioner, no deploy-catalog card) — you adopt a
+// runtime by URL + token. It only needs to normalize, carry metadata, and resolve
+// a maturity tier for an existing agent row.
+const EXTERNAL_DEPLOY_TARGET = "external";
 const KNOWN_SANDBOX_PROFILES = Object.freeze(["standard", "nemoclaw"]);
 const PROXMOX_RELEASE_BLOCKER_ISSUE =
   "Proxmox execution target is not supported in this Nora release.";
@@ -121,6 +127,16 @@ const EXECUTION_TARGET_METADATA = Object.freeze({
       "Proxmox is tracked as a roadmap execution target. Current releases keep it visible for operator awareness, but block normal onboarding and deploy selection.",
     badges: ["Roadmap", "LXC", "Proxmox API"],
   }),
+  external: Object.freeze({
+    id: "external",
+    label: "External runtime",
+    shortLabel: "External",
+    summary:
+      "An already-running OpenClaw or Hermes runtime that Nora did not provision, adopted by its reachable URL and gateway token.",
+    detail:
+      "Nora monitors and proxies access to the external runtime but does not control its lifecycle. Register it from the operator console; deregistering only removes it from Nora.",
+    badges: ["Bring your own compute", "Adopted", "Not provisioned"],
+  }),
 });
 
 const SANDBOX_PROFILE_METADATA = Object.freeze({
@@ -164,6 +180,7 @@ function normalizeDeployTargetName(value) {
     .toLowerCase();
   if (normalized.startsWith("k8s:")) return "k8s";
   if (normalized.startsWith("remote:")) return "remote-docker";
+  if (normalized === EXTERNAL_DEPLOY_TARGET) return EXTERNAL_DEPLOY_TARGET;
   return KNOWN_DEPLOY_TARGETS.includes(normalized) ? normalized : "docker";
 }
 
@@ -192,6 +209,7 @@ function normalizeExecutionTargetId(value) {
       .replace(/^-|-$/g, "");
     return hostId ? `remote:${hostId}` : "remote-docker";
   }
+  if (normalized === EXTERNAL_DEPLOY_TARGET) return EXTERNAL_DEPLOY_TARGET;
   return KNOWN_DEPLOY_TARGETS.includes(normalized) ? normalized : null;
 }
 
@@ -220,6 +238,7 @@ function isKnownDeployTarget(value) {
   return (
     normalized.startsWith("k8s:") ||
     normalized.startsWith("remote:") ||
+    normalized === EXTERNAL_DEPLOY_TARGET ||
     KNOWN_DEPLOY_TARGETS.includes(normalized)
   );
 }
@@ -405,6 +424,7 @@ function resolveMaturityTier({ deployTarget, sandboxProfile }) {
 
   if (normalizedDeployTarget === "proxmox") return "blocked";
   if (normalizedDeployTarget === "remote-docker") return "experimental";
+  if (normalizedDeployTarget === EXTERNAL_DEPLOY_TARGET) return "experimental";
   if (normalizeSandboxProfileName(sandboxProfile) === "nemoclaw") return "experimental";
   return "ga";
 }

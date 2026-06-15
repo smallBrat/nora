@@ -151,11 +151,17 @@ async function allowedRemoteHostsForAgent(agent) {
 //    NodePort / ClusterIP host the k8s adapter recorded). Trusting it matches
 //    the prior RPC/WS behavior (they did no host check), so k8s chat — incl.
 //    public LoadBalancer IPs — does not regress.
+//  - external: the operator-declared endpoint of an adopted runtime (BYOC C),
+//    trusted from the agent's OWN row. Owner-scoped inherently (the agent row is
+//    loaded user-scoped, so you can only reach YOUR external agent's endpoint),
+//    and the hard isBlockedGatewayIP floor + port allowlist still apply. In PaaS
+//    mode the endpoint is forced to a public IP at registration (no RFC1918
+//    pivot); selfhosted may adopt RFC1918 runtimes on the operator's own network.
 //  - docker / other: none — falls through to the RFC1918/loopback floor.
 async function allowedGatewayHostsForAgent(agent) {
   const target = normalizeDeployTargetName(agent?.deploy_target);
   if (target === "remote-docker") return allowedRemoteHostsForAgent(agent);
-  if (target === "k8s") {
+  if (target === "external" || target === "k8s") {
     const allowed = new Set();
     if (agent?.gateway_host) allowed.add(String(agent.gateway_host).toLowerCase());
     if (agent?.runtime_host) allowed.add(String(agent.runtime_host).toLowerCase());
@@ -288,6 +294,40 @@ async function resolveSafeHermesDashboardTarget(agent) {
     extraAllowedHosts,
   );
   return { host: resolvedHost, port: addr.port };
+}
+
+// Registration-time gate for adopting an EXTERNAL runtime (BYOC Phase C). Applied
+// when an operator registers an already-running OpenClaw/Hermes endpoint by URL,
+// so the stored endpoint can never be one the proxy would later refuse — and so a
+// PaaS tenant can't register a private-network pivot. Enforces the same hard floor
+// (isBlockedGatewayIP, via resolveGatewayHostForProxy) + port allowlist the proxy
+// uses; and in hosted (PaaS) mode additionally requires the endpoint to resolve to
+// a PUBLIC IP (selfhosted may adopt RFC1918 runtimes on the operator's own network).
+//
+// Returns the RESOLVED IP (not the hostname): the caller pins this IP on the agent
+// row so the proxy connects to the exact validated address at reach time. Storing
+// the hostname instead would reopen a DNS-rebinding/TOCTOU hole — the proxy would
+// re-resolve it later and trust whatever it then points at (incl. loopback/RFC1918)
+// because the hostname sits in the allowlist. Pinning the IP closes that window
+// (re-adopt if a runtime's address legitimately changes). Throws if disallowed.
+async function assertExternalEndpointReachable(address, { paas = false } = {}) {
+  const addr = assertSafeAgentAddress(address, "external runtime");
+  if (addr.port !== HERMES_DASHBOARD_PORT && !isAllowedGatewayPort(addr.port)) {
+    throw new Error(
+      "external runtime port is not allowed — use the gateway port, the Hermes dashboard port, or a published port",
+    );
+  }
+  const resolved = await resolveGatewayHostForProxy(
+    addr.host,
+    "external runtime",
+    new Set([addr.host.toLowerCase()]),
+  );
+  if (paas && (isAllowedGatewayIPv4(resolved) || isAllowedGatewayIPv6(resolved))) {
+    throw new Error(
+      "external runtime endpoint must be a public address in hosted mode (private/RFC1918 addresses are not allowed)",
+    );
+  }
+  return { host: resolved, port: addr.port };
 }
 
 // ─── Device Identity (Ed25519 keypair for Gateway auth) ──────────
@@ -1560,4 +1600,5 @@ module.exports = {
   evictConnection,
   resolveSafeGatewayHttpTarget,
   resolveSafeHermesDashboardTarget,
+  assertExternalEndpointReachable,
 };

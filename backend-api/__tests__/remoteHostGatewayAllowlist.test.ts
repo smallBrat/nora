@@ -19,6 +19,7 @@ jest.mock("../remoteHosts", () => ({
 const {
   resolveSafeGatewayHttpTarget,
   resolveSafeHermesDashboardTarget,
+  assertExternalEndpointReachable,
 } = require("../gatewayProxy");
 
 const PUBLIC_IP = "203.0.113.5";
@@ -236,6 +237,62 @@ describe("hermes dashboard embed-proxy allowlist (SSRF)", () => {
     };
     const target = await resolveSafeHermesDashboardTarget(agent);
     expect(target).toEqual({ host: "203.0.113.20", port: 30119 });
+    expect(mockGetRemoteHostByExecutionTarget).not.toHaveBeenCalled();
+  });
+});
+
+describe("external runtime adoption (BYOC Phase C)", () => {
+  describe("assertExternalEndpointReachable (registration gate)", () => {
+    it("allows a public endpoint on the gateway port (selfhosted)", async () => {
+      await expect(
+        assertExternalEndpointReachable({ host: PUBLIC_IP, port: 18789 }, { paas: false }),
+      ).resolves.toEqual({ host: PUBLIC_IP, port: 18789 });
+    });
+
+    it("allows a private endpoint in selfhosted mode (operator's own network)", async () => {
+      await expect(
+        assertExternalEndpointReachable({ host: "10.0.0.7", port: 18789 }, { paas: false }),
+      ).resolves.toEqual({ host: "10.0.0.7", port: 18789 });
+    });
+
+    it("rejects a private endpoint in hosted (PaaS) mode (no internal pivot)", async () => {
+      await expect(
+        assertExternalEndpointReachable({ host: "10.0.0.7", port: 18789 }, { paas: true }),
+      ).rejects.toThrow(/public address in hosted mode/i);
+    });
+
+    it("rejects a blocked (metadata/link-local) endpoint regardless of mode (floor)", async () => {
+      await expect(
+        assertExternalEndpointReachable({ host: "169.254.169.254", port: 18789 }, { paas: false }),
+      ).rejects.toThrow(/not an allowed gateway address/i);
+    });
+
+    it("rejects a non-allowed port", async () => {
+      await expect(
+        assertExternalEndpointReachable({ host: PUBLIC_IP, port: 80 }, { paas: false }),
+      ).rejects.toThrow(/port is not allowed/i);
+    });
+
+    it("allows the Hermes dashboard port (9119)", async () => {
+      await expect(
+        assertExternalEndpointReachable({ host: PUBLIC_IP, port: 9119 }, { paas: false }),
+      ).resolves.toEqual({ host: PUBLIC_IP, port: 9119 });
+    });
+  });
+
+  it("the proxy trusts an adopted external agent's own declared endpoint", async () => {
+    // deploy_target='external' ⇒ allowedGatewayHostsForAgent trusts the agent's own
+    // gateway_host (owner-scoped via the row); the public endpoint is reachable.
+    const agent = {
+      id: "agent-ext",
+      user_id: "user-1",
+      deploy_target: "external",
+      execution_target_id: "external",
+      gateway_host: PUBLIC_IP,
+      gateway_port: 18789,
+    };
+    const target = await resolveSafeGatewayHttpTarget(agent, "status");
+    expect(target.url).toBe(`http://${PUBLIC_IP}:18789/status`);
     expect(mockGetRemoteHostByExecutionTarget).not.toHaveBeenCalled();
   });
 });

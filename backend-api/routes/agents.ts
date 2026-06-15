@@ -30,6 +30,7 @@ const {
   materializeManagedMigrationState,
 } = require("../agentMigrations");
 const { isGatewayAvailableStatus, reconcileAgentStatus } = require("../agentStatus");
+const { assertExternalEndpointReachable } = require("../gatewayProxy");
 const {
   HERMES_DASHBOARD_PORT,
   OPENCLAW_GATEWAY_PORT,
@@ -1493,6 +1494,110 @@ router.post("/deploy", async (req, res) => {
     );
 
     res.json(serializeAgent(agent));
+  } catch (e) {
+    res.status(e.statusCode || 500).json({ error: e.message });
+  }
+});
+
+// Adopt an already-running OpenClaw/Hermes runtime that Nora did NOT provision,
+// by its reachable URL + gateway token (BYOC Phase C). Creates an agent row with
+// deploy_target='external' and status='running' — NO provisioning job, no
+// container. Nora monitors + proxies access; lifecycle mutations are blocked (no
+// container_id ⇒ canMutate() is false) and delete is effectively a deregister.
+router.post("/adopt", async (req, res) => {
+  try {
+    const body = req.body || {};
+    // An adopted runtime still occupies an agent slot, so it counts against the
+    // operator's quota even though Nora doesn't provision its compute.
+    const limits = await billing.enforceLimits(req.user.id);
+    if (!limits.allowed) {
+      return res.status(402).json({ error: limits.error, subscription: limits.subscription });
+    }
+    const runtimeFamily = normalizeRequestedRuntimeFamily(body.runtime_family);
+    if (runtimeFamily == null) {
+      return res.status(400).json({
+        error: `Unsupported runtime_family. Nora currently supports: ${KNOWN_RUNTIME_FAMILIES.map((v) => `"${v}"`).join(", ")}.`,
+      });
+    }
+    const name = sanitizeAgentName(
+      body.name,
+      runtimeFamily === "hermes" ? "Hermes-Agent" : "OpenClaw-Agent",
+    );
+    if (name.length > 100) {
+      return res.status(400).json({ error: "Agent name must be 100 characters or less" });
+    }
+
+    const token = String(body.gateway_token || body.token || "").trim();
+    if (!token) {
+      return res
+        .status(400)
+        .json({ error: "gateway_token is required to adopt an external runtime" });
+    }
+
+    // Accept either a full URL or an explicit host (+ optional port). Default the
+    // port to the runtime family's contract port (OpenClaw gateway / Hermes dashboard).
+    const defaultPort = runtimeFamily === "hermes" ? HERMES_DASHBOARD_PORT : OPENCLAW_GATEWAY_PORT;
+    let host;
+    let port;
+    const rawUrl = typeof body.url === "string" ? body.url.trim() : "";
+    if (rawUrl) {
+      let parsed;
+      try {
+        parsed = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`);
+      } catch {
+        return res.status(400).json({ error: "Invalid runtime URL" });
+      }
+      host = parsed.hostname;
+      port = parsed.port ? Number(parsed.port) : defaultPort;
+    } else if (body.host) {
+      host = String(body.host).trim();
+      port = body.port != null && body.port !== "" ? Number(body.port) : defaultPort;
+    } else {
+      return res.status(400).json({ error: "Provide the runtime URL (or host) to adopt" });
+    }
+    if (!host || !Number.isInteger(port)) {
+      return res.status(400).json({ error: "Provide a valid runtime host and port to adopt" });
+    }
+
+    // Registration-time SSRF gate — the same hard floor + port allowlist the proxy
+    // enforces at reach time, plus public-only in hosted (PaaS) mode.
+    let endpoint;
+    try {
+      endpoint = await assertExternalEndpointReachable({ host, port }, { paas: billing.IS_PAAS });
+    } catch (e) {
+      return res.status(400).json({ error: e.message });
+    }
+
+    // gateway_host/gateway_port are the first fields read by BOTH
+    // resolveGatewayAddress (OpenClaw) and resolveHermesDashboardAddress (Hermes),
+    // so one mapping covers chat + dashboard reach for either family. status starts
+    // 'running' (optimistic); the external health-poll (Phase C2) reconciles it.
+    // dashboard_port mirrors the published port so resolveHermesDashboardAddress is
+    // correct even via its runtime_host fallback (not just the gateway_host branch).
+    const result = await db.query(
+      `INSERT INTO agents(
+         user_id, name, status, runtime_family, deploy_target, execution_target_id,
+         sandbox_profile, sandbox_type, backend_type, gateway_host, gateway_port,
+         runtime_host, dashboard_port, gateway_token
+       ) VALUES($1, $2, 'running', $3, 'external', 'external', 'standard', 'standard',
+                'external', $4, $5, $4, $5, $6) RETURNING *`,
+      [req.user.id, name, runtimeFamily, endpoint.host, endpoint.port, token],
+    );
+    const agent = result.rows[0];
+
+    await monitoring.logEvent(
+      "agent_adopted",
+      `Adopted external ${runtimeFamily} runtime "${name}" at ${endpoint.host}:${endpoint.port}`,
+      agentAuditMetadata(req, agent, {
+        adopt: {
+          runtimeFamily,
+          deployTarget: "external",
+          endpoint: `${endpoint.host}:${endpoint.port}`,
+        },
+      }),
+    );
+
+    res.status(201).json(serializeAgent(agent));
   } catch (e) {
     res.status(e.statusCode || 500).json({ error: e.message });
   }

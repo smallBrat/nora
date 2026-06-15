@@ -96,6 +96,50 @@ module.exports = {
       responses: ok("The created agent (status 'queued')", agentSummary),
     },
   },
+  "/agents/adopt": {
+    post: {
+      tags: ["Agents"],
+      summary: "Adopt an already-running external runtime",
+      description:
+        "Registers an existing OpenClaw or Hermes runtime that Nora did not provision, by its reachable URL + gateway token. Creates an agent with deploy_target='external' and status='running' (no provisioning). Nora monitors and proxies it; lifecycle actions are unavailable and delete is a deregister.",
+      "x-required-scopes": ["agents:write"],
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              required: ["runtime_family", "gateway_token"],
+              properties: {
+                name: { type: "string", maxLength: 100 },
+                runtime_family: { type: "string", enum: ["openclaw", "hermes"] },
+                url: {
+                  type: "string",
+                  description:
+                    "Reachable runtime URL — e.g. https://host:18789 (OpenClaw gateway) or https://host:9119 (Hermes dashboard). Provide this or host (+ port).",
+                },
+                host: { type: "string", description: "Runtime host (alternative to url)." },
+                port: {
+                  type: "integer",
+                  description: "Runtime port (defaults to the family's gateway/dashboard port).",
+                },
+                gateway_token: {
+                  type: "string",
+                  description: "Gateway/API token for the existing runtime.",
+                },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        201: {
+          description: "The adopted external agent (status 'running')",
+          content: { "application/json": { schema: agentSummary } },
+        },
+      },
+    },
+  },
   "/agents/{id}": {
     get: {
       tags: ["Agents"],

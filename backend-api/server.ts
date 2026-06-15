@@ -602,7 +602,11 @@ const mutationLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Too many requests, please slow down" },
-  skip: (req) => req.method === "GET" || req.method === "HEAD" || req.method === "OPTIONS",
+  // Skip in tests: the unit suites fire far more than 60 mutations/min from a
+  // single IP, and the global limiter is not what they exercise (the signup
+  // limiter has its own dedicated test). Fully active outside test environments.
+  skip: (req) =>
+    IS_TEST_ENV || req.method === "GET" || req.method === "HEAD" || req.method === "OPTIONS",
 });
 app.use(mutationLimiter);
 
