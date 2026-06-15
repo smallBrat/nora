@@ -303,6 +303,13 @@ async function getRemoteHostProfile(executionTargetId) {
   return rowToProfile(row, { includeSecret: true });
 }
 
+// Masked single-host lookup by id (no secrets) — used by the route layer to
+// enforce per-owner access before mutating.
+async function getRemoteHost(hostId) {
+  const row = await getHostRow(hostId);
+  return row ? maskHost(row) : null;
+}
+
 async function clearOtherDefaults(hostId, ownerUserId) {
   await db.query(
     `UPDATE remote_hosts
@@ -579,6 +586,7 @@ module.exports = {
   assertRemoteHostExecutionTargetAvailable,
   createRemoteHost,
   deleteRemoteHost,
+  getRemoteHost,
   getRemoteHostProfile,
   isRemoteDockerTarget,
   listRemoteHosts,

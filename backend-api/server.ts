@@ -1076,6 +1076,7 @@ app.use("/llm-providers", require("./routes/llmProviders"));
 app.use("/clawhub", require("./routes/clawhub"));
 app.use("/agent-hub", require("./routes/agentHub"));
 app.use("/workspaces", require("./routes/workspaces"));
+app.use("/remote-hosts", require("./routes/remoteHosts"));
 app.use("/billing", require("./routes/billing"));
 // Fleet routes mount before /admin so the explicit prefix wins; both still go
 // through requireAdmin (the fleet router applies it itself, and /admin's own
