@@ -1270,7 +1270,11 @@ function backendInstanceKey(runtimeFields = {}) {
     return String(runtimeFields.execution_target_id).trim().toLowerCase() || "k8s";
   }
   if (backend === "remote-docker" && runtimeFields.execution_target_id) {
-    return String(runtimeFields.execution_target_id).trim().toLowerCase() || "remote-docker";
+    const target =
+      String(runtimeFields.execution_target_id).trim().toLowerCase() || "remote-docker";
+    // Encode the runtime family so an OpenClaw and a Hermes agent on the SAME
+    // remote host don't share one cached adapter (they need different backends).
+    return runtimeFields.runtime_family === "hermes" ? `hermes:${target}` : target;
   }
   return backend;
 }
@@ -1306,6 +1310,20 @@ async function loadBackend(runtimeFields = {}) {
         throw new Error(
           "Kubernetes provisioning requires an Admin-registered cluster target such as k8s:aks-eastus2.",
         );
+      }
+      if (key.startsWith("hermes:remote:")) {
+        const executionTargetId = key.slice("hermes:".length);
+        const profile = await getRemoteHostProfile(executionTargetId);
+        if (!profile) {
+          throw new Error(`Unknown remote host execution target: ${executionTargetId}`);
+        }
+        if (!profile.configured) {
+          throw new Error(
+            profile.issue || `Remote host ${executionTargetId} is not configured for provisioning.`,
+          );
+        }
+        instance = new (require("./backends/remote-hermes"))(profile);
+        break;
       }
       if (key.startsWith("remote:")) {
         const profile = await getRemoteHostProfile(key);

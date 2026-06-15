@@ -468,7 +468,7 @@ function getEnabledSandboxProfiles(env = process.env, options = {}) {
 
 function executionTargetsForRuntimeFamily(runtimeFamily) {
   return normalizeRuntimeFamilyName(runtimeFamily) === "hermes"
-    ? ["docker", "k8s", "proxmox"]
+    ? ["docker", "k8s", "remote-docker", "proxmox"]
     : [...KNOWN_DEPLOY_TARGETS];
 }
 

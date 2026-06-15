@@ -440,8 +440,16 @@ describe("public platform config", () => {
         }),
       ]),
     );
-    expect(res.body.executionTargets.map((target) => target.maturityTier)).not.toContain(
-      "experimental",
+    // Hermes can now target a remote Docker host (BYOC Phase B2), surfaced as
+    // an experimental execution target.
+    expect(res.body.executionTargets).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "remote-docker",
+          runtimeFamily: "hermes",
+          maturityTier: "experimental",
+        }),
+      ]),
     );
     expect(res.body.backends).toEqual(
       expect.arrayContaining([
