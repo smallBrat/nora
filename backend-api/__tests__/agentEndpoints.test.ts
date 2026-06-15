@@ -52,4 +52,17 @@ describe("resolveHermesDashboardAddress", () => {
       }),
     ).toEqual({ host: "10.0.0.7", port: 9119 });
   });
+
+  it("uses the persisted dashboard_port for a remote agent (published host port)", () => {
+    // Remote Hermes advertises runtime_host = the remote machine and persists the
+    // published dashboard host port in dashboard_port (B2c-2). No gateway_host is
+    // set, so the docker-family branch resolves {runtime_host, dashboard_port}.
+    expect(
+      resolveHermesDashboardAddress({
+        runtime_family: "hermes",
+        runtime_host: "laptop.tail-scale.ts.net",
+        dashboard_port: 19044,
+      }),
+    ).toEqual({ host: "laptop.tail-scale.ts.net", port: 19044 });
+  });
 });

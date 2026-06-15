@@ -17,12 +17,26 @@ const DEFAULT_RANGE_MIN = 19000;
 const DEFAULT_RANGE_MAX = 19999;
 const LOCAL_HOST_KEY = "local";
 const MAX_RACE_RETRIES = 5;
+// A purpose lets one agent reserve more than one published port on the SAME
+// physical host (host_key). Port uniqueness stays per-host (UNIQUE(host_key,
+// port)), so a second purpose never collides with the first on that machine.
+//   - GATEWAY: the primary published port (OpenClaw gateway / Hermes runtime API).
+//   - DASHBOARD: the Hermes dashboard UI port, published only for remote hosts.
+const GATEWAY_PORT_PURPOSE = "gateway";
+const DASHBOARD_PORT_PURPOSE = "dashboard";
 
 function normalizeHostKey(value) {
   const key = String(value || "")
     .trim()
     .toLowerCase();
   return key || LOCAL_HOST_KEY;
+}
+
+function normalizePurpose(value) {
+  const purpose = String(value || "")
+    .trim()
+    .toLowerCase();
+  return purpose || GATEWAY_PORT_PURPOSE;
 }
 
 async function getGatewayPortAllocation(agentId) {
@@ -45,27 +59,31 @@ async function getGatewayPortAllocation(agentId) {
 async function allocateGatewayPort({
   hostKey,
   agentId,
+  purpose = GATEWAY_PORT_PURPOSE,
   rangeMin = DEFAULT_RANGE_MIN,
   rangeMax = DEFAULT_RANGE_MAX,
 } = {}) {
   if (!agentId) throw new Error("agentId is required to allocate a gateway port");
   const key = normalizeHostKey(hostKey);
+  const slot = normalizePurpose(purpose);
 
-  // Idempotent: an agent keeps its port across redeploys on the same host.
+  // Idempotent per (agent, host, purpose): a redeploy keeps the same port, and a
+  // second purpose on the same host gets its own row rather than reusing the first.
   const existing = await db.query(
-    "SELECT port FROM gateway_port_allocations WHERE agent_id = $1 AND host_key = $2",
-    [agentId, key],
+    "SELECT port FROM gateway_port_allocations WHERE agent_id = $1 AND host_key = $2 AND purpose = $3",
+    [agentId, key, slot],
   );
   if (existing.rows[0]) return existing.rows[0].port;
 
   for (let attempt = 0; attempt < MAX_RACE_RETRIES; attempt++) {
     try {
-      // Claim the lowest free port for this host in one statement. The
-      // UNIQUE(host_key, port) constraint makes concurrent claims race-safe:
-      // the loser hits a unique violation and retries against the new state.
+      // Claim the lowest free port for this host in one statement. The NOT EXISTS
+      // scans ALL purposes on the host so a second purpose never lands on a port
+      // already held by another, and UNIQUE(host_key, port) makes concurrent
+      // claims race-safe: the loser hits a unique violation and retries.
       const result = await db.query(
-        `INSERT INTO gateway_port_allocations (host_key, agent_id, port)
-         SELECT $1, $2, candidate.port
+        `INSERT INTO gateway_port_allocations (host_key, agent_id, port, purpose)
+         SELECT $1, $2, candidate.port, $5
            FROM generate_series($3, $4) AS candidate(port)
           WHERE NOT EXISTS (
             SELECT 1 FROM gateway_port_allocations existing
@@ -74,7 +92,7 @@ async function allocateGatewayPort({
           ORDER BY candidate.port
           LIMIT 1
          RETURNING port`,
-        [key, agentId, rangeMin, rangeMax],
+        [key, agentId, rangeMin, rangeMax, slot],
       );
       if (result.rows[0]) return result.rows[0].port;
       // No row inserted → every port in the range is taken on this host.
@@ -109,6 +127,8 @@ module.exports = {
   LOCAL_HOST_KEY,
   DEFAULT_RANGE_MIN,
   DEFAULT_RANGE_MAX,
+  GATEWAY_PORT_PURPOSE,
+  DASHBOARD_PORT_PURPOSE,
   allocateGatewayPort,
   releaseGatewayPort,
   getGatewayPortAllocation,

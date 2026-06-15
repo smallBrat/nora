@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS agents (
   gateway_host TEXT,
   gateway_port INTEGER,
   gateway_host_port INTEGER,
+  dashboard_port INTEGER,
   gateway_token TEXT,
   container_id TEXT,
   container_name TEXT,
@@ -113,6 +114,10 @@ CREATE TABLE IF NOT EXISTS gateway_port_allocations (
   host_key TEXT NOT NULL,
   agent_id UUID NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
   port INTEGER NOT NULL,
+  -- Which published port this row holds for the agent on host_key. Lets one
+  -- agent reserve several collision-safe ports on the same physical host
+  -- (e.g. remote Hermes: 'gateway' = runtime API 8642, 'dashboard' = UI 9119).
+  purpose TEXT NOT NULL DEFAULT 'gateway',
   created_at TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(host_key, port)
 );

@@ -25,7 +25,11 @@ const {
 } = require("../../backend-api/hermesUi");
 const { getKubernetesClusterProfile } = require("../../backend-api/kubernetesClusters");
 const { getRemoteHostProfile } = require("../../backend-api/remoteHosts");
-const { allocateGatewayPort, LOCAL_HOST_KEY } = require("../../backend-api/portAllocations");
+const {
+  allocateGatewayPort,
+  LOCAL_HOST_KEY,
+  DASHBOARD_PORT_PURPOSE,
+} = require("../../backend-api/portAllocations");
 const {
   buildIntegrationSyncEntry,
   decryptSensitiveConfig,
@@ -1753,7 +1757,8 @@ const worker = new Worker(
         runtimeHost,
         runtimePort,
         gatewayHost,
-        gatewayPort;
+        gatewayPort,
+        dashboardPort;
       try {
         const abortController = new AbortController();
         let provisionTimeoutHandle = null;
@@ -1764,6 +1769,7 @@ const worker = new Worker(
         // agents (k8s/proxmox manage their own ports). Idempotent per agent+host,
         // so redeploys keep the same port; released via ON DELETE CASCADE.
         let allocatedGatewayPort;
+        let allocatedDashboardPort;
         {
           const deployTarget = resolvedRuntimeFields.deploy_target;
           const allocationHostKey =
@@ -1779,6 +1785,21 @@ const worker = new Worker(
               hostKey: allocationHostKey,
               agentId: id,
             });
+            // Remote Hermes needs a SECOND published host port for its dashboard
+            // UI (9119), distinct from the runtime API port (8642 = the 'gateway'
+            // slot used for the readiness probe). Local Hermes reaches the
+            // dashboard on the compose network (no host publish), and OpenClaw has
+            // no separate dashboard, so neither allocates this slot.
+            if (
+              deployTarget === "remote-docker" &&
+              resolvedRuntimeFields.runtime_family === "hermes"
+            ) {
+              allocatedDashboardPort = await allocateGatewayPort({
+                hostKey: allocationHostKey,
+                agentId: id,
+                purpose: DASHBOARD_PORT_PURPOSE,
+              });
+            }
           }
         }
         const createPromise = provisioner.create({
@@ -1790,6 +1811,7 @@ const worker = new Worker(
           disk_gb,
           container_name,
           gatewayHostPort: allocatedGatewayPort,
+          dashboardHostPort: allocatedDashboardPort,
           gatewayToken: agentRow.gateway_token || undefined,
           templatePayload,
           mcpServers: mcpServerEntries,
@@ -1844,6 +1866,7 @@ const worker = new Worker(
         runtimePort = result.runtimePort || null;
         gatewayHost = result.gatewayHost || null;
         gatewayPort = result.gatewayPort || null;
+        dashboardPort = result.dashboardPort || null;
 
         // Persist container_id immediately so that if the worker crashes or the
         // final status UPDATE fails below, the container can still be located
@@ -1948,6 +1971,7 @@ const worker = new Worker(
                 gateway_host_port: gatewayHostPort,
                 gateway_host: gatewayHost,
                 gateway_port: gatewayPort,
+                dashboard_port: dashboardPort,
               },
               persistedHermesState,
               { restart: true },
@@ -1997,7 +2021,8 @@ const worker = new Worker(
               deploy_target = $14,
               execution_target_id = $15,
               sandbox_profile = $16,
-              sandbox_type = $17
+              sandbox_type = $17,
+              dashboard_port = $18
         WHERE id = $1`,
           [
             id,
@@ -2017,6 +2042,7 @@ const worker = new Worker(
             resolvedRuntimeFields.execution_target_id,
             resolvedRuntimeFields.sandbox_profile,
             resolvedRuntimeFields.sandbox_type,
+            dashboardPort ? parseInt(dashboardPort, 10) : null,
           ],
         );
         await db.query("UPDATE deployments SET status = 'completed' WHERE agent_id = $1", [id]);

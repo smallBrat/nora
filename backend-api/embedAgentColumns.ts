@@ -34,6 +34,10 @@ const HERMES_EMBED_AGENT_COLUMNS = [
   "user_id",
   "gateway_host",
   "gateway_port",
+  // The remote Hermes dashboard is published on its own host port, persisted here;
+  // resolveHermesDashboardAddress reads it (falls back to 9119 for local). Without
+  // it the embed proxy would target the in-container 9119 on the remote address.
+  "dashboard_port",
 ];
 
 // OpenClaw gateway embed proxies (server.ts proxyEmbeddedGateway +

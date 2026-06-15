@@ -8,18 +8,23 @@
 //   1. the dockerode client talks to the remote daemon over SSH;
 //   2. no Nora compose network (default bridge);
 //   3. the Hermes RUNTIME port (8642 — the API the post-deploy readiness probe
-//      hits at /health) is PUBLISHED on the remote host (local Hermes publishes
-//      nothing — it's reached via the container IP on the shared compose
-//      network, which isn't possible across SSH);
-//   4. create() advertises the remote machine's address + published runtime port
-//      so readiness passes and the control plane targets the remote host.
+//      hits at /health) AND the dashboard port (9119 — the embed UI) are both
+//      PUBLISHED on the remote host, each on its own worker-allocated host port
+//      (local Hermes publishes nothing — it's reached via the container IP on the
+//      shared compose network, which isn't possible across SSH);
+//   4. create() advertises the remote machine's address + the published runtime
+//      and dashboard ports so readiness passes, the control plane targets the
+//      remote host, and the dashboard embed proxy resolves the right address.
 //
-// The dashboard (9119) embed reach over remote — and its pre-existing SSRF gap —
-// is a separate pass (B2c); this PR makes Hermes deploy + stay healthy remotely.
+// The dashboard embed proxy enforces the SSRF allowlist (closed in #207/#208);
+// a remote agent's own registered host is owner-scoped-allowed there.
 
 const HermesBackend = require("./hermes");
 const { buildRemoteDockerOptions } = require("./remote-docker");
-const { HERMES_RUNTIME_PORT } = require("../../../agent-runtime/lib/contracts");
+const {
+  HERMES_RUNTIME_PORT,
+  HERMES_DASHBOARD_PORT,
+} = require("../../../agent-runtime/lib/contracts");
 
 class RemoteHermesBackend extends HermesBackend {
   constructor(profile = {}) {
@@ -57,27 +62,38 @@ class RemoteHermesBackend extends HermesBackend {
     return null;
   }
 
-  // Publish the Hermes RUNTIME port on the worker-allocated host port so the
-  // control-plane readiness probe ({runtime_host}:{runtime_port}/health) can
-  // reach it across the network. (The dashboard port is published by B2c.)
+  // Publish the Hermes RUNTIME port (readiness/API) and DASHBOARD port (embed UI)
+  // on their worker-allocated host ports so both are reachable across the network
+  // ({runtime_host}:{runtime_port}/health for readiness; the dashboard via its own
+  // published port). A missing/invalid allocation simply omits that binding.
   _hermesPortBindings(config) {
-    const port = Number(config?.gatewayHostPort);
-    if (!Number.isInteger(port) || port < 1 || port > 65535) return undefined;
-    return { [`${HERMES_RUNTIME_PORT}/tcp`]: [{ HostPort: String(port) }] };
+    const bindings = {};
+    const runtimePort = Number(config?.gatewayHostPort);
+    if (Number.isInteger(runtimePort) && runtimePort >= 1 && runtimePort <= 65535) {
+      bindings[`${HERMES_RUNTIME_PORT}/tcp`] = [{ HostPort: String(runtimePort) }];
+    }
+    const dashboardPort = Number(config?.dashboardHostPort);
+    if (Number.isInteger(dashboardPort) && dashboardPort >= 1 && dashboardPort <= 65535) {
+      bindings[`${HERMES_DASHBOARD_PORT}/tcp`] = [{ HostPort: String(dashboardPort) }];
+    }
+    return Object.keys(bindings).length ? bindings : undefined;
   }
 
   async create(config = {}) {
     const result = await super.create(config);
-    // Advertise the remote machine's address + the published runtime port so the
-    // control plane targets the remote host instead of the container's internal
-    // (unreachable) compose IP, and readiness probes the right address.
+    // Advertise the remote machine's address + the published runtime and dashboard
+    // ports so the control plane targets the remote host instead of the container's
+    // internal (unreachable) compose IP, readiness probes the right address, and the
+    // dashboard embed proxy resolves {runtime_host}:{dashboard_port}.
     const advertisedHost = this.profile.gatewayHost || this.profile.sshHost;
     const publishedRuntimePort = Number(config?.gatewayHostPort) || null;
+    const publishedDashboardPort = Number(config?.dashboardHostPort) || null;
     return {
       ...result,
       host: advertisedHost,
       runtimeHost: advertisedHost,
       runtimePort: publishedRuntimePort || result.runtimePort,
+      dashboardPort: publishedDashboardPort,
     };
   }
 }
