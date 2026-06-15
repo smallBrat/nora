@@ -189,13 +189,14 @@ describe("hermes dashboard embed-proxy allowlist (SSRF)", () => {
       deploy_target: "remote-docker",
       execution_target_id: "remote:my-vps",
       runtime_host: PUBLIC_IP,
-      // dashboard_port is not yet persisted for remote (B2c-2), so the dashboard
-      // address resolves to the default Hermes port; the SSRF allowance is what
-      // this test verifies — the registered host's address is trusted.
-      dashboard_port: 9119,
+      // B2c-2: the remote dashboard is published on its own host port (in the
+      // gateway range) and persisted in dashboard_port. The embed proxy resolves
+      // {runtime_host, dashboard_port} and the owner-scoped registered host is
+      // trusted by the allowlist.
+      dashboard_port: 19044,
     };
     const target = await resolveSafeHermesDashboardTarget(agent);
-    expect(target).toEqual({ host: PUBLIC_IP, port: 9119 });
+    expect(target).toEqual({ host: PUBLIC_IP, port: 19044 });
   });
 
   it("does not trust a remote Hermes host registered by another operator", async () => {

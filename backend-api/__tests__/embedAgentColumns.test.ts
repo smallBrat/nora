@@ -29,6 +29,9 @@ describe("embed-proxy agent SELECT columns", () => {
     // status + runtime_family gate availability / dashboard detection.
     expect(HERMES_EMBED_AGENT_COLUMNS).toContain("status");
     expect(HERMES_EMBED_AGENT_COLUMNS).toContain("runtime_family");
+    // dashboard_port carries the remote published dashboard host port; without it
+    // resolveHermesDashboardAddress targets the in-container 9119 on the remote host.
+    expect(HERMES_EMBED_AGENT_COLUMNS).toContain("dashboard_port");
   });
 
   it("gateway embed lookup loads the gateway endpoint fields", () => {

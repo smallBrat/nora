@@ -7,6 +7,8 @@ const {
   releaseGatewayPort,
   getGatewayPortAllocation,
   LOCAL_HOST_KEY,
+  GATEWAY_PORT_PURPOSE,
+  DASHBOARD_PORT_PURPOSE,
 } = require("../portAllocations");
 
 // Route db.query on SQL shape. `insert` is an array of responses consumed in
@@ -77,6 +79,50 @@ describe("allocateGatewayPort", () => {
   it("requires an agentId", async () => {
     fakeDb();
     await expect(allocateGatewayPort({ hostKey: "local" })).rejects.toThrow(/agentId/i);
+  });
+
+  it("defaults the purpose to the gateway slot", async () => {
+    const { calls } = fakeDb({ existing: [], insertResponses: [{ rows: [{ port: 19000 }] }] });
+    await allocateGatewayPort({ hostKey: "remote:my-vps", agentId: "a6" });
+    const select = calls.find((c) =>
+      c.sql.includes("SELECT port FROM gateway_port_allocations WHERE agent_id"),
+    );
+    const insert = calls.find((c) => c.sql.includes("INSERT INTO gateway_port_allocations"));
+    expect(select.params[2]).toBe(GATEWAY_PORT_PURPOSE);
+    expect(insert.params[4]).toBe(GATEWAY_PORT_PURPOSE);
+  });
+
+  it("scopes the lookup + claim by purpose so a second slot gets its own port", async () => {
+    // 'gateway' is already taken at 19000; a 'dashboard' allocation for the SAME
+    // agent + host must look up its own purpose row (none yet) and claim a
+    // different free port — the NOT EXISTS spans all purposes on the host.
+    const { calls } = fakeDb({ existing: [], insertResponses: [{ rows: [{ port: 19001 }] }] });
+    const port = await allocateGatewayPort({
+      hostKey: "remote:my-vps",
+      agentId: "a7",
+      purpose: DASHBOARD_PORT_PURPOSE,
+    });
+    expect(port).toBe(19001);
+    const select = calls.find((c) =>
+      c.sql.includes("SELECT port FROM gateway_port_allocations WHERE agent_id"),
+    );
+    const insert = calls.find((c) => c.sql.includes("INSERT INTO gateway_port_allocations"));
+    expect(select.params).toEqual(["a7", "remote:my-vps", DASHBOARD_PORT_PURPOSE]);
+    expect(insert.params[4]).toBe(DASHBOARD_PORT_PURPOSE);
+    // The free-port scan spans the whole host (no purpose filter), so a second
+    // purpose can't land on a port another purpose already holds there.
+    expect(insert.sql).toContain("existing.host_key = $1 AND existing.port = candidate.port");
+  });
+
+  it("reuses an existing same-purpose allocation (idempotent per purpose)", async () => {
+    const { calls } = fakeDb({ existing: [{ port: 19500 }] });
+    const port = await allocateGatewayPort({
+      hostKey: "remote:my-vps",
+      agentId: "a8",
+      purpose: DASHBOARD_PORT_PURPOSE,
+    });
+    expect(port).toBe(19500);
+    expect(calls.some((c) => c.sql.includes("INSERT INTO gateway_port_allocations"))).toBe(false);
   });
 });
 

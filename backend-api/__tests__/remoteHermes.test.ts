@@ -1,7 +1,7 @@
 // @ts-nocheck
 const RemoteHermesBackend = require("../../workers/provisioner/backends/remote-hermes");
 const HermesBackend = require("../../workers/provisioner/backends/hermes");
-const { HERMES_RUNTIME_PORT } = require("../../agent-runtime/lib/contracts");
+const { HERMES_RUNTIME_PORT, HERMES_DASHBOARD_PORT } = require("../../agent-runtime/lib/contracts");
 
 function hermesProfile(overrides = {}) {
   return {
@@ -47,11 +47,31 @@ describe("RemoteHermesBackend construction", () => {
   });
 });
 
-describe("RemoteHermesBackend runtime-port publishing", () => {
-  it("publishes the Hermes runtime port (the readiness target) on the allocated host port", () => {
+describe("RemoteHermesBackend port publishing", () => {
+  it("publishes BOTH the runtime port (readiness) and the dashboard port (UI) on their host ports", () => {
     const backend = new RemoteHermesBackend(hermesProfile());
-    const bindings = backend._hermesPortBindings({ gatewayHostPort: 19500 });
-    expect(bindings).toEqual({ [`${HERMES_RUNTIME_PORT}/tcp`]: [{ HostPort: "19500" }] });
+    const bindings = backend._hermesPortBindings({
+      gatewayHostPort: 19500,
+      dashboardHostPort: 19044,
+    });
+    expect(bindings).toEqual({
+      [`${HERMES_RUNTIME_PORT}/tcp`]: [{ HostPort: "19500" }],
+      [`${HERMES_DASHBOARD_PORT}/tcp`]: [{ HostPort: "19044" }],
+    });
+  });
+
+  it("publishes only the runtime port when no dashboard port is allocated", () => {
+    const backend = new RemoteHermesBackend(hermesProfile());
+    expect(backend._hermesPortBindings({ gatewayHostPort: 19500 })).toEqual({
+      [`${HERMES_RUNTIME_PORT}/tcp`]: [{ HostPort: "19500" }],
+    });
+  });
+
+  it("publishes only the dashboard port when no runtime port is allocated", () => {
+    const backend = new RemoteHermesBackend(hermesProfile());
+    expect(backend._hermesPortBindings({ dashboardHostPort: 19044 })).toEqual({
+      [`${HERMES_DASHBOARD_PORT}/tcp`]: [{ HostPort: "19044" }],
+    });
   });
 
   it("publishes nothing when no host port is allocated", () => {
@@ -70,7 +90,7 @@ describe("RemoteHermesBackend runtime-port publishing", () => {
 describe("RemoteHermesBackend.create", () => {
   afterEach(() => jest.restoreAllMocks());
 
-  it("advertises the remote host address + published dashboard port", async () => {
+  it("advertises the remote host address + published runtime and dashboard ports", async () => {
     jest.spyOn(HermesBackend.prototype, "create").mockResolvedValue({
       containerId: "nora-hermes-x",
       containerName: "nora-hermes-x",
@@ -81,13 +101,33 @@ describe("RemoteHermesBackend.create", () => {
     });
     const backend = new RemoteHermesBackend(hermesProfile());
 
-    const result = await backend.create({ id: "x", name: "Hermes QA", gatewayHostPort: 19500 });
+    const result = await backend.create({
+      id: "x",
+      name: "Hermes QA",
+      gatewayHostPort: 19500,
+      dashboardHostPort: 19044,
+    });
 
     expect(result.host).toBe("laptop.tail-scale.ts.net");
     expect(result.runtimeHost).toBe("laptop.tail-scale.ts.net");
     // runtime_port is the published host port so readiness reaches /health
     expect(result.runtimePort).toBe(19500);
+    // dashboard_port is the published host port so the embed proxy resolves the UI
+    expect(result.dashboardPort).toBe(19044);
     expect(result.containerId).toBe("nora-hermes-x");
+  });
+
+  it("reports a null dashboard port when none was allocated", async () => {
+    jest.spyOn(HermesBackend.prototype, "create").mockResolvedValue({
+      containerId: "c",
+      containerName: "c",
+      host: "172.18.0.9",
+      runtimeHost: "172.18.0.9",
+      runtimePort: 8642,
+    });
+    const backend = new RemoteHermesBackend(hermesProfile());
+    const result = await backend.create({ id: "x", gatewayHostPort: 19500 });
+    expect(result.dashboardPort).toBeNull();
   });
 
   it("falls back to the SSH host when no advertised gateway host is set", async () => {
