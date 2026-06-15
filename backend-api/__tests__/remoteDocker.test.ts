@@ -63,6 +63,20 @@ describe("RemoteDockerBackend construction", () => {
     );
   });
 
+  it("refuses to build with no credential (would let ssh2 use the worker's own identity)", () => {
+    // key mode, no private key
+    expect(() => new RemoteDockerBackend(keyProfile({ sshPrivateKey: null }))).toThrow(
+      /missing its SSH private key/i,
+    );
+    // password mode, no password
+    expect(
+      () =>
+        new RemoteDockerBackend(
+          keyProfile({ sshAuthMode: "password", sshPrivateKey: null, sshPassword: "" }),
+        ),
+    ).toThrow(/missing its SSH password/i);
+  });
+
   it("points the dockerode client at the remote daemon over SSH", () => {
     const backend = new RemoteDockerBackend(keyProfile());
     // dockerode exposes the docker-modem; the SSH protocol is what makes calls

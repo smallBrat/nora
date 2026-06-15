@@ -1311,6 +1311,11 @@ async function loadBackend(runtimeFields = {}) {
         if (!profile) {
           throw new Error(`Unknown remote host execution target: ${key}`);
         }
+        if (!profile.configured) {
+          throw new Error(
+            profile.issue || `Remote host ${key} is not configured for provisioning.`,
+          );
+        }
         instance = new (require("./backends/remote-docker"))(profile);
         break;
       }

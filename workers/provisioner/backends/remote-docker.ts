@@ -58,8 +58,24 @@ class RemoteDockerBackend extends DockerBackend {
         `Remote host ${this.profile.label || this.executionTargetId} is missing SSH connection details.`,
       );
     }
+    // Require the credential for the selected auth mode. Without this, an empty
+    // sshOptions would let docker-modem/ssh2 silently fall back to ambient
+    // credentials (the worker's own ~/.ssh key or SSH agent) and authenticate
+    // as the wrong identity — so fail loudly instead.
+    const hasCredential =
+      this.profile.sshAuthMode === "password"
+        ? Boolean(this.profile.sshPassword)
+        : Boolean(this.profile.sshPrivateKey);
+    if (!hasCredential) {
+      throw new Error(
+        `Remote host ${this.profile.label || this.executionTargetId} is missing its SSH ` +
+          `${this.profile.sshAuthMode === "password" ? "password" : "private key"}.`,
+      );
+    }
     // Reuse the exact dockerode constructor the parent resolved, but connect to
-    // the remote daemon over SSH instead of /var/run/docker.sock.
+    // the remote daemon over SSH instead of /var/run/docker.sock. dockerode is
+    // lazy — the local-socket client the parent just built opens no connection,
+    // so replacing it here leaks nothing.
     const Docker = this.docker.constructor;
     this.docker = new Docker(buildRemoteDockerOptions(this.profile));
     // A remote standalone host has no Nora compose network — never discover one.

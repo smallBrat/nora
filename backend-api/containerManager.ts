@@ -179,6 +179,9 @@ async function getBackendInstance(type, agent = {}) {
           "Remote Docker lifecycle operations require a registered remote host execution target.",
         );
       }
+      if (!profile.configured) {
+        throw new Error(profile.issue || "Remote host is not configured for lifecycle operations.");
+      }
       backendCache[cacheKey] = new RemoteDockerBackend(profile);
       break;
     }

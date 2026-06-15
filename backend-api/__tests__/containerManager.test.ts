@@ -254,6 +254,7 @@ describe("containerManager NemoClaw routing", () => {
       executionTargetId: "remote:my-laptop",
       sshHost: "100.64.0.5",
       sshUser: "operator",
+      configured: true,
     });
     const containerManager = require("../containerManager");
     const agent = {
@@ -270,6 +271,29 @@ describe("containerManager NemoClaw routing", () => {
     expect(mockRemoteStart).toHaveBeenCalledWith("oclaw-agent-remote");
     // critical: must NOT fall back to the local docker backend
     expect(mockStart).not.toHaveBeenCalled();
+  });
+
+  it("fails closed for a remote-docker agent whose host is unconfigured (no credential)", async () => {
+    mockGetRemoteHostProfile.mockResolvedValue({
+      id: "half-set-up",
+      executionTargetId: "remote:half-set-up",
+      sshHost: "100.64.0.9",
+      sshUser: "operator",
+      configured: false,
+      issue: "Remote host requires an SSH private key.",
+    });
+    const containerManager = require("../containerManager");
+    const agent = {
+      runtime_family: "openclaw",
+      deploy_target: "remote-docker",
+      execution_target_id: "remote:half-set-up",
+      backend_type: "remote-docker",
+      container_id: "oclaw-agent-half",
+    };
+
+    await expect(containerManager.start(agent)).rejects.toThrow(/SSH private key/i);
+    expect(mockStart).not.toHaveBeenCalled();
+    expect(mockRemoteStart).not.toHaveBeenCalled();
   });
 
   it("fails closed for a remote-docker agent whose host is not registered", async () => {
