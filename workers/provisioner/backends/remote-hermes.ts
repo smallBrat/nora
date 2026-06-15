@@ -7,16 +7,19 @@
 // changes only what differs on a remote standalone host:
 //   1. the dockerode client talks to the remote daemon over SSH;
 //   2. no Nora compose network (default bridge);
-//   3. the Hermes dashboard port is PUBLISHED on the remote host (local Hermes
-//      publishes nothing — it's reached via the container IP on the shared
-//      compose network, which isn't possible across SSH);
-//   4. create() advertises the remote machine's address so the control plane
-//      targets the remote host (full dashboard reach lands with the embed-proxy
-//      allowlist pass — B2c).
+//   3. the Hermes RUNTIME port (8642 — the API the post-deploy readiness probe
+//      hits at /health) is PUBLISHED on the remote host (local Hermes publishes
+//      nothing — it's reached via the container IP on the shared compose
+//      network, which isn't possible across SSH);
+//   4. create() advertises the remote machine's address + published runtime port
+//      so readiness passes and the control plane targets the remote host.
+//
+// The dashboard (9119) embed reach over remote — and its pre-existing SSRF gap —
+// is a separate pass (B2c); this PR makes Hermes deploy + stay healthy remotely.
 
 const HermesBackend = require("./hermes");
 const { buildRemoteDockerOptions } = require("./remote-docker");
-const { HERMES_DASHBOARD_PORT } = require("../../../agent-runtime/lib/contracts");
+const { HERMES_RUNTIME_PORT } = require("../../../agent-runtime/lib/contracts");
 
 class RemoteHermesBackend extends HermesBackend {
   constructor(profile = {}) {
@@ -54,27 +57,27 @@ class RemoteHermesBackend extends HermesBackend {
     return null;
   }
 
-  // Publish the Hermes dashboard on the worker-allocated host port so the
-  // control plane can reach it across the network.
+  // Publish the Hermes RUNTIME port on the worker-allocated host port so the
+  // control-plane readiness probe ({runtime_host}:{runtime_port}/health) can
+  // reach it across the network. (The dashboard port is published by B2c.)
   _hermesPortBindings(config) {
     const port = Number(config?.gatewayHostPort);
     if (!Number.isInteger(port) || port < 1 || port > 65535) return undefined;
-    return { [`${HERMES_DASHBOARD_PORT}/tcp`]: [{ HostPort: String(port) }] };
+    return { [`${HERMES_RUNTIME_PORT}/tcp`]: [{ HostPort: String(port) }] };
   }
 
   async create(config = {}) {
     const result = await super.create(config);
-    // Advertise the remote machine's address + published dashboard port so the
+    // Advertise the remote machine's address + the published runtime port so the
     // control plane targets the remote host instead of the container's internal
-    // (unreachable) compose IP.
+    // (unreachable) compose IP, and readiness probes the right address.
     const advertisedHost = this.profile.gatewayHost || this.profile.sshHost;
-    const dashboardHostPort = Number(config?.gatewayHostPort) || null;
+    const publishedRuntimePort = Number(config?.gatewayHostPort) || null;
     return {
       ...result,
       host: advertisedHost,
       runtimeHost: advertisedHost,
-      runtimePort: dashboardHostPort || result.runtimePort,
-      dashboardHostPort,
+      runtimePort: publishedRuntimePort || result.runtimePort,
     };
   }
 }

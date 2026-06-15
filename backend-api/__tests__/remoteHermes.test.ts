@@ -1,7 +1,7 @@
 // @ts-nocheck
 const RemoteHermesBackend = require("../../workers/provisioner/backends/remote-hermes");
 const HermesBackend = require("../../workers/provisioner/backends/hermes");
-const { HERMES_DASHBOARD_PORT } = require("../../agent-runtime/lib/contracts");
+const { HERMES_RUNTIME_PORT } = require("../../agent-runtime/lib/contracts");
 
 function hermesProfile(overrides = {}) {
   return {
@@ -47,17 +47,23 @@ describe("RemoteHermesBackend construction", () => {
   });
 });
 
-describe("RemoteHermesBackend dashboard publishing", () => {
-  it("publishes the dashboard port to the worker-allocated host port", () => {
+describe("RemoteHermesBackend runtime-port publishing", () => {
+  it("publishes the Hermes runtime port (the readiness target) on the allocated host port", () => {
     const backend = new RemoteHermesBackend(hermesProfile());
     const bindings = backend._hermesPortBindings({ gatewayHostPort: 19500 });
-    expect(bindings).toEqual({ [`${HERMES_DASHBOARD_PORT}/tcp`]: [{ HostPort: "19500" }] });
+    expect(bindings).toEqual({ [`${HERMES_RUNTIME_PORT}/tcp`]: [{ HostPort: "19500" }] });
   });
 
   it("publishes nothing when no host port is allocated", () => {
     const backend = new RemoteHermesBackend(hermesProfile());
     expect(backend._hermesPortBindings({})).toBeUndefined();
     expect(backend._hermesPortBindings({ gatewayHostPort: 0 })).toBeUndefined();
+  });
+
+  it("leaves local Hermes unpublished (base hook returns undefined)", () => {
+    // The base HermesBackend must not publish any host ports — local Hermes is
+    // reached via the container IP on the shared compose network.
+    expect(HermesBackend.prototype._hermesPortBindings()).toBeUndefined();
   });
 });
 
@@ -79,8 +85,8 @@ describe("RemoteHermesBackend.create", () => {
 
     expect(result.host).toBe("laptop.tail-scale.ts.net");
     expect(result.runtimeHost).toBe("laptop.tail-scale.ts.net");
+    // runtime_port is the published host port so readiness reaches /health
     expect(result.runtimePort).toBe(19500);
-    expect(result.dashboardHostPort).toBe(19500);
     expect(result.containerId).toBe("nora-hermes-x");
   });
 
