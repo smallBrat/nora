@@ -1,9 +1,9 @@
 <div align="center">
   <img src=".github/readme-assets/nora-logo.png" alt="Nora" width="112" height="112" />
   <h1>Nora</h1>
-  <p><strong>The self-hosted AI agent ops platform.</strong></p>
+  <p><strong>Deploy &amp; operate AI agent fleets on infrastructure you control.</strong></p>
   <p>
-    Deploy, monitor, and operate OpenClaw and Hermes runtimes from one operator surface — runtime-neutral, Apache 2.0, and on infrastructure you control. Run agents on Docker or Kubernetes today, use NemoClaw sandboxes experimentally, and track Proxmox as a planned execution target.
+    The self-hosted, runtime-neutral control plane for OpenClaw and Hermes agents — deploy, monitor, and operate them from one operator surface, Apache 2.0. Run on Docker or Kubernetes today, use NemoClaw sandboxes experimentally, and track Proxmox as a planned execution target.
   </p>
 </div>
 
@@ -168,6 +168,8 @@ cd e2e && npm test
 Detailed contributor guidance, subtree ownership, and development commands live in [`CLAUDE.md`](./CLAUDE.md). For deeper repo work, read [`CONTRIBUTING.md`](./CONTRIBUTING.md), the root [`AGENTS.md`](./AGENTS.md), and the nearest subtree `AGENTS.md`.
 
 ## Contributing
+
+New here? Browse [**good first issues**](https://github.com/solomon2773/nora/labels/good%20first%20issue) for small, self-contained starting points, then skim [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 Strong contribution areas: runtime adapter work · operator and admin UX · provisioning and lifecycle orchestration · integrations and channels · test and CI hardening · self-hosted deployment ergonomics.
 
