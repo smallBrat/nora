@@ -131,6 +131,9 @@ function assertRuntimeSelectionAvailable(runtimeFields) {
 async function assertRuntimeTargetAvailable(runtimeFields) {
   const status = assertRuntimeSelectionAvailable(runtimeFields);
   await kubernetesClusters.assertKubernetesExecutionTargetAvailable(runtimeFields);
+  // Admin re-deploys an existing agent, so this validates host availability
+  // (enabled/configured/connected) without owner-scoping the trusted admin.
+  await remoteHosts.assertRemoteHostExecutionTargetAvailable(runtimeFields);
   return status;
 }
 

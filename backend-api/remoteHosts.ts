@@ -550,7 +550,7 @@ async function testRemoteHost(hostId, options = {}) {
 // Deploy-path gate, mirroring assertKubernetesExecutionTargetAvailable. Wiring
 // this into the deploy queue happens in a later Phase A PR; it lives here now so
 // the contract is defined alongside the registry.
-async function assertRemoteHostExecutionTargetAvailable(runtimeFields = {}) {
+async function assertRemoteHostExecutionTargetAvailable(runtimeFields = {}, options = {}) {
   if (!isRemoteDockerTarget(runtimeFields.deploy_target ?? runtimeFields.deployTarget)) {
     return null;
   }
@@ -565,7 +565,10 @@ async function assertRemoteHostExecutionTargetAvailable(runtimeFields = {}) {
     throw error;
   }
   const profile = await getRemoteHostProfile(executionTargetId);
-  if (!profile) {
+  const ownerUserId = options.ownerUserId || null;
+  // Owner-scoped: a host registered by another operator is treated as unknown
+  // (don't leak its existence, and never deploy onto it cross-tenant).
+  if (!profile || (ownerUserId && profile.ownerUserId && profile.ownerUserId !== ownerUserId)) {
     const error = new Error(`Unknown remote host execution target: ${executionTargetId}`);
     error.statusCode = 400;
     throw error;

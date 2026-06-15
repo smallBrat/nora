@@ -286,6 +286,25 @@ describe("assertRemoteHostExecutionTargetAvailable", () => {
     expect(profile.id).toBe("my-laptop");
     expect(profile.available).toBe(true);
   });
+
+  it("rejects a host registered by a different operator (owner-scoped)", async () => {
+    mockDb.query.mockResolvedValueOnce({ rows: [remoteHostRow()] }); // owner = user-1
+    await expect(
+      remoteHosts.assertRemoteHostExecutionTargetAvailable(
+        { deploy_target: "remote-docker", execution_target_id: "remote:my-laptop" },
+        { ownerUserId: "user-2" },
+      ),
+    ).rejects.toThrow(/Unknown remote host/i);
+  });
+
+  it("allows a host owned by the requesting operator", async () => {
+    mockDb.query.mockResolvedValueOnce({ rows: [remoteHostRow()] });
+    const profile = await remoteHosts.assertRemoteHostExecutionTargetAvailable(
+      { deploy_target: "remote-docker", execution_target_id: "remote:my-laptop" },
+      { ownerUserId: "user-1" },
+    );
+    expect(profile.id).toBe("my-laptop");
+  });
 });
 
 describe("listRemoteHostExecutionTargets", () => {

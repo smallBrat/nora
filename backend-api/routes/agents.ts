@@ -74,6 +74,7 @@ const { findAccessibleAgent } = require("../middleware/ownership");
 const { scopeByMethod } = require("../middleware/auth");
 const agentVersions = require("../agentVersions");
 const { assertKubernetesExecutionTargetAvailable } = require("../kubernetesClusters");
+const { assertRemoteHostExecutionTargetAvailable } = require("../remoteHosts");
 
 const router = express.Router();
 router.use(createMutationFailureAuditMiddleware("agent"));
@@ -140,9 +141,10 @@ function isIgnorableStopError(error) {
   return message.includes("already stopped") || message.includes("not running");
 }
 
-async function assertRuntimeTargetAvailable(runtimeFields) {
+async function assertRuntimeTargetAvailable(runtimeFields, ownerUserId) {
   const status = assertRuntimeSelectionAvailable(runtimeFields);
   await assertKubernetesExecutionTargetAvailable(runtimeFields);
+  await assertRemoteHostExecutionTargetAvailable(runtimeFields, { ownerUserId });
   return status;
 }
 
@@ -1339,7 +1341,7 @@ router.post("/deploy", async (req, res) => {
       agentName: name,
       runtimeSelection: runtimeFields,
     });
-    const runtimeSelectionStatus = await assertRuntimeTargetAvailable(runtimeFields);
+    const runtimeSelectionStatus = await assertRuntimeTargetAvailable(runtimeFields, req.user.id);
     if (migrationDraft && runtimeFields.runtime_family !== migrationDraft.manifest.runtimeFamily) {
       return res.status(400).json({
         error: `Migration draft targets the ${migrationDraft.manifest.runtimeFamily} runtime family and cannot be deployed as ${runtimeFields.runtime_family}.`,
@@ -1564,7 +1566,7 @@ router.post(
       },
       fallback: sourceRuntime,
     });
-    await assertRuntimeTargetAvailable(runtimeFields);
+    await assertRuntimeTargetAvailable(runtimeFields, req.user.id);
     const node = await scheduler.selectNode({
       fallback: runtimeFields.deploy_target,
     });
@@ -1853,7 +1855,7 @@ router.post("/:id/redeploy", async (req, res) => {
       },
       fallback: currentRuntimeFields,
     });
-    await assertRuntimeTargetAvailable(runtimeFields);
+    await assertRuntimeTargetAvailable(runtimeFields, req.user.id);
     const containerName = resolveContainerName({
       requestedName: requestBody.container_name,
       currentName: agent.container_name,
