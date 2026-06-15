@@ -10,6 +10,7 @@ const snapshots = require("../snapshots");
 const containerManager = require("../containerManager");
 const releaseUpgrade = require("../releaseUpgrade");
 const kubernetesClusters = require("../kubernetesClusters");
+const remoteHosts = require("../remoteHosts");
 const doctor = require("../doctor");
 const { repairHermesAgentConfig } = require("../hermesUi");
 const { addBackupJob, addDeploymentJob, getDLQJobs, retryDLQJob } = require("../redisQueue");
@@ -710,6 +711,16 @@ router.delete(
       }),
     );
     res.json({ success: true, cluster });
+  }),
+);
+
+// Fleet-wide read-only view of every operator's registered remote hosts (BYOC).
+// Hosts are owned per-user; this is the admin oversight surface. Secrets are
+// masked by the registry's list path.
+router.get(
+  "/remote-hosts",
+  asyncHandler(async (_req, res) => {
+    res.json(await remoteHosts.listRemoteHosts({ includeDisabled: true }));
   }),
 );
 
