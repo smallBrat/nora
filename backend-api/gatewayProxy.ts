@@ -301,10 +301,15 @@ async function resolveSafeHermesDashboardTarget(agent) {
 // so the stored endpoint can never be one the proxy would later refuse — and so a
 // PaaS tenant can't register a private-network pivot. Enforces the same hard floor
 // (isBlockedGatewayIP, via resolveGatewayHostForProxy) + port allowlist the proxy
-// uses; trusts the operator's own host (passed as an extra allowed host); and in
-// hosted (PaaS) mode additionally requires the endpoint to resolve to a PUBLIC IP
-// (selfhosted may adopt RFC1918 runtimes on the operator's own network). Throws if
-// disallowed. Returns the validated {host, port}.
+// uses; and in hosted (PaaS) mode additionally requires the endpoint to resolve to
+// a PUBLIC IP (selfhosted may adopt RFC1918 runtimes on the operator's own network).
+//
+// Returns the RESOLVED IP (not the hostname): the caller pins this IP on the agent
+// row so the proxy connects to the exact validated address at reach time. Storing
+// the hostname instead would reopen a DNS-rebinding/TOCTOU hole — the proxy would
+// re-resolve it later and trust whatever it then points at (incl. loopback/RFC1918)
+// because the hostname sits in the allowlist. Pinning the IP closes that window
+// (re-adopt if a runtime's address legitimately changes). Throws if disallowed.
 async function assertExternalEndpointReachable(address, { paas = false } = {}) {
   const addr = assertSafeAgentAddress(address, "external runtime");
   if (addr.port !== HERMES_DASHBOARD_PORT && !isAllowedGatewayPort(addr.port)) {
@@ -322,7 +327,7 @@ async function assertExternalEndpointReachable(address, { paas = false } = {}) {
       "external runtime endpoint must be a public address in hosted mode (private/RFC1918 addresses are not allowed)",
     );
   }
-  return { host: addr.host, port: addr.port };
+  return { host: resolved, port: addr.port };
 }
 
 // ─── Device Identity (Ed25519 keypair for Gateway auth) ──────────

@@ -1507,6 +1507,12 @@ router.post("/deploy", async (req, res) => {
 router.post("/adopt", async (req, res) => {
   try {
     const body = req.body || {};
+    // An adopted runtime still occupies an agent slot, so it counts against the
+    // operator's quota even though Nora doesn't provision its compute.
+    const limits = await billing.enforceLimits(req.user.id);
+    if (!limits.allowed) {
+      return res.status(402).json({ error: limits.error, subscription: limits.subscription });
+    }
     const runtimeFamily = normalizeRequestedRuntimeFamily(body.runtime_family);
     if (runtimeFamily == null) {
       return res.status(400).json({
@@ -1566,13 +1572,15 @@ router.post("/adopt", async (req, res) => {
     // resolveGatewayAddress (OpenClaw) and resolveHermesDashboardAddress (Hermes),
     // so one mapping covers chat + dashboard reach for either family. status starts
     // 'running' (optimistic); the external health-poll (Phase C2) reconciles it.
+    // dashboard_port mirrors the published port so resolveHermesDashboardAddress is
+    // correct even via its runtime_host fallback (not just the gateway_host branch).
     const result = await db.query(
       `INSERT INTO agents(
          user_id, name, status, runtime_family, deploy_target, execution_target_id,
          sandbox_profile, sandbox_type, backend_type, gateway_host, gateway_port,
-         runtime_host, gateway_token
+         runtime_host, dashboard_port, gateway_token
        ) VALUES($1, $2, 'running', $3, 'external', 'external', 'standard', 'standard',
-                'external', $4, $5, $4, $6) RETURNING *`,
+                'external', $4, $5, $4, $5, $6) RETURNING *`,
       [req.user.id, name, runtimeFamily, endpoint.host, endpoint.port, token],
     );
     const agent = result.rows[0];

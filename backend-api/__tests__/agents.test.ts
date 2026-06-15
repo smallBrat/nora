@@ -2186,6 +2186,23 @@ describe("POST /agents/adopt (external runtime)", () => {
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/runtime_family/i);
   });
+
+  it("enforces the agent quota (adopted runtimes still occupy a slot)", async () => {
+    require("../billing").enforceLimits.mockResolvedValueOnce({
+      allowed: false,
+      error: "Agent limit reached",
+      subscription: { plan: "free" },
+    });
+    const res = await auth(
+      request(app).post("/agents/adopt").send({
+        runtime_family: "openclaw",
+        url: "https://203.0.113.5:18789",
+        gateway_token: "t",
+      }),
+    );
+    expect(res.status).toBe(402);
+    expect(mockDb.query).not.toHaveBeenCalled();
+  });
 });
 
 describe("POST /agents/deploy", () => {
