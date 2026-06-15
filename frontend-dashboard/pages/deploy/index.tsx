@@ -30,6 +30,7 @@ import {
   activeExecutionTargetFromConfig,
   containerNamePrefixForSelection,
   formatRuntimeFamilyLabel,
+  mergeRemoteHostsIntoConfig,
   pickExecutionTargetSelection,
   pickRuntimeFamilySelection,
   runtimeFamilyFromConfig,
@@ -230,9 +231,19 @@ export default function Deploy() {
       .then((r) => (r.ok ? r.json() : null))
       .then((profile) => setViewerRole(profile?.role || "user"))
       .catch(() => {});
-    fetch("/api/config/backends")
-      .then((r) => r.json())
-      .then(setBackendConfig)
+    // Fetch the global catalog and the operator's own connected remote hosts,
+    // then merge the hosts in as selectable targets before storing the config.
+    Promise.all([
+      fetch("/api/config/backends")
+        .then((r) => r.json())
+        .catch(() => null),
+      fetchWithAuth("/api/remote-hosts")
+        .then((r) => (r.ok ? r.json() : []))
+        .catch(() => []),
+    ])
+      .then(([config, hosts]) => {
+        if (config) setBackendConfig(mergeRemoteHostsIntoConfig(config, hosts));
+      })
       .catch(() => {});
     fetch("/api/config/platform")
       .then((r) => r.json())
