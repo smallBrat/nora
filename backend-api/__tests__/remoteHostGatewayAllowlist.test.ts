@@ -91,6 +91,45 @@ describe("remote-host gateway allowlist (HTTP proxy)", () => {
     );
   });
 
+  it("trusts a k8s agent's operator-provisioned (public LoadBalancer) address", async () => {
+    // k8s exposure addresses (LB/NodePort) are operator-provisioned, so RPC/WS/HTTP
+    // must reach them even when public — without a registry lookup.
+    const k8sAgent = {
+      id: "agent-k8s",
+      user_id: "user-1",
+      deploy_target: "k8s",
+      execution_target_id: "k8s:prod",
+      gateway_host: "203.0.113.20",
+      gateway_port: 18789,
+    };
+    const target = await resolveSafeGatewayHttpTarget(k8sAgent, "status");
+    expect(target.url).toBe("http://203.0.113.20:18789/status");
+    expect(mockGetRemoteHostByExecutionTarget).not.toHaveBeenCalled();
+  });
+
+  it("allows a docker agent to reach a custom (non-RFC1918) GATEWAY_HOST published host", async () => {
+    // Regression guard: a docker agent reaches its gateway via the operator's
+    // GATEWAY_HOST (publishedHost), which may not be RFC1918. Trusting it keeps
+    // docker chat working regardless of what the operator configured.
+    const prev = process.env.GATEWAY_HOST;
+    process.env.GATEWAY_HOST = "198.51.100.7"; // public test IP, not RFC1918
+    try {
+      const dockerAgent = {
+        id: "agent-docker",
+        user_id: "user-1",
+        deploy_target: "docker",
+        execution_target_id: "docker",
+        gateway_host: null,
+        gateway_host_port: 19042,
+      };
+      const target = await resolveSafeGatewayHttpTarget(dockerAgent, "status");
+      expect(target.url).toBe("http://198.51.100.7:19042/status");
+    } finally {
+      if (prev === undefined) delete process.env.GATEWAY_HOST;
+      else process.env.GATEWAY_HOST = prev;
+    }
+  });
+
   it("still allows an ordinary RFC1918 docker host (no regression)", async () => {
     const dockerAgent = remoteAgent({
       deploy_target: "docker",
