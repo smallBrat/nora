@@ -89,7 +89,12 @@ jobs:
           set -euo pipefail
           version="${{ steps.meta.outputs.version }}"
           tmp="$(mktemp)"
-          jq --arg v "${version}" '.version = $v | (.packages[]?.version) = $v' server.json > "${tmp}"
+          # Fail loudly if server.json ever loses its packages array rather than
+          # silently syncing only the top-level version.
+          jq --arg v "${version}" '
+            if (.packages | length) == 0 then error("server.json has no packages[] to version")
+            else .version = $v | (.packages[].version) = $v end
+          ' server.json > "${tmp}"
           mv "${tmp}" server.json
           echo "server.json now at version ${version}:"
           jq '{name, version, package: .packages[0].identifier}' server.json
