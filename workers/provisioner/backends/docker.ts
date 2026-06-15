@@ -334,6 +334,7 @@ class DockerBackend extends ProvisionerBackend {
       templatePayload,
       mcpServers: mcpServerEntries,
       abortSignal,
+      gatewayHostPort: allocatedGatewayPort,
     } = config;
     const containerName = container_name || safeContainerName("nora-oclaw", name, id);
     let container = null;
@@ -562,8 +563,14 @@ class DockerBackend extends ProvisionerBackend {
     const safeDefaultModel =
       defaultModel && /^[a-zA-Z0-9_\-/.]+$/.test(defaultModel) ? defaultModel : null;
 
-    // Derive the deterministic host port for this agent to include in allowedOrigins
-    const hostPort = 19000 + ((parseInt(id.replace(/\D/g, "").slice(0, 4)) || 0) % 1000);
+    // Use the port the worker reserved for this agent's host (collision-safe,
+    // BYOC Phase B). Fall back to the legacy deterministic hash only if no
+    // allocation was passed (older callers / safety net).
+    const allocatedPort = Number(allocatedGatewayPort);
+    const hostPort =
+      Number.isInteger(allocatedPort) && allocatedPort >= 1 && allocatedPort <= 65535
+        ? allocatedPort
+        : 19000 + ((parseInt(id.replace(/\D/g, "").slice(0, 4)) || 0) % 1000);
 
     const allowedOrigins = new Set([
       "http://localhost:8080",

@@ -75,6 +75,7 @@ const { scopeByMethod } = require("../middleware/auth");
 const agentVersions = require("../agentVersions");
 const { assertKubernetesExecutionTargetAvailable } = require("../kubernetesClusters");
 const { assertRemoteHostExecutionTargetAvailable } = require("../remoteHosts");
+const { releaseGatewayPort } = require("../portAllocations");
 
 const router = express.Router();
 router.use(createMutationFailureAuditMiddleware("agent"));
@@ -1773,6 +1774,10 @@ async function destroyAgent(agentId, userId, req, res) {
     }
   }
 
+  // Free the agent's reserved gateway port. The FK is ON DELETE CASCADE so the
+  // hard delete below already releases it, but release explicitly so the
+  // allocation can't leak if agent deletion ever becomes a soft-delete.
+  await releaseGatewayPort(agent.id).catch(() => {});
   await db.query("DELETE FROM agents WHERE id = $1", [agent.id]);
   await monitoring.logEvent(
     "agent_deleted",

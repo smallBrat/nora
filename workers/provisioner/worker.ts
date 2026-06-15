@@ -25,6 +25,7 @@ const {
 } = require("../../backend-api/hermesUi");
 const { getKubernetesClusterProfile } = require("../../backend-api/kubernetesClusters");
 const { getRemoteHostProfile } = require("../../backend-api/remoteHosts");
+const { allocateGatewayPort, LOCAL_HOST_KEY } = require("../../backend-api/portAllocations");
 const {
   buildIntegrationSyncEntry,
   decryptSensitiveConfig,
@@ -1741,6 +1742,27 @@ const worker = new Worker(
         if (resolvedBackend === "k8s" && container_name) {
           containerId = container_name;
         }
+        // Reserve a collision-safe published gateway port for docker / remote-docker
+        // agents (k8s/proxmox manage their own ports). Idempotent per agent+host,
+        // so redeploys keep the same port; released via ON DELETE CASCADE.
+        let allocatedGatewayPort;
+        {
+          const deployTarget = resolvedRuntimeFields.deploy_target;
+          const allocationHostKey =
+            deployTarget === "remote-docker"
+              ? String(resolvedRuntimeFields.execution_target_id || "")
+                  .trim()
+                  .toLowerCase() || null
+              : deployTarget === "docker"
+                ? LOCAL_HOST_KEY
+                : null;
+          if (allocationHostKey) {
+            allocatedGatewayPort = await allocateGatewayPort({
+              hostKey: allocationHostKey,
+              agentId: id,
+            });
+          }
+        }
         const createPromise = provisioner.create({
           id,
           name,
@@ -1749,6 +1771,7 @@ const worker = new Worker(
           ram_mb,
           disk_gb,
           container_name,
+          gatewayHostPort: allocatedGatewayPort,
           gatewayToken: agentRow.gateway_token || undefined,
           templatePayload,
           mcpServers: mcpServerEntries,
