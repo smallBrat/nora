@@ -83,6 +83,31 @@ CREATE TABLE IF NOT EXISTS kubernetes_clusters (
 CREATE INDEX IF NOT EXISTS idx_kubernetes_clusters_enabled
   ON kubernetes_clusters(enabled, is_default, label);
 
+CREATE TABLE IF NOT EXISTS remote_hosts (
+  id TEXT PRIMARY KEY,
+  owner_user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  label TEXT NOT NULL,
+  enabled BOOLEAN NOT NULL DEFAULT true,
+  is_default BOOLEAN NOT NULL DEFAULT false,
+  ssh_host TEXT NOT NULL DEFAULT '',
+  ssh_port INTEGER NOT NULL DEFAULT 22,
+  ssh_user TEXT NOT NULL DEFAULT '',
+  ssh_auth_mode TEXT NOT NULL DEFAULT 'key',
+  ssh_private_key_encrypted TEXT,
+  ssh_password_encrypted TEXT,
+  ssh_passphrase_encrypted TEXT,
+  gateway_host TEXT NOT NULL DEFAULT '',
+  docker_host TEXT NOT NULL DEFAULT '',
+  last_test_status TEXT,
+  last_test_message TEXT,
+  last_tested_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_remote_hosts_owner
+  ON remote_hosts(owner_user_id, enabled, is_default, label);
+
 CREATE TABLE IF NOT EXISTS deployments (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   agent_id UUID REFERENCES agents(id) ON DELETE CASCADE,
