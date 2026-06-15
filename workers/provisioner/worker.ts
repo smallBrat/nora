@@ -24,6 +24,7 @@ const {
   getPersistedHermesState,
 } = require("../../backend-api/hermesUi");
 const { getKubernetesClusterProfile } = require("../../backend-api/kubernetesClusters");
+const { getRemoteHostProfile } = require("../../backend-api/remoteHosts");
 const {
   buildIntegrationSyncEntry,
   decryptSensitiveConfig,
@@ -1305,11 +1306,17 @@ async function loadBackend(runtimeFields = {}) {
           "Kubernetes provisioning requires an Admin-registered cluster target such as k8s:aks-eastus2.",
         );
       }
-      // Fail closed for remote Docker hosts: the adapter is not yet available,
-      // so we must NOT silently provision on the LOCAL docker host. (BYOC Phase A.)
-      if (key === "remote-docker" || key.startsWith("remote:")) {
+      if (key.startsWith("remote:")) {
+        const profile = await getRemoteHostProfile(key);
+        if (!profile) {
+          throw new Error(`Unknown remote host execution target: ${key}`);
+        }
+        instance = new (require("./backends/remote-docker"))(profile);
+        break;
+      }
+      if (key === "remote-docker") {
         throw new Error(
-          "Remote Docker execution targets are registered but not yet provisionable in this release.",
+          "Remote Docker provisioning requires a registered host target such as remote:my-laptop.",
         );
       }
       console.warn(`Unknown backend "${key}", falling back to docker`);
