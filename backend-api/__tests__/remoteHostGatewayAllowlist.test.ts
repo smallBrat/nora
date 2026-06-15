@@ -218,4 +218,23 @@ describe("hermes dashboard embed-proxy allowlist (SSRF)", () => {
       /not an allowed gateway address/i,
     );
   });
+
+  it("trusts a k8s Hermes agent's provisioned (public LoadBalancer/NodePort) dashboard", async () => {
+    // k8s exposure addresses are operator-provisioned, so the dashboard must be
+    // reachable even on a public IP — without a remote-host registry lookup. This
+    // relies on gateway_host/gateway_port being loaded by the embed lookup.
+    const agent = {
+      id: "hermes-k8s",
+      user_id: "user-1",
+      runtime_family: "hermes",
+      deploy_target: "k8s",
+      execution_target_id: "k8s:prod",
+      gateway_host: "203.0.113.20",
+      gateway_port: 30119, // NodePort range
+      runtime_host: "10.42.0.3",
+    };
+    const target = await resolveSafeHermesDashboardTarget(agent);
+    expect(target).toEqual({ host: "203.0.113.20", port: 30119 });
+    expect(mockGetRemoteHostByExecutionTarget).not.toHaveBeenCalled();
+  });
 });

@@ -1,3 +1,4 @@
+const net = require("net");
 const { AGENT_RUNTIME_PORT, OPENCLAW_GATEWAY_PORT, HERMES_DASHBOARD_PORT } = require("./contracts");
 
 function normalizePath(path = "/") {
@@ -29,7 +30,10 @@ function runtimeUsesHermesDashboard(agent) {
 }
 
 function joinHttpUrl(host, port, path = "/") {
-  return `http://${host}:${port}${normalizePath(path)}`;
+  // Bracket IPv6 literals so the colons in the address don't collide with the
+  // port separator (e.g. ::1 → http://[::1]:9119/…). Hostnames/IPv4 pass through.
+  const hostForUrl = net.isIP(host) === 6 ? `[${host}]` : host;
+  return `http://${hostForUrl}:${port}${normalizePath(path)}`;
 }
 
 function resolveRuntimeAddress(agent) {

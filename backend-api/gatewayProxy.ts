@@ -267,8 +267,10 @@ async function resolveSafeHermesDashboardTarget(agent) {
     throw new Error("hermes dashboard is not available for this agent");
   }
   const addr = assertSafeAgentAddress(address, "hermes dashboard");
-  // The dashboard runs on HERMES_DASHBOARD_PORT (local container) or a published
-  // host port for remote/k8s exposure.
+  // Allow either the default dashboard port (HERMES_DASHBOARD_PORT = 9119, the
+  // local container) OR a published host port (Docker published port / k8s
+  // NodePort) in the gateway port range — those are the two ways the dashboard
+  // is exposed. 9119 is outside the gateway port range, hence the explicit OR.
   if (addr.port !== HERMES_DASHBOARD_PORT && !isAllowedGatewayPort(addr.port)) {
     throw new Error("hermes dashboard port is not allowed for proxying");
   }
