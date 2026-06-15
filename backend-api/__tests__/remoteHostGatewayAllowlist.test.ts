@@ -16,7 +16,10 @@ jest.mock("../remoteHosts", () => ({
   getRemoteHostByExecutionTarget: (...args) => mockGetRemoteHostByExecutionTarget(...args),
 }));
 
-const { resolveSafeGatewayHttpTarget } = require("../gatewayProxy");
+const {
+  resolveSafeGatewayHttpTarget,
+  resolveSafeHermesDashboardTarget,
+} = require("../gatewayProxy");
 
 const PUBLIC_IP = "203.0.113.5";
 
@@ -140,5 +143,79 @@ describe("remote-host gateway allowlist (HTTP proxy)", () => {
     const target = await resolveSafeGatewayHttpTarget(dockerAgent, "status");
     expect(target.url).toBe("http://10.0.0.10:19000/status");
     expect(mockGetRemoteHostByExecutionTarget).not.toHaveBeenCalled();
+  });
+});
+
+describe("hermes dashboard embed-proxy allowlist (SSRF)", () => {
+  it("allows a local Hermes agent's RFC1918 dashboard host", async () => {
+    const agent = {
+      id: "hermes-1",
+      user_id: "user-1",
+      runtime_family: "hermes",
+      deploy_target: "docker",
+      execution_target_id: "docker",
+      runtime_host: "10.0.0.7",
+    };
+    const target = await resolveSafeHermesDashboardTarget(agent);
+    expect(target).toEqual({ host: "10.0.0.7", port: 9119 });
+    expect(mockGetRemoteHostByExecutionTarget).not.toHaveBeenCalled();
+  });
+
+  it("rejects a Hermes agent whose runtime_host is a public address (SSRF guard)", async () => {
+    const agent = {
+      id: "hermes-2",
+      user_id: "user-1",
+      runtime_family: "hermes",
+      deploy_target: "docker",
+      execution_target_id: "docker",
+      runtime_host: PUBLIC_IP,
+    };
+    await expect(resolveSafeHermesDashboardTarget(agent)).rejects.toThrow(
+      /not an allowed gateway address/i,
+    );
+  });
+
+  it("allows a remote Hermes agent's own registered host (owner-scoped)", async () => {
+    mockGetRemoteHostByExecutionTarget.mockResolvedValue({
+      id: "my-vps",
+      ownerUserId: "user-1",
+      gatewayHost: PUBLIC_IP,
+      sshHost: PUBLIC_IP,
+    });
+    const agent = {
+      id: "hermes-3",
+      user_id: "user-1",
+      runtime_family: "hermes",
+      deploy_target: "remote-docker",
+      execution_target_id: "remote:my-vps",
+      runtime_host: PUBLIC_IP,
+      // dashboard_port is not yet persisted for remote (B2c-2), so the dashboard
+      // address resolves to the default Hermes port; the SSRF allowance is what
+      // this test verifies — the registered host's address is trusted.
+      dashboard_port: 9119,
+    };
+    const target = await resolveSafeHermesDashboardTarget(agent);
+    expect(target).toEqual({ host: PUBLIC_IP, port: 9119 });
+  });
+
+  it("does not trust a remote Hermes host registered by another operator", async () => {
+    mockGetRemoteHostByExecutionTarget.mockResolvedValue({
+      id: "my-vps",
+      ownerUserId: "user-2",
+      gatewayHost: PUBLIC_IP,
+      sshHost: PUBLIC_IP,
+    });
+    const agent = {
+      id: "hermes-4",
+      user_id: "user-1",
+      runtime_family: "hermes",
+      deploy_target: "remote-docker",
+      execution_target_id: "remote:my-vps",
+      runtime_host: PUBLIC_IP,
+      runtime_port: 19042,
+    };
+    await expect(resolveSafeHermesDashboardTarget(agent)).rejects.toThrow(
+      /not an allowed gateway address/i,
+    );
   });
 });

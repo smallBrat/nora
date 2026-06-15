@@ -29,12 +29,16 @@ const { getBootstrapAdminSeedConfig } = require("./bootstrapAdmin");
 const { ensureFirstRegisteredUserIsAdmin } = require("./ensureAdminUser");
 const { authenticateToken } = require("./middleware/auth");
 const { correlationId, errorHandler } = require("./middleware/errorHandler");
-const { createGatewayRouter, attachGatewayWS } = require("./gatewayProxy");
+const {
+  createGatewayRouter,
+  attachGatewayWS,
+  resolveSafeHermesDashboardTarget,
+} = require("./gatewayProxy");
 const { isGatewayAvailableStatus } = require("./agentStatus");
 const { repairHermesAgentConfig } = require("./hermesUi");
 const {
+  joinHttpUrl,
   gatewayUrlForAgent,
-  dashboardUrlForAgent,
   hasGatewayEndpoint,
   hasHermesDashboardEndpoint,
 } = require("../agent-runtime/lib/agentEndpoints");
@@ -907,7 +911,10 @@ async function proxyEmbeddedHermes(req, res) {
     if (!access) return;
 
     const hermesPath = getEmbeddedHermesPath(req);
-    const targetUrl = `${dashboardUrlForAgent(access.agent, hermesPath)}${buildForwardedSearch(req)}`;
+    // Validate + resolve the dashboard host against the gateway allowlist before
+    // connecting (closes the SSRF gap where runtime_host was reached unchecked).
+    const safeTarget = await resolveSafeHermesDashboardTarget(access.agent);
+    const targetUrl = `${joinHttpUrl(safeTarget.host, safeTarget.port, hermesPath)}${buildForwardedSearch(req)}`;
     const cookies = parseCookieHeader(req.headers.cookie || "");
     const dashboardTokenCookieName = getEmbedSessionCookieName(
       access.agentId,

@@ -139,6 +139,7 @@ function buildRuntimeAuthHeaders(token) {
 }
 
 module.exports = {
+  joinHttpUrl,
   resolveRuntimeAddress,
   resolveGatewayAddress,
   resolveHermesDashboardAddress,

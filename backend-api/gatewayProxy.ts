@@ -16,9 +16,10 @@ const { normalizeDeployTargetName } = require("../agent-runtime/lib/backendCatal
 
 const metrics = require("./metrics");
 const agentBudgets = require("./agentBudgets");
-const { OPENCLAW_GATEWAY_PORT } = require("../agent-runtime/lib/contracts");
+const { OPENCLAW_GATEWAY_PORT, HERMES_DASHBOARD_PORT } = require("../agent-runtime/lib/contracts");
 const {
   resolveGatewayAddress,
+  resolveHermesDashboardAddress,
   hasGatewayEndpoint,
 } = require("../agent-runtime/lib/agentEndpoints");
 const GATEWAY_PORT = OPENCLAW_GATEWAY_PORT;
@@ -254,6 +255,30 @@ async function resolveSafeGatewayHttpTarget(agent, gatewayPath = "", search = ""
     url: targetUrl.toString(),
     hostHeader: hostHeaderForGateway(addr.host, addr.port),
   };
+}
+
+// Validate + resolve a Hermes agent's dashboard address before the embed proxy
+// connects to it — the Hermes equivalent of resolveSafeGatewayHttpTarget, which
+// closes the SSRF gap where the embed proxy reached runtime_host unchecked.
+// Returns the resolved (allowlisted) host + port; throws if disallowed.
+async function resolveSafeHermesDashboardTarget(agent) {
+  const address = resolveHermesDashboardAddress(agent);
+  if (!address) {
+    throw new Error("hermes dashboard is not available for this agent");
+  }
+  const addr = assertSafeAgentAddress(address, "hermes dashboard");
+  // The dashboard runs on HERMES_DASHBOARD_PORT (local container) or a published
+  // host port for remote/k8s exposure.
+  if (addr.port !== HERMES_DASHBOARD_PORT && !isAllowedGatewayPort(addr.port)) {
+    throw new Error("hermes dashboard port is not allowed for proxying");
+  }
+  const extraAllowedHosts = await allowedGatewayHostsForAgent(agent);
+  const resolvedHost = await resolveGatewayHostForProxy(
+    addr.host,
+    "hermes dashboard",
+    extraAllowedHosts,
+  );
+  return { host: resolvedHost, port: addr.port };
 }
 
 // ─── Device Identity (Ed25519 keypair for Gateway auth) ──────────
@@ -1525,4 +1550,5 @@ module.exports = {
   resolveAgent,
   evictConnection,
   resolveSafeGatewayHttpTarget,
+  resolveSafeHermesDashboardTarget,
 };
