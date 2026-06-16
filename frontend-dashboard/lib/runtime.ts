@@ -40,7 +40,9 @@ export function normalizeDeployTarget(value) {
   if (normalized.startsWith("k8s:") || normalized.startsWith("kubernetes:")) return "k8s";
   if (normalized === "kubernetes" || normalized === "k3s") return "k8s";
   if (normalized.startsWith("remote:")) return "remote-docker";
-  if (["docker", "k8s", "remote-docker", "proxmox"].includes(normalized)) return normalized;
+  if (["docker", "k8s", "remote-docker", "proxmox", "external"].includes(normalized)) {
+    return normalized;
+  }
   return null;
 }
 
@@ -415,6 +417,8 @@ export function formatExecutionTargetLabel(
       return "Remote Docker host";
     case "proxmox":
       return "Proxmox";
+    case "external":
+      return "External runtime";
     default:
       return "Docker";
   }
