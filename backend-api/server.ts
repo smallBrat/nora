@@ -21,6 +21,7 @@ const { collectAgentTelemetrySample } = require("./agentTelemetry");
 const {
   collectBackgroundTelemetry,
   reconcileBackgroundAgentStatuses,
+  reconcileExternalAgentStatuses,
 } = require("./backgroundTasks");
 const agentBudgets = require("./agentBudgets");
 const { listKubernetesExecutionTargets } = require("./kubernetesClusters");
@@ -2073,6 +2074,12 @@ if (require.main === module) {
     const RECONCILE_INTERVAL = 30000;
     setInterval(async () => {
       await reconcileBackgroundAgentStatuses({ dbClient: db });
+    }, RECONCILE_INTERVAL);
+
+    // ── External runtime reconciler: adopted runtimes have no container, so probe
+    // their endpoint over HTTP (SSRF-safe) and reconcile status every 30s. ──
+    setInterval(async () => {
+      await reconcileExternalAgentStatuses({ dbClient: db });
     }, RECONCILE_INTERVAL);
 
     // ── Budget sweep: re-enforce per-agent hard caps every 60s. The status
