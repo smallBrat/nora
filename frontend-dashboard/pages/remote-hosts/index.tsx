@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import Layout from "../../components/layout/Layout";
 import {
@@ -79,7 +79,13 @@ export default function RemoteHostsPage() {
   const [deletingId, setDeletingId] = useState("");
   const [sharePanelId, setSharePanelId] = useState("");
   const [shareSelection, setShareSelection] = useState("");
-  const [shareBusy, setShareBusy] = useState(false);
+  // Host id whose share/unshare request is in flight (""=none), so a slow
+  // request on one host never disables another host's controls.
+  const [shareBusyId, setShareBusyId] = useState("");
+  // Monotonic token bumped by every shares write (eager load + add/remove). An
+  // in-flight eager load checks it before committing, so a slow load can't
+  // clobber a share/unshare the operator made while it was running.
+  const shareSeq = useRef(0);
 
   const editing = Boolean(editingId);
 
@@ -96,6 +102,7 @@ export default function RemoteHostsPage() {
       const owned = (Array.isArray(data) ? data : []).filter(
         (h) => (h.access || "owned") !== "shared",
       );
+      const startSeq = ++shareSeq.current;
       const entries = await Promise.all(
         owned.map(async (h): Promise<[string, any[]]> => {
           try {
@@ -106,7 +113,12 @@ export default function RemoteHostsPage() {
           }
         }),
       );
-      setSharesByHost(Object.fromEntries(entries));
+      // A newer eager load or an add/remove bumped the token while we awaited —
+      // its fresher data wins; drop this now-stale snapshot. Merge (not replace)
+      // so any host not in this batch keeps its existing entry.
+      if (shareSeq.current === startSeq) {
+        setSharesByHost((prev) => ({ ...prev, ...Object.fromEntries(entries) }));
+      }
     } catch (error) {
       toast.error(error.message || "Failed to load remote hosts");
     } finally {
@@ -239,7 +251,7 @@ export default function RemoteHostsPage() {
 
   async function addShare(host) {
     if (!shareSelection) return;
-    setShareBusy(true);
+    setShareBusyId(host.id);
     try {
       const res = await fetchWithAuth(`/api/remote-hosts/${encodeURIComponent(host.id)}/shares`, {
         method: "POST",
@@ -247,18 +259,25 @@ export default function RemoteHostsPage() {
       });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(payload.error || "Failed to share host");
-      setSharesByHost((prev) => ({ ...prev, [host.id]: Array.isArray(payload) ? payload : [] }));
+      // On a success status with an unexpected (non-array) body, keep the
+      // existing shares rather than wiping them to []. Bump the token so an
+      // in-flight eager load doesn't overwrite this fresh value.
+      shareSeq.current += 1;
+      setSharesByHost((prev) => ({
+        ...prev,
+        [host.id]: Array.isArray(payload) ? payload : prev[host.id] || [],
+      }));
       setShareSelection("");
       toast.success("Host shared with workspace");
     } catch (error) {
       toast.error(error.message || "Failed to share host");
     } finally {
-      setShareBusy(false);
+      setShareBusyId("");
     }
   }
 
   async function removeShare(host, workspaceId) {
-    setShareBusy(true);
+    setShareBusyId(host.id);
     try {
       const res = await fetchWithAuth(
         `/api/remote-hosts/${encodeURIComponent(host.id)}/shares/${encodeURIComponent(workspaceId)}`,
@@ -266,12 +285,16 @@ export default function RemoteHostsPage() {
       );
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(payload.error || "Failed to remove share");
-      setSharesByHost((prev) => ({ ...prev, [host.id]: Array.isArray(payload) ? payload : [] }));
+      shareSeq.current += 1;
+      setSharesByHost((prev) => ({
+        ...prev,
+        [host.id]: Array.isArray(payload) ? payload : prev[host.id] || [],
+      }));
       toast.success("Stopped sharing host");
     } catch (error) {
       toast.error(error.message || "Failed to remove share");
     } finally {
-      setShareBusy(false);
+      setShareBusyId("");
     }
   }
 
@@ -282,6 +305,7 @@ export default function RemoteHostsPage() {
     const shares = sharesByHost[host.id] || [];
     const sharedIds = new Set(shares.map((s) => s.workspaceId));
     const available = workspaces.filter((w) => !sharedIds.has(w.id));
+    const busy = shareBusyId === host.id;
     return (
       <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
         <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-700">
@@ -304,7 +328,7 @@ export default function RemoteHostsPage() {
                 </span>
                 <button
                   onClick={() => removeShare(host, share.workspaceId)}
-                  disabled={shareBusy}
+                  disabled={busy}
                   className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-60"
                   aria-label="Stop sharing with this workspace"
                 >
@@ -330,6 +354,7 @@ export default function RemoteHostsPage() {
             <select
               value={shareSelection}
               onChange={(e) => setShareSelection(e.target.value)}
+              aria-label="Workspace to share this host with"
               className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
             >
               <option value="">Select a workspace…</option>
@@ -341,10 +366,10 @@ export default function RemoteHostsPage() {
             </select>
             <button
               onClick={() => addShare(host)}
-              disabled={shareBusy || !shareSelection}
+              disabled={busy || !shareSelection}
               className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
             >
-              {shareBusy ? <Loader2 size={14} className="animate-spin" /> : <Share2 size={14} />}
+              {busy ? <Loader2 size={14} className="animate-spin" /> : <Share2 size={14} />}
               Share
             </button>
           </div>
