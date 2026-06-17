@@ -325,8 +325,12 @@ export function mergeRemoteHostsIntoConfig(
   backendConfig: BackendConfig = {},
   remoteHosts: any[] = [],
 ) {
+  // Only connected hosts the caller may actually deploy to. Owned hosts always
+  // carry canDeploy=true; hosts shared into a workspace are deployable for
+  // editor+ members and read-only (canDeploy=false) for viewers — those must
+  // not appear as selectable targets even though the operator can see them.
   const hosts = Array.isArray(remoteHosts)
-    ? remoteHosts.filter((host) => host && host.available)
+    ? remoteHosts.filter((host) => host && host.available && host.canDeploy !== false)
     : [];
   if (!hosts.length) return backendConfig;
   const runtimeFamilies = Array.isArray(backendConfig?.runtimeFamilies)
