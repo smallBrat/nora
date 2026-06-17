@@ -287,14 +287,28 @@ describe("assertRemoteHostExecutionTargetAvailable", () => {
     expect(profile.available).toBe(true);
   });
 
-  it("rejects a host registered by a different operator (owner-scoped)", async () => {
-    mockDb.query.mockResolvedValueOnce({ rows: [remoteHostRow()] }); // owner = user-1
+  it("rejects a host registered by a different operator with no grant (owner-scoped)", async () => {
+    mockDb.query
+      .mockResolvedValueOnce({ rows: [remoteHostRow()] }) // getRemoteHostProfile: owner = user-1
+      .mockResolvedValue({ rows: [] }); // userCanUseRemoteHost probes: not owner, no grant
     await expect(
       remoteHosts.assertRemoteHostExecutionTargetAvailable(
         { deploy_target: "remote-docker", execution_target_id: "remote:my-laptop" },
         { ownerUserId: "user-2" },
       ),
     ).rejects.toThrow(/Unknown remote host/i);
+  });
+
+  it("allows a non-owner who has an editor+ grant via a shared workspace (C3)", async () => {
+    mockDb.query
+      .mockResolvedValueOnce({ rows: [remoteHostRow()] }) // getRemoteHostProfile: owner = user-1
+      .mockResolvedValueOnce({ rows: [] }) // userCanUseRemoteHost: ownership probe (not owner)
+      .mockResolvedValueOnce({ rows: [{ "?column?": 1 }] }); // shared editor+ grant
+    const profile = await remoteHosts.assertRemoteHostExecutionTargetAvailable(
+      { deploy_target: "remote-docker", execution_target_id: "remote:my-laptop" },
+      { ownerUserId: "user-2" },
+    );
+    expect(profile.id).toBe("my-laptop");
   });
 
   it("allows a host owned by the requesting operator", async () => {

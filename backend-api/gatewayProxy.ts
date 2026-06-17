@@ -121,9 +121,10 @@ const EMPTY_ALLOWED_HOSTS = new Set();
 
 // A registered remote host's advertised address is operator-trusted, so allow
 // it even though it is not RFC1918/loopback. Scoped to the agent's OWN host
-// (looked up by execution target) AND to the agent's owner, so a cross-tenant
-// execution_target_id reference can't leak or reach another operator's host.
-// Blocked addresses (0.0.0.0, link-local, …) still apply.
+// (looked up by execution target) AND to a user who may use it — the agent's
+// owner, OR (C3) a workspace the host is shared into where the owner is editor+.
+// A cross-tenant execution_target_id reference still can't reach a host that was
+// never shared to the agent owner. Blocked addresses (0.0.0.0, link-local, …) still apply.
 async function allowedRemoteHostsForAgent(agent) {
   if (normalizeDeployTargetName(agent?.deploy_target) !== "remote-docker") {
     return EMPTY_ALLOWED_HOSTS;
@@ -131,9 +132,11 @@ async function allowedRemoteHostsForAgent(agent) {
   try {
     const host = await remoteHosts.getRemoteHostByExecutionTarget(agent.execution_target_id);
     if (!host) return EMPTY_ALLOWED_HOSTS;
-    // Only trust a host the agent's owner actually registered.
+    // Trust the host only if the agent's owner may use it: direct owner, or an
+    // editor+ grant via a workspace the host is shared into (positive check).
     if (agent.user_id && host.ownerUserId && host.ownerUserId !== agent.user_id) {
-      return EMPTY_ALLOWED_HOSTS;
+      const allowed = await remoteHosts.userCanUseRemoteHost(agent.user_id, host.id);
+      if (!allowed) return EMPTY_ALLOWED_HOSTS;
     }
     const allowed = new Set();
     if (host.gatewayHost) allowed.add(String(host.gatewayHost).toLowerCase());
