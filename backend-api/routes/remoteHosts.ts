@@ -11,6 +11,7 @@ const remoteHosts = require("../remoteHosts");
 const monitoring = require("../monitoring");
 const { asyncHandler } = require("../middleware/errorHandler");
 const { requireSession } = require("../middleware/auth");
+const { findWorkspaceMembership } = require("../middleware/ownership");
 
 const router = express.Router();
 router.use(requireSession);
@@ -30,9 +31,57 @@ async function loadOwnedHost(req) {
 router.get(
   "/",
   asyncHandler(async (req, res) => {
-    res.json(
-      await remoteHosts.listRemoteHosts({ ownerUserId: req.user.id, includeDisabled: true }),
+    // Owned hosts (full management) + hosts shared into the caller's workspaces
+    // (read-only; annotated with access + canDeploy).
+    res.json(await remoteHosts.listAccessibleRemoteHosts(req.user.id));
+  }),
+);
+
+// List the workspaces a host is shared into (owner only).
+router.get(
+  "/:id/shares",
+  asyncHandler(async (req, res) => {
+    await loadOwnedHost(req);
+    res.json(await remoteHosts.listRemoteHostShares(req.params.id));
+  }),
+);
+
+// Share a host into a workspace. Owner only, and only into a workspace the owner
+// is a member of (you can't share your host into someone else's workspace).
+router.post(
+  "/:id/shares",
+  asyncHandler(async (req, res) => {
+    const owned = await loadOwnedHost(req);
+    const workspaceId = String((req.body || {}).workspace_id || (req.body || {}).workspaceId || "");
+    if (!workspaceId) {
+      return res.status(400).json({ error: "workspace_id is required" });
+    }
+    const membership = await findWorkspaceMembership(workspaceId, req.user.id);
+    if (!membership) {
+      return res.status(404).json({ error: "Workspace not found" });
+    }
+    await remoteHosts.shareRemoteHost(owned.id, workspaceId, req.user.id);
+    await monitoring.logEvent(
+      "remote_host_shared",
+      `Shared remote host "${owned.label}" with workspace ${membership.name || workspaceId}`,
+      { userId: req.user.id, remoteHost: { id: owned.id }, workspaceId },
     );
+    res.status(201).json(await remoteHosts.listRemoteHostShares(owned.id));
+  }),
+);
+
+// Stop sharing a host with a workspace (owner only).
+router.delete(
+  "/:id/shares/:workspaceId",
+  asyncHandler(async (req, res) => {
+    const owned = await loadOwnedHost(req);
+    await remoteHosts.unshareRemoteHost(owned.id, req.params.workspaceId);
+    await monitoring.logEvent(
+      "remote_host_unshared",
+      `Stopped sharing remote host "${owned.label}"`,
+      { userId: req.user.id, remoteHost: { id: owned.id }, workspaceId: req.params.workspaceId },
+    );
+    res.json(await remoteHosts.listRemoteHostShares(owned.id));
   }),
 );
 

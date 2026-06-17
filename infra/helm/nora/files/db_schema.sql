@@ -86,7 +86,7 @@ CREATE INDEX IF NOT EXISTS idx_kubernetes_clusters_enabled
 
 CREATE TABLE IF NOT EXISTS remote_hosts (
   id TEXT PRIMARY KEY,
-  owner_user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  owner_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   label TEXT NOT NULL,
   enabled BOOLEAN NOT NULL DEFAULT true,
   is_default BOOLEAN NOT NULL DEFAULT false,
@@ -357,6 +357,22 @@ CREATE TABLE IF NOT EXISTS workspace_agents (
 
 CREATE INDEX IF NOT EXISTS idx_workspace_agents_agent
   ON workspace_agents(agent_id);
+
+-- Shared BYOC remote hosts (Phase C3). A host's owner can share it into a
+-- workspace they belong to; workspace members then use it per their workspace
+-- role (editor+ deploys/reaches, viewer sees read-only). Host config/credentials
+-- stay with the owner. Mirrors workspace_agents.
+CREATE TABLE IF NOT EXISTS workspace_remote_hosts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id UUID REFERENCES workspaces(id) ON DELETE CASCADE,
+  remote_host_id TEXT REFERENCES remote_hosts(id) ON DELETE CASCADE,
+  created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(workspace_id, remote_host_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_workspace_remote_hosts_host
+  ON workspace_remote_hosts(remote_host_id);
 
 -- Per-workspace membership (Phase 0 of multi-tenant RBAC).
 -- workspaces.user_id remains as the creator denormalization; permission checks

@@ -12,8 +12,10 @@ jest.mock("../agentBudgets", () => ({ checkAndEnforce: jest.fn() }));
 jest.mock("ws", () => ({ WebSocket: class {}, WebSocketServer: class {} }));
 
 const mockGetRemoteHostByExecutionTarget = jest.fn();
+const mockUserCanUseRemoteHost = jest.fn().mockResolvedValue(false);
 jest.mock("../remoteHosts", () => ({
   getRemoteHostByExecutionTarget: (...args) => mockGetRemoteHostByExecutionTarget(...args),
+  userCanUseRemoteHost: (...args) => mockUserCanUseRemoteHost(...args),
 }));
 
 const {
@@ -38,6 +40,8 @@ function remoteAgent(overrides = {}) {
 
 beforeEach(() => {
   mockGetRemoteHostByExecutionTarget.mockReset();
+  mockUserCanUseRemoteHost.mockReset();
+  mockUserCanUseRemoteHost.mockResolvedValue(false);
 });
 
 describe("remote-host gateway allowlist (HTTP proxy)", () => {
@@ -54,7 +58,8 @@ describe("remote-host gateway allowlist (HTTP proxy)", () => {
   });
 
   it("does NOT trust a remote host registered by a different operator", async () => {
-    // Cross-tenant execution_target_id reference: the host belongs to user-2.
+    // Cross-tenant execution_target_id reference: the host belongs to user-2 and is
+    // NOT shared to user-1 (userCanUseRemoteHost defaults to false).
     mockGetRemoteHostByExecutionTarget.mockResolvedValue({
       id: "my-vps",
       ownerUserId: "user-2",
@@ -64,6 +69,21 @@ describe("remote-host gateway allowlist (HTTP proxy)", () => {
     await expect(resolveSafeGatewayHttpTarget(remoteAgent(), "status")).rejects.toThrow(
       /not an allowed gateway address/i,
     );
+    expect(mockUserCanUseRemoteHost).toHaveBeenCalledWith("user-1", "my-vps");
+  });
+
+  it("trusts another operator's host when it is SHARED to the agent owner (C3 grant)", async () => {
+    // host owned by user-2 but shared into a workspace where user-1 is editor+.
+    mockGetRemoteHostByExecutionTarget.mockResolvedValue({
+      id: "my-vps",
+      ownerUserId: "user-2",
+      gatewayHost: PUBLIC_IP,
+      sshHost: PUBLIC_IP,
+    });
+    mockUserCanUseRemoteHost.mockResolvedValue(true);
+    const target = await resolveSafeGatewayHttpTarget(remoteAgent(), "status");
+    expect(target.url).toBe(`http://${PUBLIC_IP}:19042/status`);
+    expect(mockUserCanUseRemoteHost).toHaveBeenCalledWith("user-1", "my-vps");
   });
 
   it("rejects a public host when no matching remote host is registered", async () => {
@@ -71,6 +91,20 @@ describe("remote-host gateway allowlist (HTTP proxy)", () => {
     await expect(resolveSafeGatewayHttpTarget(remoteAgent(), "status")).rejects.toThrow(
       /not an allowed gateway address/i,
     );
+  });
+
+  it("fails closed on a null-owner host — runs the grant check, does not short-circuit", async () => {
+    mockGetRemoteHostByExecutionTarget.mockResolvedValue({
+      id: "my-vps",
+      ownerUserId: null,
+      gatewayHost: PUBLIC_IP,
+      sshHost: PUBLIC_IP,
+    });
+    // userCanUseRemoteHost defaults to false → no grant → blocked.
+    await expect(resolveSafeGatewayHttpTarget(remoteAgent(), "status")).rejects.toThrow(
+      /not an allowed gateway address/i,
+    );
+    expect(mockUserCanUseRemoteHost).toHaveBeenCalledWith("user-1", "my-vps");
   });
 
   it("does NOT widen the allowlist for a non-remote agent with a public host", async () => {

@@ -550,6 +550,112 @@ async function testRemoteHost(hostId, options = {}) {
 // Deploy-path gate, mirroring assertKubernetesExecutionTargetAvailable. Wiring
 // this into the deploy queue happens in a later Phase A PR; it lives here now so
 // the contract is defined alongside the registry.
+// Workspace roles (editor and above) that may USE a shared remote host — deploy
+// agents to it and reach them through the gateway. Mirrors WORKSPACE_ROLE_RANK in
+// middleware/ownership.ts (viewer:0, editor:1, admin:2, owner:3). Viewer can see a
+// shared host (visibility) but not deploy to it. Host config stays owner-only.
+const HOST_USE_ROLES = Object.freeze(["editor", "admin", "owner"]);
+
+// True if the user owns the host OR it's shared into a workspace where they hold an
+// editor+ role. Positive grant check — used to widen the owner-only deploy/reach
+// gates to shared hosts without ever broadening cross-tenant SSRF.
+async function userCanUseRemoteHost(userId, hostId) {
+  if (!userId || !hostId) return false;
+  const owned = await db.query(
+    "SELECT 1 FROM remote_hosts WHERE id = $1 AND owner_user_id = $2 LIMIT 1",
+    [hostId, userId],
+  );
+  if (owned.rows[0]) return true;
+  try {
+    const shared = await db.query(
+      `SELECT 1
+         FROM workspace_remote_hosts wrh
+         JOIN workspace_members wm ON wm.workspace_id = wrh.workspace_id
+        WHERE wrh.remote_host_id = $1
+          AND wm.user_id = $2
+          AND wm.role = ANY($3)
+        LIMIT 1`,
+      [hostId, userId, HOST_USE_ROLES],
+    );
+    return Boolean(shared.rows[0]);
+  } catch (error) {
+    if (error?.code === "42P01") return false; // grants table not migrated yet
+    throw error;
+  }
+}
+
+// Hosts a user can see: owned (full management) + shared into any workspace they
+// belong to (read-only). Each entry is masked (no secrets) and annotated with the
+// access kind + whether the user may deploy (editor+).
+async function listAccessibleRemoteHosts(userId) {
+  const owned = (await listRemoteHosts({ ownerUserId: userId, includeDisabled: true })).map(
+    (host) => ({
+      ...host,
+      access: "owned",
+      canDeploy: true,
+    }),
+  );
+  const ownedIds = new Set(owned.map((host) => host.id));
+  const shared = [];
+  try {
+    const rows = await db.query(
+      `SELECT wrh.remote_host_id AS host_id,
+              MAX(CASE wm.role
+                    WHEN 'owner' THEN 3 WHEN 'admin' THEN 2 WHEN 'editor' THEN 1 ELSE 0
+                  END) AS rank
+         FROM workspace_remote_hosts wrh
+         JOIN workspace_members wm ON wm.workspace_id = wrh.workspace_id
+        WHERE wm.user_id = $1
+        GROUP BY wrh.remote_host_id`,
+      [userId],
+    );
+    for (const row of rows.rows) {
+      if (ownedIds.has(row.host_id)) continue;
+      const host = await getRemoteHost(row.host_id);
+      if (!host) continue;
+      shared.push({ ...host, access: "shared", canDeploy: Number(row.rank) >= 1 });
+    }
+  } catch (error) {
+    if (error?.code !== "42P01") throw error; // grants table not migrated yet
+  }
+  return [...owned, ...shared];
+}
+
+// Share a host into a workspace (idempotent). Ownership + workspace-membership are
+// enforced by the caller (route layer).
+async function shareRemoteHost(hostId, workspaceId, byUserId) {
+  await db.query(
+    `INSERT INTO workspace_remote_hosts (workspace_id, remote_host_id, created_by)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (workspace_id, remote_host_id) DO NOTHING`,
+    [workspaceId, hostId, byUserId || null],
+  );
+}
+
+async function unshareRemoteHost(hostId, workspaceId) {
+  await db.query(
+    "DELETE FROM workspace_remote_hosts WHERE remote_host_id = $1 AND workspace_id = $2",
+    [hostId, workspaceId],
+  );
+}
+
+async function listRemoteHostShares(hostId) {
+  try {
+    const rows = await db.query(
+      `SELECT wrh.workspace_id AS "workspaceId", w.name AS "workspaceName", wrh.created_at AS "createdAt"
+         FROM workspace_remote_hosts wrh
+         JOIN workspaces w ON w.id = wrh.workspace_id
+        WHERE wrh.remote_host_id = $1
+        ORDER BY w.name`,
+      [hostId],
+    );
+    return rows.rows;
+  } catch (error) {
+    if (error?.code === "42P01") return [];
+    throw error;
+  }
+}
+
 async function assertRemoteHostExecutionTargetAvailable(runtimeFields = {}, options = {}) {
   if (!isRemoteDockerTarget(runtimeFields.deploy_target ?? runtimeFields.deployTarget)) {
     return null;
@@ -566,12 +672,25 @@ async function assertRemoteHostExecutionTargetAvailable(runtimeFields = {}, opti
   }
   const profile = await getRemoteHostProfile(executionTargetId);
   const ownerUserId = options.ownerUserId || null;
-  // Owner-scoped: a host registered by another operator is treated as unknown
-  // (don't leak its existence, and never deploy onto it cross-tenant).
-  if (!profile || (ownerUserId && profile.ownerUserId && profile.ownerUserId !== ownerUserId)) {
+  // Owner-scoped, widened for sharing (C3): a host the user neither owns nor has an
+  // editor+ grant on is treated as unknown (don't leak its existence, never deploy
+  // cross-tenant). The grant check is positive — only explicit shares to a
+  // workspace the user belongs to as editor+ unlock it.
+  if (!profile) {
     const error = new Error(`Unknown remote host execution target: ${executionTargetId}`);
     error.statusCode = 400;
     throw error;
+  }
+  // Fail closed: a host the caller doesn't own — INCLUDING one with a null owner
+  // (orphaned/corrupt) — is only reachable via an explicit editor+ grant, never by
+  // the owner check short-circuiting on a null owner.
+  if (ownerUserId && profile.ownerUserId !== ownerUserId) {
+    const allowed = await userCanUseRemoteHost(ownerUserId, profile.id);
+    if (!allowed) {
+      const error = new Error(`Unknown remote host execution target: ${executionTargetId}`);
+      error.statusCode = 400;
+      throw error;
+    }
   }
   if (!profile.enabled) {
     const error = new Error(`${profile.label} is disabled for new deployments.`);
@@ -602,9 +721,14 @@ module.exports = {
   getRemoteHostProfile,
   isRemoteDockerTarget,
   listRemoteHosts,
+  listAccessibleRemoteHosts,
   listRemoteHostExecutionTargets,
   normalizeRemoteExecutionTargetId,
   rowToProfile,
   testRemoteHost,
   updateRemoteHost,
+  userCanUseRemoteHost,
+  shareRemoteHost,
+  unshareRemoteHost,
+  listRemoteHostShares,
 };
