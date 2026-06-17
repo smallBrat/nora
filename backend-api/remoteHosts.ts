@@ -681,7 +681,10 @@ async function assertRemoteHostExecutionTargetAvailable(runtimeFields = {}, opti
     error.statusCode = 400;
     throw error;
   }
-  if (ownerUserId && profile.ownerUserId && profile.ownerUserId !== ownerUserId) {
+  // Fail closed: a host the caller doesn't own — INCLUDING one with a null owner
+  // (orphaned/corrupt) — is only reachable via an explicit editor+ grant, never by
+  // the owner check short-circuiting on a null owner.
+  if (ownerUserId && profile.ownerUserId !== ownerUserId) {
     const allowed = await userCanUseRemoteHost(ownerUserId, profile.id);
     if (!allowed) {
       const error = new Error(`Unknown remote host execution target: ${executionTargetId}`);

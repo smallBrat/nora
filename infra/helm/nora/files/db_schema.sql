@@ -86,7 +86,7 @@ CREATE INDEX IF NOT EXISTS idx_kubernetes_clusters_enabled
 
 CREATE TABLE IF NOT EXISTS remote_hosts (
   id TEXT PRIMARY KEY,
-  owner_user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  owner_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   label TEXT NOT NULL,
   enabled BOOLEAN NOT NULL DEFAULT true,
   is_default BOOLEAN NOT NULL DEFAULT false,

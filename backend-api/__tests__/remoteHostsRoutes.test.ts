@@ -168,6 +168,31 @@ describe("operator remote-host routes", () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual([{ workspaceId: "ws-1", workspaceName: "Team" }]);
   });
+
+  it("rejects listing shares for a host the caller does not own (404)", async () => {
+    mockRemoteHosts.getRemoteHost.mockResolvedValue({ id: "vps-1", ownerUserId: "user-2" });
+    const res = await auth(request(app).get("/remote-hosts/vps-1/shares"), userToken);
+    expect(res.status).toBe(404);
+  });
+
+  it("rejects unsharing for a host the caller does not own (404)", async () => {
+    mockRemoteHosts.getRemoteHost.mockResolvedValue({ id: "vps-1", ownerUserId: "user-2" });
+    const res = await auth(request(app).delete("/remote-hosts/vps-1/shares/ws-1"), userToken);
+    expect(res.status).toBe(404);
+    expect(mockRemoteHosts.unshareRemoteHost).not.toHaveBeenCalled();
+  });
+
+  it("rejects sharing into a workspace the owner is not a member of (404)", async () => {
+    mockRemoteHosts.getRemoteHost.mockResolvedValue({ id: "vps-1", ownerUserId: "user-1" });
+    // findWorkspaceMembership queries db; default mock returns no rows → not a member.
+    mockDb.query.mockResolvedValue({ rows: [] });
+    const res = await auth(
+      request(app).post("/remote-hosts/vps-1/shares").send({ workspace_id: "ws-x" }),
+      userToken,
+    );
+    expect(res.status).toBe(404);
+    expect(mockRemoteHosts.shareRemoteHost).not.toHaveBeenCalled();
+  });
 });
 
 describe("admin remote-host fleet view", () => {

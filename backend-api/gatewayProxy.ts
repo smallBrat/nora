@@ -133,8 +133,10 @@ async function allowedRemoteHostsForAgent(agent) {
     const host = await remoteHosts.getRemoteHostByExecutionTarget(agent.execution_target_id);
     if (!host) return EMPTY_ALLOWED_HOSTS;
     // Trust the host only if the agent's owner may use it: direct owner, or an
-    // editor+ grant via a workspace the host is shared into (positive check).
-    if (agent.user_id && host.ownerUserId && host.ownerUserId !== agent.user_id) {
+    // editor+ grant via a workspace the host is shared into (positive check). Fail
+    // closed on a null/foreign owner — never let the owner check short-circuit on a
+    // null owner into trusting the host.
+    if (agent.user_id && host.ownerUserId !== agent.user_id) {
       const allowed = await remoteHosts.userCanUseRemoteHost(agent.user_id, host.id);
       if (!allowed) return EMPTY_ALLOWED_HOSTS;
     }

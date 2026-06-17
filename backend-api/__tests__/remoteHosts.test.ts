@@ -311,6 +311,18 @@ describe("assertRemoteHostExecutionTargetAvailable", () => {
     expect(profile.id).toBe("my-laptop");
   });
 
+  it("fails closed on a null-owner (orphaned) host — requires a grant, never short-circuits", async () => {
+    mockDb.query
+      .mockResolvedValueOnce({ rows: [remoteHostRow({ owner_user_id: null })] }) // null owner
+      .mockResolvedValue({ rows: [] }); // userCanUseRemoteHost probes: no ownership, no grant
+    await expect(
+      remoteHosts.assertRemoteHostExecutionTargetAvailable(
+        { deploy_target: "remote-docker", execution_target_id: "remote:my-laptop" },
+        { ownerUserId: "user-1" },
+      ),
+    ).rejects.toThrow(/Unknown remote host/i);
+  });
+
   it("allows a host owned by the requesting operator", async () => {
     mockDb.query.mockResolvedValueOnce({ rows: [remoteHostRow()] });
     const profile = await remoteHosts.assertRemoteHostExecutionTargetAvailable(

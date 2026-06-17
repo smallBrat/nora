@@ -93,6 +93,20 @@ describe("remote-host gateway allowlist (HTTP proxy)", () => {
     );
   });
 
+  it("fails closed on a null-owner host — runs the grant check, does not short-circuit", async () => {
+    mockGetRemoteHostByExecutionTarget.mockResolvedValue({
+      id: "my-vps",
+      ownerUserId: null,
+      gatewayHost: PUBLIC_IP,
+      sshHost: PUBLIC_IP,
+    });
+    // userCanUseRemoteHost defaults to false → no grant → blocked.
+    await expect(resolveSafeGatewayHttpTarget(remoteAgent(), "status")).rejects.toThrow(
+      /not an allowed gateway address/i,
+    );
+    expect(mockUserCanUseRemoteHost).toHaveBeenCalledWith("user-1", "my-vps");
+  });
+
   it("does NOT widen the allowlist for a non-remote agent with a public host", async () => {
     // A docker agent must never reach a public address — the registry lookup is
     // skipped entirely (deploy_target !== remote-docker).
