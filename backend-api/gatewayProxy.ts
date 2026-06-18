@@ -9,6 +9,7 @@ const crypto = require("crypto");
 const dns = require("node:dns").promises;
 const net = require("node:net");
 const db = require("./db");
+const { decrypt } = require("./crypto");
 const integrations = require("./integrations");
 const { resolveAgentRuntimeFamily } = require("./agentRuntimeFields");
 const remoteHosts = require("./remoteHosts");
@@ -676,7 +677,9 @@ async function getConnection(agent) {
     "agent gateway",
     extraAllowedHosts,
   );
-  conn = new GatewayConnection(connectHost, agent.gateway_token, addr.port);
+  // gateway_token is encrypted at rest; decrypt() is transparent to legacy
+  // plaintext, so it is safe regardless of the token's storage form.
+  conn = new GatewayConnection(connectHost, decrypt(agent.gateway_token), addr.port);
   pool.set(key, conn);
   try {
     await conn.connect();
@@ -1370,7 +1373,9 @@ function attachGatewayWS(server) {
         return;
       }
 
-      const identity = deriveDeviceIdentity(agent.gateway_token);
+      // Decrypt once; reused for the device identity and the relay connect auth.
+      const gatewayToken = decrypt(agent.gateway_token);
+      const identity = deriveDeviceIdentity(gatewayToken);
       let handshakeComplete = false;
       let connectPayload = null; // stored relay handshake payload
       let pendingClientConnect = null; // client's connect msg awaiting relay handshake
@@ -1431,7 +1436,7 @@ function attachGatewayWS(server) {
               scopes,
               caps: ["thinking-events"],
               commands: [],
-              auth: agent.gateway_token ? { password: agent.gateway_token } : {},
+              auth: gatewayToken ? { password: gatewayToken } : {},
               device,
             },
           }),

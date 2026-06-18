@@ -1,6 +1,7 @@
 // @ts-nocheck
 const express = require("express");
 const db = require("../db");
+const { encrypt, decrypt } = require("../crypto");
 const { addDeploymentJob } = require("../redisQueue");
 const billing = require("../billing");
 const {
@@ -626,7 +627,17 @@ function resolveHermesChannelConfig(body = {}) {
 }
 
 async function resolveHermesApiToken(agent) {
-  const storedToken = String(agent?.gateway_token || "").trim();
+  // gateway_token is encrypted at rest; decrypt() is transparent to legacy
+  // plaintext. A rotated/corrupted key would throw — fall through to the
+  // container-env inspection below rather than failing the whole call.
+  let storedToken = "";
+  if (agent?.gateway_token) {
+    try {
+      storedToken = String(decrypt(agent.gateway_token) || "").trim();
+    } catch {
+      storedToken = "";
+    }
+  }
   if (storedToken) return storedToken;
   if (!agent?.container_id) return null;
 
@@ -646,7 +657,7 @@ async function resolveHermesApiToken(agent) {
     try {
       await db.query("UPDATE agents SET gateway_token = $2 WHERE id = $1", [
         agent.id,
-        resolvedToken,
+        encrypt(resolvedToken),
       ]);
     } catch {
       // Best-effort cache only.
@@ -1581,7 +1592,8 @@ router.post("/adopt", async (req, res) => {
          runtime_host, dashboard_port, gateway_token
        ) VALUES($1, $2, 'running', $3, 'external', 'external', 'standard', 'standard',
                 'external', $4, $5, $4, $5, $6) RETURNING *`,
-      [req.user.id, name, runtimeFamily, endpoint.host, endpoint.port, token],
+      // gateway_token is encrypted at rest (no-op when ENCRYPTION_KEY is unset).
+      [req.user.id, name, runtimeFamily, endpoint.host, endpoint.port, encrypt(token)],
     );
     const agent = result.rows[0];
 
