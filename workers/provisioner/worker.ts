@@ -659,11 +659,17 @@ async function runRuntimeCommand(agent, command, { timeout = 30000 } = {}) {
     throw new Error("Agent runtime endpoint unavailable");
   }
 
+  // gateway_token is encrypted at rest; decrypt() is transparent to legacy
+  // plaintext, so it is safe whether the agent row was freshly selected
+  // (encrypted) or carries an in-memory plaintext token.
+  const { decrypt } = require("./crypto");
   const response = await fetch(runtimeUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      ...buildRuntimeAuthHeaders(agent && agent.gateway_token),
+      ...buildRuntimeAuthHeaders(
+        agent && agent.gateway_token ? decrypt(agent.gateway_token) : null,
+      ),
     },
     body: JSON.stringify({
       command,
@@ -1437,6 +1443,21 @@ const worker = new Worker(
         [id],
       );
       const agentRow = agentRowResult.rows[0] || {};
+      // gateway_token is encrypted at rest. Decrypt the stored value in place so
+      // the reuse path (k8s/Hermes pass it back into the container as the runtime
+      // password) gets plaintext. A rotated/corrupted key → treat as no reusable
+      // token so the backend generates a fresh one rather than failing the deploy.
+      if (agentRow.gateway_token) {
+        const { decrypt } = require("./crypto");
+        try {
+          agentRow.gateway_token = decrypt(agentRow.gateway_token);
+        } catch (err) {
+          console.warn(
+            `[provisioner] Could not decrypt stored gateway_token for agent ${id} — generating a fresh token: ${err.message}`,
+          );
+          agentRow.gateway_token = null;
+        }
+      }
       const storedRuntimeFields = buildAgentRuntimeFields(agentRow);
       const resolvedRuntimeFields = buildAgentRuntimeFields({
         runtime_family: storedRuntimeFields.runtime_family,
@@ -2001,7 +2022,11 @@ const worker = new Worker(
         throw err;
       }
 
-      // Update agent with real container info
+      // Update agent with real container info. gateway_token is encrypted at
+      // rest (no-op when ENCRYPTION_KEY is unset); the in-memory gatewayToken
+      // stays plaintext for the integration-sync auth call below.
+      const { encrypt } = require("./crypto");
+      const gatewayTokenForStorage = gatewayToken ? encrypt(gatewayToken) : gatewayToken;
       try {
         await db.query(
           `UPDATE agents
@@ -2029,7 +2054,7 @@ const worker = new Worker(
             containerId,
             host,
             resolvedRuntimeFields.backend_type,
-            gatewayToken,
+            gatewayTokenForStorage,
             containerName || null,
             gatewayHostPort ? parseInt(gatewayHostPort, 10) : null,
             runtimeHost || null,

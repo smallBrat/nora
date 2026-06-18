@@ -833,12 +833,16 @@ gatewayUIAssetProxy.get("/agents/:agentId/gateway/embed/bootstrap.js", async (re
     res.setHeader("Referrer-Policy", "no-referrer");
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Vary", "Cookie");
+    // gateway_token is encrypted at rest; decrypt before inlining it into the
+    // embed bootstrap JS that the browser uses for the gateway WS handshake.
+    // decrypt() is transparent to legacy plaintext tokens.
+    const { decrypt } = require("./crypto");
     res.send(
       buildEmbedBootstrapScript({
         agentId: access.agentId,
         requestHost: req.headers.host,
         requestScheme: requestProtocol(req),
-        gatewayToken: access.agent.gateway_token,
+        gatewayToken: decrypt(access.agent.gateway_token),
       }),
     );
   } catch (err) {

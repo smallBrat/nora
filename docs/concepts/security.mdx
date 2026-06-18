@@ -6,7 +6,7 @@ Nora is built to be trustworthy in real operator environments: you run it on you
 
 ## Secrets and credentials
 
-- **LLM provider keys and integration credentials are encrypted at rest** with AES-256-GCM before they are stored in PostgreSQL. The encryption key is the operator-owned `ENCRYPTION_KEY` generated during setup — Nora never stores plaintext credentials.
+- **LLM provider keys, integration credentials, remote-host SSH credentials, and per-agent runtime gateway tokens are encrypted at rest** with AES-256-GCM before they are stored in PostgreSQL. The encryption key is the operator-owned `ENCRYPTION_KEY` generated during setup — Nora never stores plaintext credentials. Gateway tokens (the bearer that authenticates the control plane to each runtime sidecar) are encrypted on write and decrypted only at the point of use; they are never returned in API responses.
 - **Key sync to runtimes is explicit.** Provider keys are pushed to a runtime on demand as part of provisioning or an operator-triggered sync, not broadcast.
 - **Setup generates strong secrets.** The installer creates `JWT_SECRET` and `ENCRYPTION_KEY` with OpenSSL and preserves existing secrets on re-runs.
 - **Production refuses weak secrets.** In production the backend will not boot when `JWT_SECRET` is missing, too short, or a placeholder, or when `ENCRYPTION_KEY` is missing or malformed — so a copy-pasted `.env.example` can never reach the internet. The only way around the encryption requirement is the explicit `NORA_ALLOW_PLAINTEXT_SECRETS=true` override.

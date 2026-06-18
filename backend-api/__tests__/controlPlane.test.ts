@@ -87,6 +87,16 @@ function kubernetesClusterRow(overrides = {}) {
 }
 
 jest.mock("../db", () => mockDb);
+// Marked, transparent crypto: enc(...) on write, passthrough on read for any
+// non-enc value. gateway_token is encrypted at rest, so the embed/gateway read
+// paths must decrypt before use; plaintext rows in existing tests are unaffected.
+jest.mock("../crypto", () => ({
+  encrypt: (v) => (v == null || v === "" ? v : `enc(${v})`),
+  decrypt: (v) => (typeof v === "string" && v.startsWith("enc(") ? v.slice(4, -1) : v),
+  isEncryptionConfigured: () => true,
+  ensureEncryptionConfigured: () => {},
+  DecryptionError: class DecryptionError extends Error {},
+}));
 jest.mock("../redisQueue", () => ({
   addDeploymentJob: jest.fn(),
   getDLQJobs: jest.fn(),
@@ -764,6 +774,32 @@ describe("gateway control-plane embed", () => {
     expect(res.text).toContain("form.requestSubmit");
     expect(res.text).toContain("new MutationObserver");
     expect(res.text).not.toContain("localStorage.setItem('oc-gateway-url',R)");
+  });
+
+  it("decrypts an encrypted gateway_token before inlining it into the bootstrap script", async () => {
+    // gateway_token is stored encrypted; the embed bootstrap must inline the
+    // DECRYPTED value (the browser uses it as the gateway WS password), never
+    // the ciphertext.
+    mockDb.query.mockResolvedValueOnce({
+      rows: [
+        {
+          host: "10.0.0.10",
+          gateway_token: "enc(gateway-password)",
+          gateway_host_port: null,
+          status: "running",
+        },
+      ],
+    });
+
+    const res = await request(app)
+      .get(`/agents/agent-1/gateway/embed/bootstrap.js?token=${encodeURIComponent(token)}`)
+      .set("Host", "nora.test")
+      .set("X-Forwarded-Proto", "https");
+
+    expect(res.status).toBe(200);
+    // P is the inlined password; it must be the plaintext, not the stored enc(...).
+    expect(res.text).toContain('var P="gateway-password"');
+    expect(res.text).not.toContain("enc(gateway-password)");
   });
 
   it("uses the published gateway host port when one is recorded", async () => {

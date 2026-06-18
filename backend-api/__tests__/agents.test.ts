@@ -63,6 +63,16 @@ const mockGetDeploymentDefaults = jest.fn().mockResolvedValue({
 const mockGetAgentHubSourceApiKey = jest.fn().mockResolvedValue("nora_hub_test_key");
 const mockAssertKubernetesExecutionTargetAvailable = jest.fn().mockResolvedValue();
 jest.mock("../db", () => mockDb);
+// Marked, transparent crypto so we can assert gateway_token is encrypted on
+// write (enc(...) wrapper) while legacy/plaintext values still pass through
+// decrypt unchanged — keeping every existing plaintext-token assertion valid.
+jest.mock("../crypto", () => ({
+  encrypt: (v) => (v == null || v === "" ? v : `enc(${v})`),
+  decrypt: (v) => (typeof v === "string" && v.startsWith("enc(") ? v.slice(4, -1) : v),
+  isEncryptionConfigured: () => true,
+  ensureEncryptionConfigured: () => {},
+  DecryptionError: class DecryptionError extends Error {},
+}));
 jest.mock("../redisQueue", () => ({
   addDeploymentJob: mockAddDeploymentJob,
   getDLQJobs: jest.fn(),
@@ -2137,9 +2147,12 @@ describe("POST /agents/adopt (external runtime)", () => {
     // The INSERT carries deploy_target='external' + the validated endpoint.
     const insert = mockDb.query.mock.calls.find((c) => /INSERT INTO agents/i.test(c[0]));
     expect(insert[0]).toMatch(/'external', 'external'/);
+    // gateway_token must be ENCRYPTED on write — the param carries enc(...),
+    // not the plaintext. This fails if the encrypt() call is ever dropped.
     expect(insert[1]).toEqual(
-      expect.arrayContaining(["user-1", "openclaw", "203.0.113.5", 18789, "secret-token"]),
+      expect.arrayContaining(["user-1", "openclaw", "203.0.113.5", 18789, "enc(secret-token)"]),
     );
+    expect(insert[1]).not.toContain("secret-token");
   });
 
   it("rejects adoption without a gateway token", async () => {
