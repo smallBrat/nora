@@ -634,7 +634,13 @@ async function resolveHermesApiToken(agent) {
   if (agent?.gateway_token) {
     try {
       storedToken = String(decrypt(agent.gateway_token) || "").trim();
-    } catch {
+    } catch (err) {
+      // Surface the root cause (e.g. ENCRYPTION_KEY rotation) before falling
+      // back to container inspection, so a "token unavailable" downstream error
+      // is traceable. err.message carries no secret material.
+      console.warn(
+        `[hermes-token] Could not decrypt stored gateway_token for agent ${agent.id} — falling back to runtime inspection: ${err.message}`,
+      );
       storedToken = "";
     }
   }
