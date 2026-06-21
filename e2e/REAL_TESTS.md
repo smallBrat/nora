@@ -10,10 +10,10 @@ security fixes shipped in integrations.ts / channels/adapters.ts.
   OpenClaw/Hermes × Docker/K8s/NemoClaw matrix.
 - `specs/real-integrations.spec.ts` — §4 GitHub + Slack + URL-based integration
   with real-cred success and SSRF-guard refusal.
-- `specs/real-channels.spec.ts` — §5 OpenClaw channel delivery with real
-  creds. Discord runs only with `REAL_OPENCLAW_DISCORD_CONFIG_JSON`; webhook
-  URLs belong to the legacy adapter and are not accepted by OpenClaw's Discord
-  Bot API schema.
+- `specs/real-channels.spec.ts` — §5 OpenClaw channel catalog, type metadata,
+  and setup-save coverage with real creds where supplied. Discord runs only
+  with `REAL_OPENCLAW_DISCORD_CONFIG_JSON`; webhook URLs belong to the legacy
+  adapter and are not accepted by OpenClaw's Discord Bot API schema.
 - `specs/support/realConfig.ts` — `.env.real` loader and skip gates.
 - `specs/support/agents.ts` — API helpers.
 - `specs/support/app.ts` — session/auth + API request helpers
@@ -73,12 +73,12 @@ up.
 
 ## What each cell expects
 
-| Cell                | Enabled by                                | Extra host requirements                                                                                                                |
-| ------------------- | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| OpenClaw + Docker   | `REAL_ENABLE_OPENCLAW_DOCKER=1` (default) | Docker socket reachable from `backend-api` / `worker-provisioner` (already wired in the default compose)                               |
-| OpenClaw + K8s      | `REAL_ENABLE_OPENCLAW_K8S=1`              | Control plane started with `docker-compose.kubernetes.yml`; add `docker-compose.kind.yml` only for local Kind networking |
-| OpenClaw + NemoClaw | `REAL_ENABLE_OPENCLAW_NEMOCLAW=1`         | `NVIDIA_API_KEY` set in `.env` for the stack                                                                                           |
-| Hermes + Docker     | `REAL_ENABLE_HERMES_DOCKER=1`             | First run pulls a large Hermes image — warm the cache or raise `REAL_PROVISION_TIMEOUT_MS`                                             |
+| Cell                | Enabled by                                | Extra host requirements                                                                                                                                                                                               |
+| ------------------- | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| OpenClaw + Docker   | `REAL_ENABLE_OPENCLAW_DOCKER=1` (default) | Docker socket reachable from `backend-api` / `worker-provisioner` (already wired in the default compose)                                                                                                              |
+| OpenClaw + K8s      | `REAL_ENABLE_OPENCLAW_K8S=1`              | Control plane started with `docker-compose.kubernetes.yml`; add `docker-compose.kind.yml` only for local Kind networking                                                                                              |
+| OpenClaw + NemoClaw | `REAL_ENABLE_OPENCLAW_NEMOCLAW=1`         | `NVIDIA_API_KEY` set in `.env` for the stack                                                                                                                                                                          |
+| Hermes + Docker     | `REAL_ENABLE_HERMES_DOCKER=1`             | First run pulls a large Hermes image — warm the cache or raise `REAL_PROVISION_TIMEOUT_MS`                                                                                                                            |
 | Hermes + K8s        | `REAL_ENABLE_HERMES_K8S=1`                | Control plane started with `docker-compose.kubernetes.yml` (add `docker-compose.kind.yml` only for local Kind networking); first run pulls a large Hermes image — warm the cache or raise `REAL_PROVISION_TIMEOUT_MS` |
 
 Each cell runs in order: `[L1] deploy → [L2] reach running → [L3] gateway
@@ -97,10 +97,11 @@ Two specs specifically assert that the recent security fixes still hold:
 
 - `[I4]` — integration with `url=http://169.254.169.254/...` must return
   `success: false` with an "internal/private network" error.
-- `[C3]` — Discord channel with `webhook_url=http://worker-provisioner:4001/...`
-  must refuse delivery with the same error.
+- `[C3]` — OpenClaw channel agents must reject Nora's legacy channel
+  test-message and delete routes with `409`, so legacy adapter behaviors do not
+  accidentally run against runtime-managed OpenClaw channels.
 
-If either passes the SSRF guard, the assertion will flip red.
+If either behavior regresses, the assertion will flip red.
 
 ## Troubleshooting
 
@@ -116,6 +117,7 @@ If either passes the SSRF guard, the assertion will flip red.
   `kubectl -n openclaw-agents get pods`.
 - **`[L4] chat roundtrip` times out on Hermes.** First-run image pull can
   exceed 2 minutes; raise `REAL_CHAT_TIMEOUT_MS`.
-- **Discord/Telegram test says delivered: true but you see nothing.** Confirm
-  the bot has DM'd your chat (Telegram requires `/start` from your account
-  first) and the Discord webhook channel still exists.
+- **Telegram/Discord setup saves but provider messages do not arrive.** The
+  OpenClaw channel spec verifies Nora's catalog and setup API, not provider
+  delivery. Confirm the bot was invited or messaged in the provider, then test
+  end-to-end through the running OpenClaw agent.

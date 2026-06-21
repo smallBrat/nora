@@ -69,21 +69,17 @@ Echo needs **one** communication channel to reach you with briefs, drafts, and a
 WhatsApp is the recommended example:
 
 <Steps>
-  <Step title="Create a WhatsApp Cloud API app">
-    At [developers.facebook.com](https://developers.facebook.com), create an app and add the
-    **WhatsApp** product (Meta's WhatsApp Cloud API).
+  <Step title="Link WhatsApp in Nora">
+    Open the agent -> **Channels** tab -> **WhatsApp** -> **Link**.
   </Step>
-  <Step title="Copy your credentials">
-    From the WhatsApp setup screen, copy the **Phone Number ID** and an **Access Token**. Optionally
-    set a webhook **Verify Token** if you want Echo to receive inbound replies.
+  <Step title="Scan the QR code">
+    Complete the pairing prompt from WhatsApp. OpenClaw WhatsApp uses QR/link pairing, not a
+    Phone Number ID and access-token form.
   </Step>
-  <Step title="Add the channel in Nora">
-    Open the agent → **Channels** tab → add **WhatsApp** → paste the Phone Number ID and Access
-    Token. Credentials are encrypted at rest and never shown back in full.
-  </Step>
+  <Step title="Confirm the channel">Return when Nora shows the channel linked or connected.</Step>
 </Steps>
 
-Prefer something else? Telegram, Slack, Discord, and email all work — see [Configure channels](/guides/channels) for each one's required fields. You only need one.
+Prefer something else? Use Telegram, Slack, Discord, or another OpenClaw channel from the catalog — see [Configure channels](/guides/channels) for each one's required fields. You only need one.
 
 ## Step 4 — Run the bootstrap
 
@@ -135,6 +131,6 @@ Started with one and want the other? Just tell Echo **"add X"** or **"add Linked
     Confirm the redirect URI registered in your developer app exactly matches the one Nora's integration modal shows (`https://<your-nora-host>/api/integrations/twitter/oauth/callback` or `.../linkedin/oauth/callback`), and that the required scopes are enabled. See the [X](/guides/integrations/twitter) and [LinkedIn](/guides/integrations/linkedin) guides.
   </Accordion>
   <Accordion title="I pasted a token into the chat by mistake">
-    Rotate it immediately (in the provider's developer console or, for a channel, the provider's app), then enter the replacement in the correct tab — **Integrations** for X/LinkedIn, **Channels** for WhatsApp/Telegram/etc. Echo never stores credentials from chat.
+    Rotate it immediately (in the provider's developer console or, for a channel, the provider's app), then enter the replacement in the correct tab — **Integrations** for X/LinkedIn, **Channels** for Telegram/Slack/etc. Echo never stores credentials from chat.
   </Accordion>
 </AccordionGroup>

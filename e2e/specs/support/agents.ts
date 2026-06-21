@@ -89,6 +89,41 @@ type ChannelRecord = {
   [key: string]: unknown;
 };
 
+type ChannelPayload = {
+  runtime?: string;
+  channels?: ChannelRecord[];
+  availableTypes?: Record<string, unknown>[];
+  capabilities?: Record<string, unknown>;
+  [key: string]: unknown;
+};
+
+type ChannelTypeMetadata = {
+  type?: string;
+  label?: string;
+  configFields?: Record<string, unknown>[];
+  actions?: Record<string, unknown>;
+  hasComplexFields?: boolean;
+  [key: string]: unknown;
+};
+
+type ChannelSetupOptions = {
+  type: string;
+  config?: Record<string, unknown>;
+  enabled?: boolean;
+};
+
+type ChannelSetupResult = {
+  success?: boolean;
+  channel?: string;
+  restart?: unknown;
+  [key: string]: unknown;
+};
+
+type ChannelActionResult = {
+  status: number;
+  body: Record<string, unknown>;
+};
+
 type ChannelTestResult = {
   delivered?: boolean;
   error?: string;
@@ -421,6 +456,59 @@ async function deleteIntegration(
 }
 
 // ── Channels ──────────────────────────────────────────────
+async function listAgentChannels(
+  request: APIRequestContext,
+  token: string,
+  agentId: string,
+): Promise<ChannelPayload> {
+  const { body } = await apiJson<ChannelPayload>(request, `/api/agents/${agentId}/channels`, {
+    token,
+  });
+  return assertJsonRecord<ChannelPayload>(body, `/api/agents/${agentId}/channels`);
+}
+
+async function getChannelType(
+  request: APIRequestContext,
+  token: string,
+  agentId: string,
+  type: string,
+): Promise<ChannelTypeMetadata> {
+  const { body } = await apiJson<ChannelTypeMetadata>(
+    request,
+    `/api/agents/${agentId}/channels/types/${encodeURIComponent(type)}`,
+    { token },
+  );
+  return assertJsonRecord<ChannelTypeMetadata>(
+    body,
+    `/api/agents/${agentId}/channels/types/${type}`,
+  );
+}
+
+async function saveChannelSetup(
+  request: APIRequestContext,
+  token: string,
+  agentId: string,
+  { type, config = {}, enabled = true }: ChannelSetupOptions,
+): Promise<ChannelSetupResult> {
+  const { body, response } = await apiJson<ChannelSetupResult>(
+    request,
+    `/api/agents/${agentId}/channels`,
+    {
+      method: "POST",
+      token,
+      data: { type, config, enabled },
+      failOnStatus: false,
+    },
+  );
+  if (!response.ok()) {
+    throw Object.assign(
+      new Error(`saveChannelSetup(${type}) failed: ${response.status()} ${JSON.stringify(body)}`),
+      { status: response.status(), body },
+    );
+  }
+  return assertJsonRecord<ChannelSetupResult>(body, `/api/agents/${agentId}/channels`);
+}
+
 async function createChannel(
   request: APIRequestContext,
   token: string,
@@ -463,6 +551,40 @@ async function testChannel(
   );
 }
 
+async function testChannelAction(
+  request: APIRequestContext,
+  token: string,
+  agentId: string,
+  channelId: string,
+): Promise<ChannelActionResult> {
+  const { body, response } = await apiJson<Record<string, unknown>>(
+    request,
+    `/api/agents/${agentId}/channels/${channelId}/test`,
+    { method: "POST", token, failOnStatus: false },
+  );
+  return {
+    status: response.status(),
+    body: assertJsonRecord(body, `/api/agents/${agentId}/channels/${channelId}/test`),
+  };
+}
+
+async function deleteChannelAction(
+  request: APIRequestContext,
+  token: string,
+  agentId: string,
+  channelId: string,
+): Promise<ChannelActionResult> {
+  const { body, response } = await apiJson<Record<string, unknown>>(
+    request,
+    `/api/agents/${agentId}/channels/${channelId}`,
+    { method: "DELETE", token, failOnStatus: false },
+  );
+  return {
+    status: response.status(),
+    body: assertJsonRecord(body, `/api/agents/${agentId}/channels/${channelId}`),
+  };
+}
+
 async function deleteChannel(
   request: APIRequestContext,
   token: string,
@@ -496,7 +618,12 @@ export {
   testIntegration,
   listAgentIntegrations,
   deleteIntegration,
+  listAgentChannels,
+  getChannelType,
+  saveChannelSetup,
   createChannel,
   testChannel,
   deleteChannel,
+  testChannelAction,
+  deleteChannelAction,
 };
