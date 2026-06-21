@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.solomon2773/nora",
   "title": "Nora",
-  "description": "Operate your self-hosted Nora AI-agent fleet from Claude Code, Claude Desktop, Cursor, or any MCP client — deploy, start/stop, inspect, and read metrics/cost/monitoring via the Nora public REST API.",
+  "description": "Operate your self-hosted Nora agent fleet from MCP clients.",
   "version": "0.1.1",
   "websiteUrl": "https://noradocs.solomontsao.com",
   "repository": {
