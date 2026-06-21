@@ -4,6 +4,33 @@ All notable changes to Nora are documented here. Each entry summarizes the
 corresponding [GitHub release](https://github.com/solomon2773/nora/releases),
 which carries the full notes and verification details.
 
+## [v1.12.0](https://github.com/solomon2773/nora/releases/tag/v1.12.0) — 2026-06-21
+
+Remote-host/BYOC expansion, adopted runtime operations, stronger runtime/gateway security,
+and release/discovery automation across npm and the MCP Registry.
+
+### Added
+
+- **BYOC Remote Hosts**: operator and admin surfaces, owner-scoped backend routes, remote-Docker target registration, SSH-backed Docker adapter, remote deploy picker, and deploy/rollback/restore validation for registered remote targets. (#193–#203)
+- **Remote Hermes and gateway port management**: Hermes can deploy to remote hosts; gateway ports are allocated per host, released on delete, and published/persisted for dashboard/runtime reachability. (#204–#206, #209)
+- **Adopt existing runtimes**: operators can adopt OpenClaw/Hermes runtimes by URL and token, reconcile health, and operate adopted external runtimes from the dashboard and deploy flow. (#214, #223, #224, #226)
+- **Workspace sharing for remote hosts**: remote hosts can be shared into workspaces through fail-closed backend grants and a dashboard UI. (#227, #228)
+- **MCP Registry and npm release automation**: package scope moved to `@noraai`, npm release publishing is wired to GitHub releases, and the MCP server can be listed through the official MCP Registry workflow. (#187, #192, #211)
+
+### Changed
+
+- Agent Hub/OpenClaw channel docs and templates now reflect the live channel surface, with refreshed channel screenshot proof and real-channel smoke coverage.
+- Public README, support, contribution, CLI, API, and operator docs were reconciled with the current v1.12 codebase and launch contributor flow. (#189, #190, #213)
+- CLI table rendering now uses a shared helper covered by unit tests. (#225)
+
+### Fixed
+
+- Agent runtime sidecar routes now require bearer-token authentication when a gateway token is provisioned. (#191)
+- Embed, asset, RPC-pool, and WebSocket relay gateway paths now enforce SSRF-relevant host allowlists for local and remote runtime surfaces. (#199, #202, #207, #208)
+- Agent gateway tokens are encrypted at rest with AES-256-GCM. (#229)
+- Patched high/moderate advisories in esbuild, form-data, protobufjs, and nodemailer. (#188, #210, #212, #231)
+- Stabilized the recurring signup-heading E2E flake. (#230)
+
 ## [v1.11.0](https://github.com/solomon2773/nora/releases/tag/v1.11.0) — 2026-06-12
 
 The pre-launch feature release: nine capabilities identified by the 2026-06 competitive research, shipped as PRs #177–#186.
