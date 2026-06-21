@@ -23,18 +23,13 @@ test("table with rows formats output correctly", () => {
   try {
     const rows = [
       { id: "1", name: "Alice" },
-      { id: "100", name: "Bob" }
+      { id: "100", name: "Bob" },
     ];
     table(rows, [
       { header: "ID", value: (r) => r.id },
-      { header: "NAME", value: (r) => r.name }
+      { header: "NAME", value: (r) => r.name },
     ]);
-    assert.deepStrictEqual(logs, [
-      "ID   NAME ",
-      "---  -----",
-      "1    Alice",
-      "100  Bob  "
-    ]);
+    assert.deepStrictEqual(logs, ["ID   NAME ", "---  -----", "1    Alice", "100  Bob  "]);
   } finally {
     console.log = originalLog;
   }

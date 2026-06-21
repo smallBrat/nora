@@ -42,8 +42,7 @@ async function versions(args) {
 async function rollback(args) {
   const id = args[0];
   const versionId = args[1];
-  if (!id || !versionId)
-    throw new Error("usage: nora agents rollback <agent-id> <version-id>");
+  if (!id || !versionId) throw new Error("usage: nora agents rollback <agent-id> <version-id>");
   const result = await api.post(`/api/agents/${id}/rollback/${versionId}`);
   console.log(`Rolled back to v${result.restored.versionNumber}.`);
   if (result.redeployed) console.log("Redeploy queued.");
