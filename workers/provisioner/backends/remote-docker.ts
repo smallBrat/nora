@@ -95,10 +95,14 @@ class RemoteDockerBackend extends DockerBackend {
     // (resolveGatewayAddress prefers gateway_host + gateway_port). Without this
     // it would fall back to host.docker.internal, which is the wrong machine.
     const gatewayHost = this.profile.gatewayHost || this.profile.sshHost;
+    const runtimeHostPort =
+      Number(result.runtimeHostPort) || Number(config.runtimeHostPort) || null;
     return {
       ...result,
       gatewayHost,
       gatewayPort: result.gatewayHostPort || null,
+      runtimeHost: gatewayHost,
+      runtimePort: runtimeHostPort || result.runtimePort || null,
     };
   }
 }

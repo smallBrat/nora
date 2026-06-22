@@ -21,8 +21,10 @@ const MAX_RACE_RETRIES = 5;
 // physical host (host_key). Port uniqueness stays per-host (UNIQUE(host_key,
 // port)), so a second purpose never collides with the first on that machine.
 //   - GATEWAY: the primary published port (OpenClaw gateway / Hermes runtime API).
+//   - RUNTIME: the OpenClaw runtime sidecar API when the agent runs on a remote host.
 //   - DASHBOARD: the Hermes dashboard UI port, published only for remote hosts.
 const GATEWAY_PORT_PURPOSE = "gateway";
+const RUNTIME_PORT_PURPOSE = "runtime";
 const DASHBOARD_PORT_PURPOSE = "dashboard";
 
 function normalizeHostKey(value) {
@@ -128,6 +130,7 @@ module.exports = {
   DEFAULT_RANGE_MIN,
   DEFAULT_RANGE_MAX,
   GATEWAY_PORT_PURPOSE,
+  RUNTIME_PORT_PURPOSE,
   DASHBOARD_PORT_PURPOSE,
   allocateGatewayPort,
   releaseGatewayPort,
