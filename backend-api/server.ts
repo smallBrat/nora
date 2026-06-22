@@ -24,6 +24,9 @@ const {
   reconcileExternalAgentStatuses,
 } = require("./backgroundTasks");
 const agentBudgets = require("./agentBudgets");
+// OpenTelemetry GenAI exporter — self-initializes on require (no-op unless
+// NORA_OTEL_ENABLED=true; fail-open). Required here so it boots with the server.
+const otel = require("./otel");
 const { listKubernetesExecutionTargets } = require("./kubernetesClusters");
 const { STARTER_TEMPLATES } = require("./starterTemplates");
 const { getBootstrapAdminSeedConfig } = require("./bootstrapAdmin");

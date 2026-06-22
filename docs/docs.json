@@ -148,6 +148,7 @@
           "guides/cli",
           "guides/mcp-server",
           "guides/monitoring",
+          "guides/opentelemetry",
           "guides/doctor",
           "guides/alert-rules",
           "guides/backups",
