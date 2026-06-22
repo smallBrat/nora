@@ -856,6 +856,8 @@ function createGatewayRouter() {
       const conn = await getConnection(req.agent);
       const { message, messages, session_id, stream } = req.body;
       const idempotencyKey = crypto.randomUUID();
+      // Wall-clock start for the OpenTelemetry chat span duration.
+      const chatStartedAtMs = Date.now();
 
       // Build the text payload: accept either a single `message` string
       // or an array of `messages` (OpenAI-style) and extract the last user turn.
@@ -959,6 +961,7 @@ function createGatewayRouter() {
             source: "openclaw.gateway",
             sessionId: session_id || "main",
             requestId: idempotencyKey,
+            startedAtMs: chatStartedAtMs,
           })
           .then(() => agentBudgets.checkAndEnforce(req.agent))
           .catch(() => {});
@@ -976,6 +979,7 @@ function createGatewayRouter() {
             source: "openclaw.gateway",
             sessionId: session_id || "main",
             requestId: idempotencyKey,
+            startedAtMs: chatStartedAtMs,
           })
           .then(() => agentBudgets.checkAndEnforce(req.agent))
           .catch(() => {});

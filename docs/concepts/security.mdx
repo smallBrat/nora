@@ -66,7 +66,7 @@ Proxmox VM placement is the planned **hardware-boundary** isolation tier (a sepa
 ## Standards and protocols
 
 - **MCP is first-class and shipped** — Nora publishes a control-plane MCP server (`@noraai/mcp-server`, in the official MCP Registry) and supports per-agent MCP server management. See [Operating Nora over MCP](https://github.com/solomon2773/nora/tree/master/mcp-server).
-- **OpenTelemetry GenAI (`gen_ai.*` / OTLP export)** — on the roadmap: export runtime telemetry under the OTel GenAI semantic conventions so traces and per-agent token/cost attribution flow into your existing observability backend. Nora is designed to be OTel-conformant and backend-neutral rather than a replacement for your tracing stack.
+- **OpenTelemetry GenAI (`gen_ai.*` / OTLP + Prometheus export)** — available: export runtime telemetry under the OTel GenAI semantic conventions so per-exchange chat spans and per-agent token/cost/resource metrics flow into your existing observability backend. Disabled by default and fail-open. See the [OpenTelemetry export guide](/guides/opentelemetry). (Per-tool-call sub-spans depend on runtime event streams and remain on the roadmap.)
 - **A2A (Agent-to-Agent)** — on the roadmap: serve Agent Cards / A2A discovery for managed OpenClaw and Hermes agents.
 
 ## Backups and audit

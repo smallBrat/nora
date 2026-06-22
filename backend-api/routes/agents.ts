@@ -1003,6 +1003,8 @@ router.post(
     const sessionId = typeof req.body?.sessionId === "string" ? req.body.sessionId.trim() : "";
 
     let chatResponse;
+    // Wall-clock start for the OpenTelemetry chat span duration.
+    const chatStartedAtMs = Date.now();
     try {
       chatResponse = await fetchHermesApi(agent, "/v1/chat/completions", {
         method: "POST",
@@ -1054,6 +1056,7 @@ router.post(
         source: "hermes-ui",
         model: chatResponse.data?.model || requestedModel || null,
         sessionId: responseSessionId,
+        startedAtMs: chatStartedAtMs,
       }),
     ).catch(() => {});
 
