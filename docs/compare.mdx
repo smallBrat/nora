@@ -68,7 +68,7 @@ Dedicated sandbox projects focus on the isolation primitive itself. Nora package
     It has runtime monitoring, logs, terminal, events, and cost controls. Full trace/eval platforms are adjacent integrations, not the current core lane.
   </Accordion>
   <Accordion title="What about MCP?">
-    Nora manages runtime integrations and tool wiring through its integrations module (69+ providers) and the runtimes' own tool ecosystems (for example ClawHub skills for OpenClaw). It does not ship an MCP marketplace of its own.
+    MCP is first-class in both directions. Nora ships a control-plane MCP server (`@noraai/mcp-server`, published to the official MCP Registry) so you can operate the fleet — deploy agents, control their lifecycle, read metrics, events, and per-agent cost — from Claude Code, Claude Desktop, or Cursor; `nora mcp` launches it from the CLI. It also offers per-agent MCP server management, wiring MCP tools into individual agents. That sits alongside the integrations module (69+ providers) and the runtimes' own tool ecosystems (for example ClawHub skills for OpenClaw). Nora is not a public MCP-server marketplace — it exposes and manages MCP for the runtimes it operates.
   </Accordion>
   <Accordion title="Which backend should I try first?">
     Docker + OpenClaw. The [quickstart](/quickstart) gets you from install to a deployed, chat-ready agent in about 15 minutes.

@@ -13,6 +13,7 @@
   <img src="https://img.shields.io/badge/docker-compose-2496ED.svg" alt="Docker Compose" />
   <img src="https://img.shields.io/badge/self--hosted-first-0ea5e9.svg" alt="Self-hosted first" />
   <img src="https://img.shields.io/badge/commercial%20use-Apache%202.0%20allowed-6d28d9.svg" alt="Commercial use allowed" />
+  <img src="https://img.shields.io/badge/MCP-server%20%2B%20per--agent-7c3aed.svg" alt="MCP server and per-agent MCP" />
 </p>
 
 <p align="center">
@@ -37,7 +38,12 @@
   <sub>▶ <b><a href="https://github.com/solomon2773/nora/raw/master/.github/readme-assets/walkthrough.mp4">Watch the walkthrough</a></b></sub>
 </p>
 
+## Standards & isolation
 
+- **MCP — shipped.** A control-plane [MCP](https://modelcontextprotocol.io) server (`@noraai/mcp-server`, published to the official [MCP Registry](https://github.com/modelcontextprotocol/registry)) plus per-agent MCP server management — operate the fleet from Claude Code / Desktop / Cursor, and wire MCP tools into individual agents.
+- **OpenTelemetry GenAI — on the roadmap.** OTLP export of runtime telemetry under the `gen_ai.*` semantic conventions, so agent traces and per-agent token/cost attribution flow into the Grafana / Datadog / Langfuse stack you already run.
+- **A2A — on the roadmap.** Agent Cards / Agent-to-Agent discovery for managed OpenClaw and Hermes agents.
+- **Isolation, per deploy target.** Standard Docker and Kubernetes runs use container namespaces plus operator-set CPU / RAM / disk limits; the experimental **NemoClaw** profile hardens untrusted code with a non-root user, all Linux capabilities dropped, `no-new-privileges`, Landlock + seccomp, and default-deny egress; Proxmox VM placement (planned) is the future hardware-isolation tier. See the [isolation model](https://noradocs.solomontsao.com/concepts/security#runtime-isolation).
 
 ## What Is Nora?
 
