@@ -40,10 +40,11 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
 # OTEL_EXPORTER_OTLP_HEADERS=authorization=Bearer%20<token>
 OTEL_SERVICE_NAME=nora-control-plane
 
-# Prometheus pull — metrics only (0 or empty disables). Bind to an internal
-# network; the scrape surface is unauthenticated by Prometheus convention.
+# Prometheus pull — metrics only (0 or empty disables). Defaults to loopback;
+# the scrape surface is unauthenticated and exposes agent/model/provider labels,
+# so widen the bind only behind an internal network or firewall.
 NORA_OTEL_PROMETHEUS_PORT=9464
-NORA_OTEL_PROMETHEUS_HOST=0.0.0.0
+NORA_OTEL_PROMETHEUS_HOST=127.0.0.1
 ```
 
 You can run either exporter or both. Spans are OTLP-only — Prometheus carries metrics, not traces. With the Prometheus exporter on, scrape `http://<backend-host>:9464/metrics`.

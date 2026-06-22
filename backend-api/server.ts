@@ -25,8 +25,16 @@ const {
 } = require("./backgroundTasks");
 const agentBudgets = require("./agentBudgets");
 // OpenTelemetry GenAI exporter — self-initializes on require (no-op unless
-// NORA_OTEL_ENABLED=true; fail-open). Required here so it boots with the server.
-const otel = require("./otel");
+// NORA_OTEL_ENABLED=true; fail-open). Wrapped so even a module load/parse error
+// (e.g. a corrupted dependency) disables OTel rather than crashing boot — the
+// init() try/catch only covers runtime errors, not require-time failures.
+let otel;
+try {
+  otel = require("./otel");
+} catch (otelErr) {
+  console.warn(`[otel] module load failed — telemetry disabled: ${otelErr?.message || otelErr}`);
+  otel = { isEnabled: () => false, shutdown: async () => {} };
+}
 const { listKubernetesExecutionTargets } = require("./kubernetesClusters");
 const { STARTER_TEMPLATES } = require("./starterTemplates");
 const { getBootstrapAdminSeedConfig } = require("./bootstrapAdmin");
@@ -2112,6 +2120,20 @@ if (require.main === module) {
   attachExecStream(server);
   attachMetricsStream(server);
   attachGatewayWS(server);
+
+  // Flush batched OpenTelemetry spans/metrics on shutdown — only when OTel is
+  // actually enabled, so the default/disabled path (and tests) keep Node's
+  // stock signal behavior. Bounded so a stuck exporter can't block exit.
+  if (otel.isEnabled()) {
+    for (const sig of ["SIGTERM", "SIGINT"]) {
+      process.once(sig, () => {
+        Promise.race([
+          otel.shutdown(),
+          new Promise((resolve) => setTimeout(resolve, 3000)),
+        ]).finally(() => process.exit(0));
+      });
+    }
+  }
 }
 
 module.exports = app;

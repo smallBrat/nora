@@ -65,6 +65,19 @@ describe("otel GenAI exporter", () => {
     it("handles empty input without throwing", () => {
       expect(otel.chatAttributes()).toEqual({ "gen_ai.operation.name": "chat" });
     });
+
+    it("omits the unbounded conversation id from METRIC attributes (cardinality guard)", () => {
+      const opts = { model: "gpt-5.5", agentId: "a1", sessionId: "attacker-supplied-unbounded-id" };
+      // Spans (default) keep it; metrics (includeConversation:false) must not —
+      // it is user-supplied session id and would blow up time-series cardinality.
+      expect(otel.chatAttributes(opts)["gen_ai.conversation.id"]).toBe(
+        "attacker-supplied-unbounded-id",
+      );
+      const metricAttrs = otel.chatAttributes(opts, { includeConversation: false });
+      expect(metricAttrs).not.toHaveProperty("gen_ai.conversation.id");
+      expect(metricAttrs["nora.agent.id"]).toBe("a1");
+      expect(metricAttrs["gen_ai.request.model"]).toBe("gpt-5.5");
+    });
   });
 });
 

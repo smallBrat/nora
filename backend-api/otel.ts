@@ -19,7 +19,7 @@
 //   OTEL_EXPORTER_OTLP_HEADERS=...         — read natively by the OTLP exporters
 //   OTEL_SERVICE_NAME=nora-control-plane   — service.name (default below)
 //   NORA_OTEL_PROMETHEUS_PORT=9464         — Prometheus /metrics port (0/empty = off)
-//   NORA_OTEL_PROMETHEUS_HOST=0.0.0.0      — bind host for the Prometheus endpoint
+//   NORA_OTEL_PROMETHEUS_HOST=127.0.0.1    — bind host for the Prometheus endpoint (loopback default)
 
 const IS_TEST_ENV = process.env.NODE_ENV === "test" || !!process.env.JEST_WORKER_ID;
 
@@ -63,17 +63,25 @@ function toCount(value) {
 
 /**
  * Pure, dependency-free mapping from a recorded exchange to the gen_ai.*
- * attribute bag shared by the chat span and the token/cost metrics. Exported
- * for unit testing without standing up the SDK.
+ * attribute bag. Exported for unit testing without standing up the SDK.
+ *
+ * `includeConversation` MUST be false for metric attributes: gen_ai.conversation.id
+ * is the user-supplied session id (unbounded, attacker-influenceable), and using
+ * it as a metric label would blow up time-series cardinality / memory on the
+ * Prometheus and OTLP backends. It is safe on spans (each span is a discrete
+ * event, not an aggregated series), so the span path keeps it.
  */
-function chatAttributes({ model, provider, runtimeFamily, source, sessionId, agentId } = {}) {
+function chatAttributes(
+  { model, provider, runtimeFamily, source, sessionId, agentId } = {},
+  { includeConversation = true } = {},
+) {
   const attrs = { [ATTR.GEN_AI_OPERATION]: "chat" };
   if (provider) attrs[ATTR.GEN_AI_SYSTEM] = String(provider);
   if (model) attrs[ATTR.GEN_AI_REQUEST_MODEL] = String(model);
   if (agentId) attrs[ATTR.AGENT_ID] = String(agentId);
   if (runtimeFamily) attrs[ATTR.RUNTIME_FAMILY] = String(runtimeFamily);
   if (source) attrs[ATTR.SOURCE] = String(source);
-  if (sessionId) attrs[ATTR.GEN_AI_CONVERSATION_ID] = String(sessionId);
+  if (includeConversation && sessionId) attrs[ATTR.GEN_AI_CONVERSATION_ID] = String(sessionId);
   return attrs;
 }
 
@@ -91,7 +99,9 @@ const state = {
 // Throttle the resource-gauge DB query: observable callbacks fire on every OTLP
 // push AND every Prometheus scrape, so memoize briefly to avoid hammering PG.
 const RESOURCE_CACHE_TTL_MS = 5000;
+const RESOURCE_QUERY_LIMIT = 1000;
 let _resourceCache = { at: 0, rows: [] };
+let _resourceTruncationWarned = false;
 
 async function loadResourceSamples() {
   const now = Date.now();
@@ -109,6 +119,15 @@ async function loadResourceSamples() {
         ORDER BY s.agent_id, s.recorded_at DESC
         LIMIT 1000`,
     );
+    // No silent caps: warn once if the fleet exceeds the gauge query limit so
+    // operators know resource gauges cover only the first N agents.
+    if ((result.rows || []).length >= RESOURCE_QUERY_LIMIT && !_resourceTruncationWarned) {
+      _resourceTruncationWarned = true;
+      console.warn(
+        `[otel] resource gauges cover only the first ${RESOURCE_QUERY_LIMIT} running agents; ` +
+          "fleet exceeds that — gauges are truncated (token/cost metrics + spans are unaffected).",
+      );
+    }
     _resourceCache = { at: now, rows: result.rows || [] };
   } catch (err) {
     // Never let a telemetry query failure surface — serve the last good sample.
@@ -160,7 +179,10 @@ function init() {
       const { PrometheusExporter } = require("@opentelemetry/exporter-prometheus");
       readers.push(
         new PrometheusExporter({
-          host: String(process.env.NORA_OTEL_PROMETHEUS_HOST || "0.0.0.0"),
+          // Default to loopback: the scrape surface is unauthenticated and its
+          // labels (agent id / model / provider) are operational intelligence.
+          // Operators opt into a wider bind explicitly.
+          host: String(process.env.NORA_OTEL_PROMETHEUS_HOST || "127.0.0.1"),
           port: promPort,
         }),
       );
@@ -262,27 +284,30 @@ function recordChatExchange({
   try {
     const input = toCount(inputTokens);
     const output = toCount(outputTokens);
-    const attrs = chatAttributes({ model, provider, runtimeFamily, source, sessionId, agentId });
+    const id = { model, provider, runtimeFamily, source, sessionId, agentId };
+    // Metric labels MUST be bounded — exclude the unbounded session id.
+    const metricAttrs = chatAttributes(id, { includeConversation: false });
 
     if (state.tokenHistogram) {
       if (input) {
-        state.tokenHistogram.record(input, { ...attrs, [ATTR.GEN_AI_TOKEN_TYPE]: "input" });
+        state.tokenHistogram.record(input, { ...metricAttrs, [ATTR.GEN_AI_TOKEN_TYPE]: "input" });
       }
       if (output) {
-        state.tokenHistogram.record(output, { ...attrs, [ATTR.GEN_AI_TOKEN_TYPE]: "output" });
+        state.tokenHistogram.record(output, { ...metricAttrs, [ATTR.GEN_AI_TOKEN_TYPE]: "output" });
       }
     }
     if (state.costCounter) {
       const cost = Number(costUsd);
-      if (Number.isFinite(cost) && cost > 0) state.costCounter.add(cost, attrs);
+      if (Number.isFinite(cost) && cost > 0) state.costCounter.add(cost, metricAttrs);
     }
     if (state.tracer) {
       const startTime = Number.isFinite(startedAtMs) && startedAtMs > 0 ? startedAtMs : undefined;
+      // Spans tolerate high-cardinality attributes, so the session id stays here.
       const span = state.tracer.startSpan(`chat ${model || ""}`.trim(), {
         kind: state.SpanKind ? state.SpanKind.CLIENT : undefined,
         startTime,
         attributes: {
-          ...attrs,
+          ...chatAttributes(id),
           ...(input ? { [ATTR.GEN_AI_USAGE_INPUT]: input } : {}),
           ...(output ? { [ATTR.GEN_AI_USAGE_OUTPUT]: output } : {}),
           ...(toCount(totalTokens) ? { "nora.usage.total_tokens": toCount(totalTokens) } : {}),
