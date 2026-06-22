@@ -18,6 +18,7 @@ const {
   mapNoraProviderIdToOpenClaw,
 } = require("../agent-runtime/lib/runtimeBootstrap");
 const { buildHermesRuntimeBootstrapEnv } = require("../agent-runtime/lib/hermesRuntimeBootstrap");
+const { NEMOCLAW_DEFAULT_MODEL } = require("../agent-runtime/lib/nemoclawDefaults");
 
 const providerCatalog = Array.isArray(llmProviders.PROVIDERS)
   ? llmProviders.PROVIDERS
@@ -38,7 +39,7 @@ const PROVIDER_MODEL_DEFAULTS = {
   together: "together/moonshotai/Kimi-K2.5",
   cohere: "command-r-plus",
   xai: "grok-4",
-  nvidia: "nvidia/nvidia/nemotron-3-super-120b-a12b",
+  nvidia: NEMOCLAW_DEFAULT_MODEL,
   moonshot: "kimi-k2.5",
   zai: "glm-5",
   minimax: "MiniMax-M2.7",

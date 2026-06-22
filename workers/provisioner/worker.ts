@@ -3,6 +3,7 @@ const { Worker } = require("bullmq");
 const IORedis = require("ioredis");
 const { Pool } = require("pg");
 const { getDefaultAgentImage } = require("../../agent-runtime/lib/agentImages");
+const { NEMOCLAW_DEFAULT_MODEL } = require("../../agent-runtime/lib/nemoclawDefaults");
 const {
   runtimeUrlForAgent,
   buildRuntimeAuthHeaders,
@@ -29,6 +30,7 @@ const {
   allocateGatewayPort,
   LOCAL_HOST_KEY,
   DASHBOARD_PORT_PURPOSE,
+  RUNTIME_PORT_PURPOSE,
 } = require("../../backend-api/portAllocations");
 const {
   buildIntegrationSyncEntry,
@@ -192,7 +194,7 @@ const PROVIDER_MODEL_DEFAULTS = Object.freeze({
   together: "together/moonshotai/Kimi-K2.5",
   cohere: "command-r-plus",
   xai: "grok-4",
-  nvidia: "nvidia/nvidia/nemotron-3-super-120b-a12b",
+  nvidia: NEMOCLAW_DEFAULT_MODEL,
   moonshot: "kimi-k2.5",
   zai: "glm-5",
   minimax: "MiniMax-M2.7",
@@ -1282,9 +1284,11 @@ function backendInstanceKey(runtimeFields = {}) {
   if (backend === "remote-docker" && runtimeFields.execution_target_id) {
     const target =
       String(runtimeFields.execution_target_id).trim().toLowerCase() || "remote-docker";
-    // Encode the runtime family so an OpenClaw and a Hermes agent on the SAME
-    // remote host don't share one cached adapter (they need different backends).
-    return runtimeFields.runtime_family === "hermes" ? `hermes:${target}` : target;
+    // Encode the runtime/sandbox path so OpenClaw, Hermes, and NemoClaw agents
+    // on the SAME remote host don't share one cached adapter.
+    if (runtimeFields.runtime_family === "hermes") return `hermes:${target}`;
+    if (runtimeFields.sandbox_profile === "nemoclaw") return `nemoclaw:${target}`;
+    return target;
   }
   return backend;
 }
@@ -1333,6 +1337,20 @@ async function loadBackend(runtimeFields = {}) {
           );
         }
         instance = new (require("./backends/remote-hermes"))(profile);
+        break;
+      }
+      if (key.startsWith("nemoclaw:remote:")) {
+        const executionTargetId = key.slice("nemoclaw:".length);
+        const profile = await getRemoteHostProfile(executionTargetId);
+        if (!profile) {
+          throw new Error(`Unknown remote host execution target: ${executionTargetId}`);
+        }
+        if (!profile.configured) {
+          throw new Error(
+            profile.issue || `Remote host ${executionTargetId} is not configured for provisioning.`,
+          );
+        }
+        instance = new (require("./backends/remote-nemoclaw"))(profile);
         break;
       }
       if (key.startsWith("remote:")) {
@@ -1790,6 +1808,7 @@ const worker = new Worker(
         // agents (k8s/proxmox manage their own ports). Idempotent per agent+host,
         // so redeploys keep the same port; released via ON DELETE CASCADE.
         let allocatedGatewayPort;
+        let allocatedRuntimePort;
         let allocatedDashboardPort;
         {
           const deployTarget = resolvedRuntimeFields.deploy_target;
@@ -1821,6 +1840,16 @@ const worker = new Worker(
                 purpose: DASHBOARD_PORT_PURPOSE,
               });
             }
+            if (
+              deployTarget === "remote-docker" &&
+              resolvedRuntimeFields.runtime_family === "openclaw"
+            ) {
+              allocatedRuntimePort = await allocateGatewayPort({
+                hostKey: allocationHostKey,
+                agentId: id,
+                purpose: RUNTIME_PORT_PURPOSE,
+              });
+            }
           }
         }
         const createPromise = provisioner.create({
@@ -1832,6 +1861,7 @@ const worker = new Worker(
           disk_gb,
           container_name,
           gatewayHostPort: allocatedGatewayPort,
+          runtimeHostPort: allocatedRuntimePort,
           dashboardHostPort: allocatedDashboardPort,
           gatewayToken: agentRow.gateway_token || undefined,
           templatePayload,
