@@ -2519,13 +2519,47 @@ alertDeliveryWorker.on("completed", (job) => {
   console.log(`[alert-deliveries] Job ${job.id} delivered`);
 });
 
+// ── Scheduled Agent Run Worker ───────────────────────────────────
+// The backend sweep enqueues one job per due schedule; runScheduledAction
+// (backend-api) executes the prompt/lifecycle action against the agent. It
+// throws on failure so BullMQ applies the queue's bounded retry.
+const { runScheduledAction } = require("../../backend-api/scheduleRunner");
+const SCHEDULE_RUN_CONCURRENCY = parsePositiveInteger(
+  process.env.SCHEDULE_RUN_WORKER_CONCURRENCY,
+  5,
+);
+
+const scheduleRunWorker = new Worker(
+  "agent-schedules",
+  async (job) => runScheduledAction(job.data),
+  { connection, concurrency: SCHEDULE_RUN_CONCURRENCY },
+);
+
+scheduleRunWorker.on("failed", (job, err) => {
+  if (!job) return;
+  const attemptsMade = job.attemptsMade || 0;
+  const maxAttempts = job.opts?.attempts || 2;
+  console.error(
+    `[agent-schedules] Job ${job.id} (schedule ${job.data?.scheduleId}) attempt ${attemptsMade}/${maxAttempts} failed: ${err.message}`,
+  );
+});
+
+scheduleRunWorker.on("completed", (job) => {
+  console.log(
+    `[agent-schedules] Job ${job.id} ran (${job.data?.actionType} on agent ${job.data?.agentId})`,
+  );
+});
+
 // ── Health Check Server ──────────────────────────────────────────
 const http = require("http");
 const HEALTH_PORT = parseInt(process.env.WORKER_HEALTH_PORT || "4001");
 const healthServer = http.createServer((req, res) => {
   if (req.url === "/health") {
     const isReady =
-      worker.isRunning() && clawhubJobsWorker.isRunning() && alertDeliveryWorker.isRunning();
+      worker.isRunning() &&
+      clawhubJobsWorker.isRunning() &&
+      alertDeliveryWorker.isRunning() &&
+      scheduleRunWorker.isRunning();
     res.writeHead(isReady ? 200 : 503, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ status: isReady ? "ok" : "not_ready", uptime: process.uptime() }));
   } else {
