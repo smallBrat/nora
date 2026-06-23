@@ -12,10 +12,17 @@ const metrics = require("./metrics");
 const agentSchedules = require("./agentSchedules");
 const containerManager = require("./containerManager");
 const { addDeploymentJob } = require("./redisQueue");
-const { rpcCall } = require("./gatewayProxy");
+const {
+  rpcCall,
+  resolveGatewayHostForProxy,
+  allowedGatewayHostsForAgent,
+} = require("./gatewayProxy");
 const { runtimeAuthHeaders } = require("./runtimeAuth");
 const { resolveAgentRuntimeFamily } = require("./agentRuntimeFields");
-const { runtimeUrlForAgent } = require("../agent-runtime/lib/agentEndpoints");
+
+// Lifecycle actions that bring an agent UP — must not resurrect a budget-paused
+// agent (the budget sweep would just re-pause it; a schedule shouldn't fight it).
+const REVIVE_ACTIONS = new Set(["start", "restart", "redeploy"]);
 
 const CHAT_TIMEOUT_MS = 240000;
 
@@ -31,8 +38,15 @@ async function deliverPrompt(agent, prompt, userId) {
   const startedAtMs = Date.now();
 
   if (family === "hermes") {
-    const url = runtimeUrlForAgent(agent, "/v1/chat/completions");
-    if (!url) throw new Error("Hermes runtime endpoint unavailable");
+    const host = agent.runtime_host;
+    const port = agent.runtime_port;
+    if (!host || !port) throw new Error("Hermes runtime endpoint unavailable");
+    // SSRF-safe: validate + DNS-pin the runtime host through the same floor +
+    // per-agent allowlist the gateway proxy uses (the OpenClaw path gets this
+    // for free via rpcCall; the raw Hermes fetch must do it explicitly).
+    const allowed = await allowedGatewayHostsForAgent(agent);
+    const safeHost = await resolveGatewayHostForProxy(host, "hermes runtime", allowed);
+    const url = `http://${safeHost}:${port}/v1/chat/completions`;
     const resp = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...(await runtimeAuthHeaders(agent)) },
@@ -114,6 +128,20 @@ async function runScheduledAction(payload = {}) {
     },
     agent: { id: agent.id, name: agent.name, ownerUserId: agent.user_id },
   });
+
+  // Don't let a schedule revive a budget-paused agent — the budget sweep would
+  // immediately re-pause it, and a scheduled prompt shouldn't run up a capped bill.
+  if (agent.paused_reason && (REVIVE_ACTIONS.has(actionType) || actionType === "prompt")) {
+    await agentSchedules.markRun(scheduleId, `skipped: ${agent.paused_reason}`).catch(() => {});
+    await monitoring
+      .logEvent(
+        "agent.schedule.run",
+        `Scheduled ${actionType} on "${agent.name}" skipped (${agent.paused_reason})`,
+        eventMeta(false, `skipped: ${agent.paused_reason}`),
+      )
+      .catch(() => {});
+    return { ok: false, status: `skipped: ${agent.paused_reason}` };
+  }
 
   try {
     await performAction(agent, actionType, prompt, createdBy);

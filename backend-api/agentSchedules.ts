@@ -285,9 +285,15 @@ async function sweepDueSchedules({
       });
       enqueued += 1;
     } catch (err) {
-      // Best-effort: a failed enqueue is retried on the next sweep once the
-      // bumped next_run_at comes due again; log via markRun for visibility.
-      await markRun(row.id, `enqueue_failed: ${err?.message || err}`).catch(() => {});
+      // The claim already bumped next_run_at to the NEXT cron fire. If the
+      // enqueue fails (e.g. Redis blip), don't silently skip until then — pull
+      // next_run_at back to ~now so the next sweep re-claims and retries it.
+      await db
+        .query(
+          "UPDATE agent_schedules SET next_run_at = NOW(), last_status = $2, updated_at = NOW() WHERE id = $1",
+          [row.id, `enqueue_failed: ${err?.message || err}`.slice(0, 200)],
+        )
+        .catch(() => {});
     }
   }
   return enqueued;

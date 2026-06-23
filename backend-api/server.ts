@@ -2139,9 +2139,14 @@ if (require.main === module) {
     }, BUDGET_SWEEP_INTERVAL);
 
     // ── Schedule sweep: claim due agent_schedules and enqueue each run for the
-    // worker to execute. Replica-safe (FOR UPDATE SKIP LOCKED in the module). ──
+    // worker to execute. Replica-safe (FOR UPDATE SKIP LOCKED in the module).
+    // The re-entrancy guard prevents a slow sweep from overlapping the next
+    // tick (setInterval doesn't await), bounding concurrent enqueue load. ──
     const SCHEDULE_SWEEP_INTERVAL = 30000;
+    let scheduleSweepRunning = false;
     setInterval(async () => {
+      if (scheduleSweepRunning) return;
+      scheduleSweepRunning = true;
       try {
         await agentSchedules.sweepDueSchedules({
           dbClient: db,
@@ -2149,6 +2154,8 @@ if (require.main === module) {
         });
       } catch (err) {
         console.error("[schedules] sweep failed:", err?.message || err);
+      } finally {
+        scheduleSweepRunning = false;
       }
     }, SCHEDULE_SWEEP_INTERVAL);
   });

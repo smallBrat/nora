@@ -2556,7 +2556,10 @@ const HEALTH_PORT = parseInt(process.env.WORKER_HEALTH_PORT || "4001");
 const healthServer = http.createServer((req, res) => {
   if (req.url === "/health") {
     const isReady =
-      worker.isRunning() && clawhubJobsWorker.isRunning() && alertDeliveryWorker.isRunning();
+      worker.isRunning() &&
+      clawhubJobsWorker.isRunning() &&
+      alertDeliveryWorker.isRunning() &&
+      scheduleRunWorker.isRunning();
     res.writeHead(isReady ? 200 : 503, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ status: isReady ? "ok" : "not_ready", uptime: process.uptime() }));
   } else {

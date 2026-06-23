@@ -25,14 +25,17 @@ const mockAddDeploymentJob = jest.fn().mockResolvedValue(undefined);
 jest.mock("../redisQueue", () => ({ addDeploymentJob: mockAddDeploymentJob }));
 
 const mockRpcCall = jest.fn().mockResolvedValue({ result: { message: { usage: {} } } });
-jest.mock("../gatewayProxy", () => ({ rpcCall: mockRpcCall }));
+const mockResolveHost = jest.fn().mockResolvedValue("10.0.0.7");
+const mockAllowedHosts = jest.fn().mockResolvedValue(new Set(["10.0.0.7"]));
+jest.mock("../gatewayProxy", () => ({
+  rpcCall: mockRpcCall,
+  resolveGatewayHostForProxy: mockResolveHost,
+  allowedGatewayHostsForAgent: mockAllowedHosts,
+}));
 
 jest.mock("../runtimeAuth", () => ({ runtimeAuthHeaders: jest.fn().mockResolvedValue({}) }));
 jest.mock("../agentRuntimeFields", () => ({
   resolveAgentRuntimeFamily: (a) => a.runtime_family || "openclaw",
-}));
-jest.mock("../../agent-runtime/lib/agentEndpoints", () => ({
-  runtimeUrlForAgent: (a, p) => `http://runtime${p}`,
 }));
 
 const { runScheduledAction } = require("../scheduleRunner");
@@ -109,4 +112,48 @@ it("on action failure, records the failure and rethrows (for BullMQ retry)", asy
 
 it("rejects a payload missing required fields", async () => {
   await expect(runScheduledAction({ scheduleId: "s1" })).rejects.toThrow(/requires/);
+});
+
+it("delivers a Hermes prompt through the SSRF-safe resolved host", async () => {
+  const HERMES = {
+    id: "h1",
+    name: "Hermes",
+    user_id: "u1",
+    runtime_family: "hermes",
+    runtime_host: "hermes.internal",
+    runtime_port: 8642,
+  };
+  mockDb.query.mockResolvedValue({ rows: [HERMES] });
+  global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ usage: {} }) });
+
+  const out = await runScheduledAction({
+    scheduleId: "s1",
+    agentId: "h1",
+    actionType: "prompt",
+    prompt: "hi",
+    createdBy: "u1",
+  });
+
+  expect(out.ok).toBe(true);
+  // Host must be validated/pinned via the gateway SSRF resolver, not used raw.
+  expect(mockResolveHost).toHaveBeenCalledWith(
+    "hermes.internal",
+    "hermes runtime",
+    expect.anything(),
+  );
+  expect(global.fetch).toHaveBeenCalledWith(
+    "http://10.0.0.7:8642/v1/chat/completions",
+    expect.objectContaining({ method: "POST" }),
+  );
+  delete global.fetch;
+});
+
+it("skips a revive action on a budget-paused agent (does not fight the budget)", async () => {
+  mockDb.query.mockResolvedValue({
+    rows: [{ ...OPENCLAW_AGENT, paused_reason: "budget_exceeded" }],
+  });
+  const out = await runScheduledAction({ scheduleId: "s1", agentId: "a1", actionType: "restart" });
+  expect(out).toEqual({ ok: false, status: "skipped: budget_exceeded" });
+  expect(mockContainer.restart).not.toHaveBeenCalled();
+  expect(mockMarkRun).toHaveBeenCalledWith("s1", "skipped: budget_exceeded");
 });
