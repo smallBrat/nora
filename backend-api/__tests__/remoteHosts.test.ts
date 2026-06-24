@@ -166,6 +166,9 @@ describe("updateRemoteHost", () => {
     const update = mockDb.query.mock.calls[1];
     expect(update[0]).toMatch(/UPDATE remote_hosts/);
     expect(update[1][14]).toBe(true); // resetTest flag → wipes last_test_*
+    // The host-key pin is also cleared on a connection-input change so the next
+    // test re-pins the (now different) host instead of failing as a false MITM.
+    expect(update[0]).toMatch(/ssh_host_key = CASE WHEN \$15 THEN NULL ELSE ssh_host_key END/);
   });
 
   it("keeps the prior test result when only the label changes", async () => {

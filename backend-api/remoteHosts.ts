@@ -392,6 +392,11 @@ async function updateRemoteHost(hostId, input = {}) {
             last_test_status = CASE WHEN $15 THEN NULL ELSE last_test_status END,
             last_test_message = CASE WHEN $15 THEN NULL ELSE last_test_message END,
             last_tested_at = CASE WHEN $15 THEN NULL ELSE last_tested_at END,
+            -- Clear the host-key pin too when connection inputs change, so the
+            -- next test re-pins (trust-on-first-use) the now-different host. A
+            -- key change WITHOUT a connection-input change keeps the pin, so a
+            -- silent MITM on the same target still fails closed.
+            ssh_host_key = CASE WHEN $15 THEN NULL ELSE ssh_host_key END,
             updated_at = NOW()
       WHERE id = $1
       RETURNING *`,
