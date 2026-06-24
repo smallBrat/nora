@@ -161,6 +161,7 @@ function rowToProfile(row, { includeSecret = false } = {}) {
     sshPassphrase,
     gatewayHost: normalizeText(row.gateway_host) || sshHost,
     dockerHost: normalizeText(row.docker_host),
+    sshHostKey: normalizeText(row.ssh_host_key),
     configured,
     connected: testedOk,
     available: row.enabled !== false && configured && testedOk,
@@ -437,7 +438,7 @@ async function deleteRemoteHost(hostId) {
   return maskHost(result.rows[0]);
 }
 
-function buildSshConnectConfig(profile, timeoutMs) {
+function buildSshConnectConfig(profile, timeoutMs, { onHostKey } = {}) {
   const config = {
     host: profile.sshHost,
     port: profile.sshPort || DEFAULT_SSH_PORT,
@@ -450,6 +451,21 @@ function buildSshConnectConfig(profile, timeoutMs) {
     config.privateKey = profile.sshPrivateKey || "";
     if (profile.sshPassphrase) config.passphrase = profile.sshPassphrase;
   }
+  // Host-key pinning: capture the presented key (base64) for the caller, and —
+  // when a key is already pinned — reject a mismatch (MITM / changed host).
+  const expected = normalizeText(profile.sshHostKey);
+  config.hostVerifier = (key) => {
+    const presented = Buffer.isBuffer(key) ? key.toString("base64") : String(key || "");
+    if (typeof onHostKey === "function") {
+      try {
+        onHostKey(presented);
+      } catch {
+        /* capture is best-effort */
+      }
+    }
+    if (expected) return presented === expected;
+    return true; // trust-on-first-use: no pin yet
+  };
   return config;
 }
 
@@ -460,6 +476,14 @@ function runRemoteDockerProbe(profile, { timeoutMs = DEFAULT_TEST_TIMEOUT_MS } =
     const Client = getSshClientCtor();
     const conn = new Client();
     let settled = false;
+    // Capture the presented host key (base64) and detect a mismatch vs the pin.
+    const expectedHostKey = normalizeText(profile.sshHostKey);
+    let capturedHostKey = null;
+    let hostKeyMismatch = false;
+    const onHostKey = (presented) => {
+      capturedHostKey = presented;
+      if (expectedHostKey && presented !== expectedHostKey) hostKeyMismatch = true;
+    };
     const finish = (result) => {
       if (settled) return;
       settled = true;
@@ -486,6 +510,7 @@ function runRemoteDockerProbe(profile, { timeoutMs = DEFAULT_TEST_TIMEOUT_MS } =
               finish({
                 ok: true,
                 message: `Docker ${version} is reachable over SSH at ${sshTargetLabel(profile)}.`,
+                hostKey: capturedHostKey,
               });
             } else {
               finish({
@@ -506,11 +531,21 @@ function runRemoteDockerProbe(profile, { timeoutMs = DEFAULT_TEST_TIMEOUT_MS } =
     });
 
     conn.on("error", (err) => {
+      if (hostKeyMismatch) {
+        finish({
+          ok: false,
+          hostKeyMismatch: true,
+          message:
+            "Remote host key does not match the pinned key — connection refused (possible " +
+            "man-in-the-middle, or the host was rebuilt). Delete and re-register the host if this is expected.",
+        });
+        return;
+      }
       finish({ ok: false, message: err?.message || "SSH connection failed." });
     });
 
     try {
-      conn.connect(buildSshConnectConfig(profile, timeoutMs));
+      conn.connect(buildSshConnectConfig(profile, timeoutMs, { onHostKey }));
     } catch (err) {
       finish({ ok: false, message: err?.message || "SSH connection could not be started." });
     }
@@ -526,6 +561,7 @@ async function testRemoteHost(hostId, options = {}) {
   }
   let status = "ok";
   let message = "Docker is reachable over SSH.";
+  let pinHostKey = null;
   if (!profile.configured) {
     status = "failed";
     message = profile.issue || "Remote host is not configured.";
@@ -533,16 +569,23 @@ async function testRemoteHost(hostId, options = {}) {
     const probe = await runRemoteDockerProbe(profile, options);
     status = probe.ok ? "ok" : "failed";
     message = probe.message;
+    // Trust-on-first-use: pin the host key on the first successful test. Once
+    // pinned it's never overwritten here — a changed key fails the probe above
+    // (hostKeyMismatch), so re-pinning requires an explicit re-register.
+    if (probe.ok && probe.hostKey && !normalizeText(profile.sshHostKey)) {
+      pinHostKey = probe.hostKey;
+    }
   }
   const result = await db.query(
     `UPDATE remote_hosts
         SET last_test_status = $2,
             last_test_message = $3,
+            ssh_host_key = COALESCE(ssh_host_key, $4),
             last_tested_at = NOW(),
             updated_at = NOW()
       WHERE id = $1
       RETURNING *`,
-    [profile.id, status, message],
+    [profile.id, status, message, pinHostKey],
   );
   return maskHost(result.rows[0]);
 }
