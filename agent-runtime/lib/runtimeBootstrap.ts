@@ -352,12 +352,21 @@ const FOUNDRY_DEFAULT_MODELS = [
 // saved provider's model/config). Fall back to the canonical "gpt-5.5" when
 // unset so existing single-deployment setups keep working.
 const FOUNDRY_FALLBACK_DEPLOYMENT = "gpt-5.5";
+const FOUNDRY_MODEL_PROVIDER_PREFIXES = Object.freeze([
+  FOUNDRY_OPENCLAW_PROVIDER_ID,
+  "microsoft-foundry",
+  "openai",
+  "openai-responses",
+]);
 
 function normalizeFoundryDeployment(value) {
   let deployment = String(value || "").trim();
-  const providerPrefix = `${FOUNDRY_OPENCLAW_PROVIDER_ID}/`;
-  if (deployment.startsWith(providerPrefix)) {
-    deployment = deployment.slice(providerPrefix.length).trim();
+  for (const providerId of FOUNDRY_MODEL_PROVIDER_PREFIXES) {
+    const providerPrefix = `${providerId}/`;
+    if (deployment.startsWith(providerPrefix)) {
+      deployment = deployment.slice(providerPrefix.length).trim();
+      break;
+    }
   }
   return deployment && !deployment.includes("/") ? deployment : "";
 }
@@ -499,6 +508,20 @@ const NORA_TO_OPENCLAW_PROVIDER_ID = Object.freeze({
 function mapNoraProviderIdToOpenClaw(noraProviderId) {
   if (!noraProviderId) return noraProviderId;
   return NORA_TO_OPENCLAW_PROVIDER_ID[noraProviderId] || noraProviderId;
+}
+
+function buildOpenClawModelForProvider(noraProviderId, modelId) {
+  const providerId = String(noraProviderId || "").trim();
+  const rawModelId = String(modelId || "").trim();
+  if (!providerId || !rawModelId) return null;
+
+  if (providerId === "microsoft-foundry") {
+    const deployment = normalizeFoundryDeployment(rawModelId);
+    return deployment ? `${FOUNDRY_OPENCLAW_PROVIDER_ID}/${deployment}` : null;
+  }
+
+  const openclawProvider = mapNoraProviderIdToOpenClaw(providerId);
+  return rawModelId.includes("/") ? rawModelId : `${openclawProvider}/${rawModelId}`;
 }
 
 const OPENCLAW_SQLITE_AUTH_SKIP_PROVIDERS = Object.freeze([
@@ -750,6 +773,7 @@ module.exports = {
   buildMcpServersConfig,
   buildOpenClawCustomProviders,
   mapNoraProviderIdToOpenClaw,
+  buildOpenClawModelForProvider,
   FOUNDRY_OPENCLAW_PROVIDER_ID,
   DEMO_OPENCLAW_PROVIDER_ID,
   DEMO_OPENCLAW_MODEL_ID,

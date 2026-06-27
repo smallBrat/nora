@@ -12,7 +12,9 @@ const {
   buildRuntimeBootstrapCommand,
   buildTemplatePayloadBootstrapFiles,
   mapNoraProviderIdToOpenClaw,
+  buildOpenClawModelForProvider,
   FOUNDRY_OPENCLAW_PROVIDER_ID,
+  resolveFoundryDeployment,
 } = require("../../workers/provisioner/runtimeBootstrap");
 const DockerBackend = require("../../workers/provisioner/backends/docker");
 const tar = require(
@@ -304,6 +306,41 @@ describe("OpenClaw bootstrap helpers", () => {
       expect(mapNoraProviderIdToOpenClaw(undefined)).toBe(undefined);
       expect(mapNoraProviderIdToOpenClaw(null)).toBe(null);
       expect(mapNoraProviderIdToOpenClaw("")).toBe("");
+    });
+  });
+
+  describe("buildOpenClawModelForProvider", () => {
+    it("rewrites prefixed Foundry deployment strings to OpenClaw's Azure provider id", () => {
+      expect(buildOpenClawModelForProvider("microsoft-foundry", "gpt-5.5-1")).toBe(
+        "azure-openai-responses/gpt-5.5-1",
+      );
+      expect(buildOpenClawModelForProvider("microsoft-foundry", "openai/gpt-5.5-1")).toBe(
+        "azure-openai-responses/gpt-5.5-1",
+      );
+      expect(
+        buildOpenClawModelForProvider("microsoft-foundry", "microsoft-foundry/gpt-5.5-1"),
+      ).toBe("azure-openai-responses/gpt-5.5-1");
+      expect(
+        buildOpenClawModelForProvider("microsoft-foundry", "azure-openai-responses/gpt-5.5-1"),
+      ).toBe("azure-openai-responses/gpt-5.5-1");
+    });
+
+    it("preserves normal prefixed models for non-Foundry providers", () => {
+      expect(buildOpenClawModelForProvider("openai", "openai/gpt-5.5-1")).toBe("openai/gpt-5.5-1");
+      expect(buildOpenClawModelForProvider("anthropic", "claude-sonnet-4-5")).toBe(
+        "anthropic/claude-sonnet-4-5",
+      );
+    });
+  });
+
+  describe("resolveFoundryDeployment", () => {
+    it("accepts legacy OpenAI-prefixed Foundry model values as deployment names", () => {
+      expect(resolveFoundryDeployment({ MICROSOFT_FOUNDRY_DEPLOYMENT: "openai/gpt-5.5-1" })).toBe(
+        "gpt-5.5-1",
+      );
+      expect(resolveFoundryDeployment({ NORA_DEFAULT_OPENCLAW_MODEL: "openai/gpt-5.5-1" })).toBe(
+        "gpt-5.5-1",
+      );
     });
   });
 

@@ -50,7 +50,7 @@ const {
   buildOpenClawAuthProfilesWriteCommand,
   buildOpenClawConfigMergeCommand,
   buildOpenClawCustomProviders,
-  mapNoraProviderIdToOpenClaw,
+  buildOpenClawModelForProvider,
 } = require("../../agent-runtime/lib/runtimeBootstrap");
 const {
   buildHermesRuntimeBootstrapEnv,
@@ -183,7 +183,7 @@ const PROVIDER_ENV_ENDPOINT_MAP = Object.freeze({
 
 const PROVIDER_MODEL_DEFAULTS = Object.freeze({
   // Bare model id — prefixed with the OpenClaw provider id (nora-demo) via
-  // mapNoraProviderIdToOpenClaw, same as microsoft-foundry below.
+  // buildOpenClawModelForProvider, same as microsoft-foundry below.
   demo: "nora-demo-1",
   anthropic: "claude-sonnet-4-5",
   openai: "gpt-5.5",
@@ -200,7 +200,7 @@ const PROVIDER_MODEL_DEFAULTS = Object.freeze({
   zai: "glm-5",
   minimax: "MiniMax-M2.7",
   // Bare deployment name — buildDefaultModelCommand prefixes it with the
-  // OpenClaw provider id (azure-openai-responses) via mapNoraProviderIdToOpenClaw.
+  // OpenClaw provider id (azure-openai-responses) via buildOpenClawModelForProvider.
   "microsoft-foundry": "gpt-5.5-1",
 });
 
@@ -303,9 +303,7 @@ function buildDefaultOpenClawModel(defaultProvider = null) {
   const modelId = defaultProvider.model || PROVIDER_MODEL_DEFAULTS[defaultProvider.provider];
   if (!modelId) return null;
 
-  // Translate Nora provider id → OpenClaw provider id (Foundry → azure-openai-responses).
-  const openclawProvider = mapNoraProviderIdToOpenClaw(defaultProvider.provider);
-  return modelId.includes("/") ? modelId : `${openclawProvider}/${modelId}`;
+  return buildOpenClawModelForProvider(defaultProvider.provider, modelId);
 }
 
 function normalizeProviderConfig(config) {
