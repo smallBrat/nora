@@ -35,6 +35,7 @@ jest.mock("../healthChecks", () => ({
 }));
 
 const {
+  buildDefaultModelCommand,
   buildHermesEnvWriteCommand,
   runContainerCommand,
   syncAuthToUserAgents,
@@ -108,6 +109,16 @@ describe("auth sync", () => {
     consoleLogSpy.mockRestore();
     consoleWarnSpy.mockRestore();
     delete global.fetch;
+  });
+
+  it("sets Microsoft Foundry defaults through azure-openai-responses even when the saved model has an OpenAI prefix", () => {
+    const command = buildDefaultModelCommand({
+      provider: "microsoft-foundry",
+      model: "openai/gpt-5.5-1",
+    });
+
+    expect(command).toContain('"models" "set" "azure-openai-responses/gpt-5.5-1"');
+    expect(command).not.toContain('"models" "set" "openai/gpt-5.5-1"');
   });
 
   it("syncs auth through the runtime endpoint and restarts supported non-docker agents", async () => {
