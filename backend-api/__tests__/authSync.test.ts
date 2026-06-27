@@ -148,6 +148,10 @@ describe("auth sync", () => {
       }),
     );
     expect(JSON.parse(global.fetch.mock.calls[0][1].body).command).toContain("auth-profiles.json");
+    expect(JSON.parse(global.fetch.mock.calls[0][1].body).command).toContain("paste-api-key");
+    expect(JSON.parse(global.fetch.mock.calls[0][1].body).command).toContain(
+      "__NORA_OPENCLAW_AUTH_SQLITE_IMPORT__",
+    );
     expect(mockRestart).toHaveBeenCalledWith(
       expect.objectContaining({
         id: "agent-k8s-1",
