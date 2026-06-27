@@ -47,6 +47,7 @@ const {
   NORA_SYNC_INTEGRATIONS_DIR,
 } = require("../../agent-runtime/lib/integrationTools");
 const {
+  buildOpenClawAuthProfilesWriteCommand,
   buildOpenClawConfigMergeCommand,
   buildOpenClawCustomProviders,
   mapNoraProviderIdToOpenClaw,
@@ -279,12 +280,7 @@ function buildAuthProfiles(providerKeys = {}) {
 }
 
 function buildAuthProfilesWriteCommand(authProfiles) {
-  const authJsonB64 = Buffer.from(JSON.stringify(authProfiles)).toString("base64");
-  return (
-    `mkdir -p /root/.openclaw/agents/main/agent && ` +
-    `printf '%s' '${authJsonB64}' | base64 -d > /root/.openclaw/agents/main/agent/auth-profiles.json && ` +
-    `chmod 0600 /root/.openclaw/agents/main/agent/auth-profiles.json`
-  );
+  return buildOpenClawAuthProfilesWriteCommand(authProfiles);
 }
 
 function buildDefaultModelCommand(defaultProvider = null) {

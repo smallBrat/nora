@@ -1,7 +1,8 @@
 // @ts-nocheck
-// Syncs auth-profiles.json to running agents via the runtime sidecar.
-// After writing, restarts the backend so the OpenClaw gateway process
-// re-reads the file on startup (it does not hot-reload from disk).
+// Syncs OpenClaw auth to running agents via the runtime sidecar.
+// Writes the legacy auth-profiles.json file, imports API-key profiles into
+// OpenClaw's per-agent SQLite auth store, then restarts the backend so the
+// gateway process re-reads auth on startup (it does not hot-reload from disk).
 // Called whenever LLM provider keys or LLM-relevant integrations change.
 
 const db = require("./db");
@@ -13,6 +14,7 @@ const { waitForAgentReadiness } = require("./healthChecks");
 const { resolveAgentRuntimeFamily } = require("./agentRuntimeFields");
 const { shellSingleQuote } = require("../agent-runtime/lib/containerCommand");
 const {
+  buildOpenClawAuthProfilesWriteCommand,
   buildOpenClawConfigMergeCommand,
   buildOpenClawCustomProviders,
   mapNoraProviderIdToOpenClaw,
@@ -272,12 +274,7 @@ async function buildHermesManagedEnvForAgent(userId, agentId) {
 }
 
 function buildAuthProfilesWriteCommand(authProfiles) {
-  const authJsonB64 = Buffer.from(JSON.stringify(authProfiles)).toString("base64");
-  return (
-    `mkdir -p /root/.openclaw/agents/main/agent && ` +
-    `printf '%s' '${authJsonB64}' | base64 -d > /root/.openclaw/agents/main/agent/auth-profiles.json && ` +
-    `chmod 0600 /root/.openclaw/agents/main/agent/auth-profiles.json`
-  );
+  return buildOpenClawAuthProfilesWriteCommand(authProfiles);
 }
 
 function buildDefaultModelCommand(defaultProvider = null) {
@@ -526,7 +523,7 @@ async function restartAgentAndRefreshAddress(agent) {
 }
 
 /**
- * Sync auth-profiles.json to all running agents of a user.
+ * Sync OpenClaw auth to all running agents of a user.
  * If agentId is provided, syncs only that agent.
  *
  * Returns an array of { agentId, status, error? } results.
@@ -705,7 +702,7 @@ async function syncAuthToUserAgents(userId, agentId = null, options = {}) {
         await runRuntimeCommand(agent, modelCommand, { timeout: 60000 });
       }
 
-      console.log(`[authSync] Synced auth-profiles.json to agent ${agent.id} (backend restarted)`);
+      console.log(`[authSync] Synced OpenClaw auth to agent ${agent.id} (backend restarted)`);
       results.push({ agentId: agent.id, status: "synced" });
     } catch (e) {
       console.warn(`[authSync] Failed for agent ${agent.id}:`, e.message);
