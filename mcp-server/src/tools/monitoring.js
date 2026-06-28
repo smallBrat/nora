@@ -24,8 +24,7 @@ export function registerMonitoringTools(server, api) {
     "get_fleet_status",
     {
       title: "Get fleet status",
-      description:
-        "Fleet-wide needs-attention roll-up for agents and platform components.",
+      description: "Fleet-wide needs-attention roll-up for agents and platform components.",
       inputSchema: {},
       annotations: { readOnlyHint: true },
     },
